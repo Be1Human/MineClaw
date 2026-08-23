@@ -34,6 +34,26 @@ const blockedPathPrefixes = [
   'test-case/results/'
 ];
 
+const requiredPaths = [
+  'README.md',
+  'AGENTS.md',
+  'CLAUDE.md',
+  '.agents/README.md',
+  'SECURITY.md',
+  'RELEASE_PROVENANCE.md',
+];
+const requiredSkillPaths = [
+  'clawpm-project-workflow',
+  'doc-style',
+  'framework-first-debugging',
+  'grill-me',
+  'local-loop-test',
+  'memory-benchmark',
+  'minecraft-test-environment',
+  'requirement-intake',
+  'run',
+  'test-doc'
+].map((name) => `.agents/skills/${name}/SKILL.md`);
 const secretRules = [
   { label: 'LLM API token', pattern: /\b[s]k-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
   { label: 'GitHub token', pattern: /\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
@@ -82,7 +102,7 @@ async function collectFiles(directory, relative = '') {
 }
 
 const violations = [];
-for (const required of requiredPaths) {
+for (const required of [...requiredPaths, ...requiredSkillPaths]) {
   try {
     await lstat(path.join(root, required));
   } catch {

@@ -79,3 +79,6 @@ Do not commit `.env` files, API keys, server credentials, local databases, logs,
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). This repository currently has no open-source license grant; do not redistribute it until the project owner publishes a license.
+
+## Agent-Guided Development
+
