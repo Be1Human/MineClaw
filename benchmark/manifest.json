@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "mineclaw-benchmark-manifest/v1",
+  "workspace": "benchmark",
+  "migrationMap": "test-case/migration-map.json",
+  "suites": [
+    {
+      "id": "engineering",
+      "capability": "body-experience-reliability",
+      "root": "benchmark/engineering",
+      "profiles": ["smoke", "release", "full"],
+      "runner": {"cwd": "apps/minecraft-companion", "command": "node", "args": ["--import", "tsx/esm", "--import", "../../scripts/register-test-module-resolver.mjs", "../../benchmark/engineering/runner.ts"], "profileArg": "--profile"},
+      "reportDir": "benchmark/reports/engineering",
+      "baselineDir": "benchmark/baselines/engineering"
+    },
+    {
+      "id": "memory",
+      "capability": "unified-memory",
+      "root": "benchmark/memory",
+      "profiles": ["quick", "full"],
+      "runner": {"cwd": "apps/minecraft-companion", "command": "node", "args": ["--import", "tsx/esm", "--import", "../../scripts/register-test-module-resolver.mjs", "../../benchmark/memory/offline/src/runner.ts"], "profileArg": "--profile"},
+      "reportDir": "benchmark/reports/memory",
+      "baselineDir": "benchmark/baselines/memory"
+    },
+    {
+      "id": "short-capability",
+      "capability": "short-horizon-player-actions",
+      "root": "benchmark/capability/short",
+      "profiles": ["canary", "full"],
+      "runner": {"cwd": ".", "command": "node", "args": ["benchmark/capability/runner.mjs", "--suite", "short"], "profileArg": "--profile"},
+      "reportDir": "benchmark/reports/capability"
+    },
+    {
+      "id": "combat-survival",
+      "capability": "combat-and-survival",
+      "root": "benchmark/capability/combat-survival",
+      "profiles": ["canary", "full"],
+      "runner": {"cwd": ".", "command": "node", "args": ["benchmark/capability/runner.mjs", "--suite", "combat-survival"], "profileArg": "--profile"},
+      "reportDir": "benchmark/reports/capability"
+    }
+  ]
+}

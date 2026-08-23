@@ -1,0 +1,16 @@
+{
+  "id": "short-delivery-bread",
+  "description": "Prepare TC-SC-03 with six bread on the Bot and no bread on the owner; place the Bot six blocks from the owner without performing the delivery.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:bread",
+    "give {{bot}} minecraft:bread 6",
+    "execute at {{owner}} run tp {{bot}} ~-6 ~ ~"
+  ]
+}

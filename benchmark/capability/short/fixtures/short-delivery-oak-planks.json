@@ -1,0 +1,16 @@
+{
+  "id": "short-delivery-oak-planks",
+  "description": "Prepare TC-SC-05 with 32 oak planks on the Bot and none on the owner; place the Bot five blocks from the owner without performing the delivery.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:oak_planks",
+    "give {{bot}} minecraft:oak_planks 32",
+    "execute at {{owner}} run tp {{bot}} ~-5 ~ ~"
+  ]
+}

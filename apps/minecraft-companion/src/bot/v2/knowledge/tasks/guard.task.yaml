@@ -1,0 +1,55 @@
+kind: guard
+aliases: [守卫, 保护我, 守着我, guard]
+summary: "在指定位置巡逻守卫"
+
+priority:
+  default: 35
+  tier: owner_command
+
+persistent: true
+
+slots:
+  required:
+    - name: center
+      type: location
+      description: "守卫中心点"
+      defaultFrom: [dialogue, world.nearby]
+      askable: true
+  optional:
+    - name: radius
+      type: number
+      description: "巡逻半径"
+      defaultFrom: [dialogue]
+      fallback: 8
+      askable: false
+    - name: combatRange
+      type: number
+      description: "攻击范围"
+      defaultFrom: [default]
+      fallback: 16
+      askable: false
+
+preconditions: []
+
+strategy: GuardStrategy
+
+cookbook:
+  steps:
+    - 确认守卫中心点
+    - 移动到中心
+    - 巡逻范围内
+    - 发现敌对生物则攻击
+  failures:
+    - condition: "找不到守卫中心"
+      strategies: ["用当前位置", "ask_master"]
+    - condition: "被远程击杀"
+      strategies: ["delegate_supervisor"]
+  completion: "持续任务，主人说停才停"
+  estimatedDuration:
+    minSec: 60
+    maxSec: null
+
+examples:
+  - "守着我"
+  - "保护这里"
+  - "在这巡逻"

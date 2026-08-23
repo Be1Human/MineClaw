@@ -1,0 +1,20 @@
+{
+  "id": "short-craft-place-furnace",
+  "description": "Prepare TC-SC-12 with eight cobblestone on the Bot, one nearby crafting table, and no furnace in the owner acceptance area.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "fill 52 -61 31 64 -61 45 minecraft:stone",
+    "fill 52 -60 31 64 -57 45 minecraft:air",
+    "fill 60 -61 37 60 -61 37 minecraft:yellow_concrete",
+    "fill 56 -60 38 56 -60 38 minecraft:crafting_table",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 55 -60 37 90 0",
+    "give {{bot}} minecraft:cobblestone 8"
+  ]
+}

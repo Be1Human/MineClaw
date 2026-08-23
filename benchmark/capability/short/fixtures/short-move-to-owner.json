@@ -1,0 +1,18 @@
+{
+  "id": "short-move-to-owner",
+  "description": "Prepare TC-SC-16 with an unobstructed eight-block line between the Bot and owner.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "fill 48 -61 33 64 -61 41 minecraft:stone",
+    "fill 48 -60 33 64 -57 41 minecraft:air",
+    "fill 60 -61 37 60 -61 37 minecraft:yellow_concrete",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 52 -60 37 90 0"
+  ]
+}

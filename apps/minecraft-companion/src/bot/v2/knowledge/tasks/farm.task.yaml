@@ -1,0 +1,81 @@
+kind: farm
+aliases: [种田, 种地, 种菜, 播种, 种小麦]
+summary: "在指定农田种植作物"
+
+priority:
+  default: 30
+  tier: owner_command
+
+persistent: false
+
+slots:
+  required:
+    - name: seedName
+      type: item
+      description: "种子物品名"
+      defaultFrom: [dialogue, inventory]
+      fallback: "wheat_seeds"
+      askable: false
+  optional:
+    - name: plots
+      type: number
+      description: "种植格数"
+      defaultFrom: [dialogue]
+      fallback: 3
+      askable: true
+    - name: hoeName
+      type: item
+      description: "锄头物品名"
+      defaultFrom: [inventory]
+      fallback: "wooden_hoe"
+      askable: false
+    - name: durabilityPerPlot
+      type: number
+      description: "每格耐久消耗"
+      defaultFrom: [default]
+      fallback: 1
+      askable: false
+    - name: mode
+      type: string
+      description: "执行模式：oneshot(种完即止) | continuous(种完等成熟→收割→补种 循环)"
+      defaultFrom: [default]
+      fallback: "oneshot"
+      askable: false
+    - name: growthEstimateSec
+      type: number
+      description: "continuous 模式下，撒种后多少秒视为已熟（MVP 时间近似 · 真实 block age 待 perception 暴露）"
+      defaultFrom: [default]
+      fallback: 60
+      askable: false
+
+preconditions:
+  - has_seeds
+  - has_hoe_with_durability
+
+strategy: FarmStrategy
+
+cookbook:
+  steps:
+    - 确认有种子和锄头
+    - 前往农田
+    - 翻地
+    - 播种
+    - 确认成功
+  failures:
+    - condition: "没有锄头"
+      strategies: ["从箱子拿", "合成", "ask_master"]
+    - condition: "没有种子"
+      strategies: ["从箱子拿", "打草获取", "ask_master"]
+    - condition: "找不到农田"
+      strategies: ["用记忆", "附近找", "ask_master"]
+    - condition: "被攻击"
+      strategies: ["delegate_supervisor"]
+  completion: "plotsDone >= 目标数量"
+  estimatedDuration:
+    minSec: 30
+    maxSec: 300
+
+examples:
+  - "帮我种田"
+  - "种 3 亩小麦"
+  - "去种地吧"

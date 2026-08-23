@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "mineclaw-memory-benchmark-manifest/v1",
+  "datasetVersion": "1.0.0",
+  "name": "MineClaw Unified Memory Benchmark",
+  "requiredDomains": ["chat", "explicit_place", "auto_discovery", "episode_location"],
+  "sources": [
+    {
+      "id": "mineclaw-memorybench-zh-v1",
+      "domain": "chat",
+      "kind": "legacy_adapter",
+      "location": "../memory/datasets.ts",
+      "expectedCases": 130
+    },
+    {
+      "id": "mineclaw-location-memory-v1",
+      "domain": "explicit_place",
+      "kind": "json",
+      "location": "datasets/location-cases.json",
+      "expectedCases": 4
+    },
+    {
+      "id": "mineclaw-auto-discovery-v1",
+      "domain": "auto_discovery",
+      "kind": "json",
+      "location": "datasets/location-cases.json",
+      "expectedCases": 4
+    },
+    {
+      "id": "mineclaw-episode-location-v1",
+      "domain": "episode_location",
+      "kind": "json",
+      "location": "datasets/location-cases.json",
+      "expectedCases": 3
+    }
+  ]
+}

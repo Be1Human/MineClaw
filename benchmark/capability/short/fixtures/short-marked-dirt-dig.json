@@ -1,0 +1,20 @@
+{
+  "id": "short-marked-dirt-dig",
+  "description": "Prepare TC-SC-19 with one unique dirt floor block beside a red concrete marker and an iron shovel in the Bot inventory.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "give {{bot}} minecraft:iron_shovel 1",
+    "fill 48 -64 33 64 -61 41 minecraft:stone",
+    "fill 48 -60 33 64 -57 41 minecraft:air",
+    "fill 57 -61 37 57 -61 37 minecraft:dirt",
+    "fill 57 -61 38 57 -61 38 minecraft:red_concrete",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 52 -60 37 90 0"
+  ]
+}

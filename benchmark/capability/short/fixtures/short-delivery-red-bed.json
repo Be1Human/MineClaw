@@ -1,0 +1,16 @@
+{
+  "id": "short-delivery-red-bed",
+  "description": "Prepare TC-SC-04 with one red bed on the Bot and none on the owner; place the Bot three blocks from the owner without delivering or placing it.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:red_bed",
+    "give {{bot}} minecraft:red_bed 1",
+    "execute at {{owner}} run tp {{bot}} ~-3 ~ ~"
+  ]
+}

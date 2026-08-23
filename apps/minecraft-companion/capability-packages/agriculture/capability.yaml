@@ -1,0 +1,33 @@
+schema: mineclaw/capability-manifest@1
+id: agriculture.harvest_mature_crops_to_chest
+version: 1
+description: 收割附近全部成熟小麦、收净掉落并存入指令绑定的箱子
+goalTargets:
+  - kind: item
+    registryId: mineclaw:mature_crops_to_chest
+    aliases:
+      - 收割农田
+      - 收下农田
+      - 把田收了
+      - 收田
+      - 收庄稼
+      - 收菜
+      - 收麦子
+      - 收稻田
+      - 收麦田
+      - 成熟庄稼
+      - 成熟小麦
+      - harvest crops
+      - harvest the farm
+    taskFamilies: [agriculture, storage]
+    successCriteriaPolicy: authoritative
+    successCriteria:
+      - type: predicate
+        predicate: agriculture.harvest_to_chest
+skills: [成熟农田归仓]
+knowledge:
+  - agriculture:wheat-maturity
+  - agriculture:harvest-to-chest
+requires:
+  atomics: [move_to, dig, deposit]
+  behaviors: [harvest_mature_crops_to_chest]

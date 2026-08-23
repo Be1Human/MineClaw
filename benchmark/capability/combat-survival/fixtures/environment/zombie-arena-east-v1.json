@@ -1,0 +1,28 @@
+{
+  "id": "zombie-arena-east-v1",
+  "description": "Build a roofed zombie arena centered at 52 -60 22, with a west entrance, configured zombie spawner, and ten spawn eggs dropped beside the approach.",
+  "commands": [
+    "fill 45 -60 15 59 -55 29 minecraft:air",
+    "fill 45 -61 15 59 -61 29 minecraft:polished_deepslate",
+    "fill 45 -60 15 59 -59 15 minecraft:stone_bricks",
+    "fill 45 -60 29 59 -59 29 minecraft:stone_bricks",
+    "fill 45 -60 16 45 -59 28 minecraft:stone_bricks",
+    "fill 59 -60 16 59 -59 28 minecraft:stone_bricks",
+    "fill 45 -58 15 59 -56 15 minecraft:iron_bars",
+    "fill 45 -58 29 59 -56 29 minecraft:iron_bars",
+    "fill 45 -58 16 45 -56 28 minecraft:iron_bars",
+    "fill 59 -58 16 59 -56 28 minecraft:iron_bars",
+    "fill 46 -58 16 58 -56 16 minecraft:tinted_glass",
+    "fill 46 -58 28 58 -56 28 minecraft:tinted_glass",
+    "fill 46 -58 17 46 -56 27 minecraft:tinted_glass",
+    "fill 58 -58 17 58 -56 27 minecraft:tinted_glass",
+    "fill 45 -55 15 59 -55 29 minecraft:tinted_glass",
+    "fill 45 -60 22 45 -60 22 minecraft:oak_door[facing=east,half=lower,hinge=left,open=false,powered=false]",
+    "fill 45 -59 22 45 -59 22 minecraft:oak_door[facing=east,half=upper,hinge=left,open=false,powered=false]",
+    "fill 51 -60 21 53 -60 23 minecraft:chiseled_stone_bricks",
+    "fill 52 -60 22 52 -60 22 minecraft:spawner{SpawnData:{entity:{id:\"minecraft:zombie\"}},SpawnPotentials:[{weight:1,data:{entity:{id:\"minecraft:zombie\"}}}],Delay:20s,MinSpawnDelay:200s,MaxSpawnDelay:400s,SpawnCount:2s,MaxNearbyEntities:8s,RequiredPlayerRange:16s,SpawnRange:4s}",
+    "fill 42 -61 21 44 -61 23 minecraft:stone_bricks",
+    "fill 42 -60 23 42 -60 23 minecraft:chest{Items:[{Slot:0b,id:\"minecraft:zombie_spawn_egg\",count:10}]}",
+    "fill 42 -60 23 42 -60 23 minecraft:air destroy"
+  ]
+}

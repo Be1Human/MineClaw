@@ -1,0 +1,3587 @@
+{
+  "schemaVersion": "mineclaw-testing-migration-map/v1",
+  "generatedFrom": "git ls-files",
+  "counts": {
+    "total": 596,
+    "testCase": 237,
+    "benchmark": 359
+  },
+  "assets": [
+    {
+      "id": "ASSET-0001",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-chest-left-deposit-cobblestone.json",
+      "newPath": "benchmark/capability/short/fixtures/short-chest-left-deposit-cobblestone.json"
+    },
+    {
+      "id": "ASSET-0002",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-chest-left-iron-pickaxe.json",
+      "newPath": "benchmark/capability/short/fixtures/short-chest-left-iron-pickaxe.json"
+    },
+    {
+      "id": "ASSET-0003",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-chest-left-torch.json",
+      "newPath": "benchmark/capability/short/fixtures/short-chest-left-torch.json"
+    },
+    {
+      "id": "ASSET-0004",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-chest-right-red-bed.json",
+      "newPath": "benchmark/capability/short/fixtures/short-chest-right-red-bed.json"
+    },
+    {
+      "id": "ASSET-0005",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-chest-transfer-oak-log.json",
+      "newPath": "benchmark/capability/short/fixtures/short-chest-transfer-oak-log.json"
+    },
+    {
+      "id": "ASSET-0006",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-craft-place-chest-right.json",
+      "newPath": "benchmark/capability/short/fixtures/short-craft-place-chest-right.json"
+    },
+    {
+      "id": "ASSET-0007",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-craft-place-crafting-table.json",
+      "newPath": "benchmark/capability/short/fixtures/short-craft-place-crafting-table.json"
+    },
+    {
+      "id": "ASSET-0008",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-craft-place-furnace.json",
+      "newPath": "benchmark/capability/short/fixtures/short-craft-place-furnace.json"
+    },
+    {
+      "id": "ASSET-0009",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-delivery-bread.json",
+      "newPath": "benchmark/capability/short/fixtures/short-delivery-bread.json"
+    },
+    {
+      "id": "ASSET-0010",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-delivery-iron-pickaxe.json",
+      "newPath": "benchmark/capability/short/fixtures/short-delivery-iron-pickaxe.json"
+    },
+    {
+      "id": "ASSET-0011",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-delivery-oak-planks.json",
+      "newPath": "benchmark/capability/short/fixtures/short-delivery-oak-planks.json"
+    },
+    {
+      "id": "ASSET-0012",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-delivery-red-bed.json",
+      "newPath": "benchmark/capability/short/fixtures/short-delivery-red-bed.json"
+    },
+    {
+      "id": "ASSET-0013",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-delivery-torch.json",
+      "newPath": "benchmark/capability/short/fixtures/short-delivery-torch.json"
+    },
+    {
+      "id": "ASSET-0014",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-follow-owner-to-marker.json",
+      "newPath": "benchmark/capability/short/fixtures/short-follow-owner-to-marker.json"
+    },
+    {
+      "id": "ASSET-0015",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-ground-pickaxe-delivery.json",
+      "newPath": "benchmark/capability/short/fixtures/short-ground-pickaxe-delivery.json"
+    },
+    {
+      "id": "ASSET-0016",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-marked-dirt-dig.json",
+      "newPath": "benchmark/capability/short/fixtures/short-marked-dirt-dig.json"
+    },
+    {
+      "id": "ASSET-0017",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-marked-oak-log-delivery.json",
+      "newPath": "benchmark/capability/short/fixtures/short-marked-oak-log-delivery.json"
+    },
+    {
+      "id": "ASSET-0018",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-move-to-owner.json",
+      "newPath": "benchmark/capability/short/fixtures/short-move-to-owner.json"
+    },
+    {
+      "id": "ASSET-0019",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-place-red-bed-at-owner.json",
+      "newPath": "benchmark/capability/short/fixtures/short-place-red-bed-at-owner.json"
+    },
+    {
+      "id": "ASSET-0020",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/short-place-torch-on-front-stone.json",
+      "newPath": "benchmark/capability/short/fixtures/short-place-torch-on-front-stone.json"
+    },
+    {
+      "id": "ASSET-0021",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-arena-combat-test-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-arena-combat-test-v1.json"
+    },
+    {
+      "id": "ASSET-0022",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-arena-east-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-arena-east-v1.json"
+    },
+    {
+      "id": "ASSET-0023",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-combat-low-health-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-combat-low-health-v1.json"
+    },
+    {
+      "id": "ASSET-0024",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-combat-single-mobile-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-combat-single-mobile-v1.json"
+    },
+    {
+      "id": "ASSET-0025",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-combat-single-static-safe-v2.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-combat-single-static-safe-v2.json"
+    },
+    {
+      "id": "ASSET-0026",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-combat-single-static-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-combat-single-static-v1.json"
+    },
+    {
+      "id": "ASSET-0027",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-combat-triple-mobile-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-combat-triple-mobile-v1.json"
+    },
+    {
+      "id": "ASSET-0028",
+      "layer": "benchmark",
+      "oldPath": ".agents/skills/minecraft-test-environment/assets/scenarios/zombie-combat-triple-static-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/environment/zombie-combat-triple-static-v1.json"
+    },
+    {
+      "id": "ASSET-0029",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/chat-memory-testOwner.db",
+      "newPath": "test-case/fixtures/memory/chat-memory-testOwner.db"
+    },
+    {
+      "id": "ASSET-0030",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/README.md",
+      "newPath": "benchmark/engineering/core/README.md"
+    },
+    {
+      "id": "ASSET-0031",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/__tests__/director.test.ts",
+      "newPath": "test-case/integration/eval/director.test.ts"
+    },
+    {
+      "id": "ASSET-0032",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/__tests__/gatherScenarios.test.ts",
+      "newPath": "test-case/integration/eval/gatherScenarios.test.ts"
+    },
+    {
+      "id": "ASSET-0033",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/__tests__/gymBackendLifecycle.test.ts",
+      "newPath": "test-case/integration/eval/gymBackendLifecycle.test.ts"
+    },
+    {
+      "id": "ASSET-0034",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/__tests__/subject.test.ts",
+      "newPath": "test-case/integration/eval/subject.test.ts"
+    },
+    {
+      "id": "ASSET-0035",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/__tests__/template.test.ts",
+      "newPath": "test-case/integration/eval/template.test.ts"
+    },
+    {
+      "id": "ASSET-0036",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/__tests__/catalog.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/benchmark/catalog.test.ts"
+    },
+    {
+      "id": "ASSET-0037",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/__tests__/childProcess.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/benchmark/childProcess.test.ts"
+    },
+    {
+      "id": "ASSET-0038",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/__tests__/normalize.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/benchmark/normalize.test.ts"
+    },
+    {
+      "id": "ASSET-0039",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/__tests__/report.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/benchmark/report.test.ts"
+    },
+    {
+      "id": "ASSET-0040",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/__tests__/runtimeEnv.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/benchmark/runtimeEnv.test.ts"
+    },
+    {
+      "id": "ASSET-0041",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/__tests__/score.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/benchmark/score.test.ts"
+    },
+    {
+      "id": "ASSET-0042",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/catalog.ts",
+      "newPath": "benchmark/engineering/catalog.ts"
+    },
+    {
+      "id": "ASSET-0043",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/childProcess.ts",
+      "newPath": "benchmark/engineering/childProcess.ts"
+    },
+    {
+      "id": "ASSET-0044",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/normalize.ts",
+      "newPath": "benchmark/engineering/normalize.ts"
+    },
+    {
+      "id": "ASSET-0045",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/report.ts",
+      "newPath": "benchmark/engineering/report.ts"
+    },
+    {
+      "id": "ASSET-0046",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/runner.ts",
+      "newPath": "benchmark/engineering/runner.ts"
+    },
+    {
+      "id": "ASSET-0047",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/runtimeEnv.ts",
+      "newPath": "benchmark/engineering/runtimeEnv.ts"
+    },
+    {
+      "id": "ASSET-0048",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/score.ts",
+      "newPath": "benchmark/engineering/score.ts"
+    },
+    {
+      "id": "ASSET-0049",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/benchmark/types.ts",
+      "newPath": "benchmark/engineering/types.ts"
+    },
+    {
+      "id": "ASSET-0050",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/director.ts",
+      "newPath": "benchmark/engineering/core/director.ts"
+    },
+    {
+      "id": "ASSET-0051",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/gym/README.md",
+      "newPath": "benchmark/engineering/experience/README.md"
+    },
+    {
+      "id": "ASSET-0052",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/gym/__tests__/runtimeEvidence.test.ts",
+      "newPath": "test-case/benchmark-framework/engineering/gym/runtimeEvidence.test.ts"
+    },
+    {
+      "id": "ASSET-0053",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/gym/backendLifecycle.ts",
+      "newPath": "benchmark/engineering/experience/backendLifecycle.ts"
+    },
+    {
+      "id": "ASSET-0054",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/gym/rcon.ts",
+      "newPath": "benchmark/engineering/experience/rcon.ts"
+    },
+    {
+      "id": "ASSET-0055",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/gym/runner.ts",
+      "newPath": "benchmark/engineering/experience/runner.ts"
+    },
+    {
+      "id": "ASSET-0056",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/gym/runtimeEvidence.ts",
+      "newPath": "benchmark/engineering/experience/runtimeEvidence.ts"
+    },
+    {
+      "id": "ASSET-0057",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/gym/tasks.ts",
+      "newPath": "benchmark/engineering/experience/tasks.ts"
+    },
+    {
+      "id": "ASSET-0058",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/list.ts",
+      "newPath": "benchmark/engineering/core/list.ts"
+    },
+    {
+      "id": "ASSET-0059",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/BENCHMARK_SPEC.md",
+      "newPath": "benchmark/memory/offline/BENCHMARK_SPEC.md"
+    },
+    {
+      "id": "ASSET-0060",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/README.md",
+      "newPath": "benchmark/memory/offline/README.md"
+    },
+    {
+      "id": "ASSET-0061",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/SCORING.md",
+      "newPath": "benchmark/memory/offline/SCORING.md"
+    },
+    {
+      "id": "ASSET-0062",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/__tests__/adapters.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/offline/adapters.test.ts"
+    },
+    {
+      "id": "ASSET-0063",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/__tests__/core.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/offline/core.test.ts"
+    },
+    {
+      "id": "ASSET-0064",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/benchmark.config.json",
+      "newPath": "benchmark/memory/offline/benchmark.config.json"
+    },
+    {
+      "id": "ASSET-0065",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/datasets/location-cases.json",
+      "newPath": "benchmark/memory/offline/datasets/location-cases.json"
+    },
+    {
+      "id": "ASSET-0066",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/datasets/manifest.json",
+      "newPath": "benchmark/memory/offline/datasets/manifest.json"
+    },
+    {
+      "id": "ASSET-0067",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-full-1785679913623-6314a565.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-full-1785679913623-6314a565.json"
+    },
+    {
+      "id": "ASSET-0068",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-full-1785679913623-6314a565.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-full-1785679913623-6314a565.md"
+    },
+    {
+      "id": "ASSET-0069",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-full-1785680237777-c3d15e72.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-full-1785680237777-c3d15e72.json"
+    },
+    {
+      "id": "ASSET-0070",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-full-1785680237777-c3d15e72.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-full-1785680237777-c3d15e72.md"
+    },
+    {
+      "id": "ASSET-0071",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-full-1785680559241-711ed974.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-full-1785680559241-711ed974.json"
+    },
+    {
+      "id": "ASSET-0072",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-full-1785680559241-711ed974.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-full-1785680559241-711ed974.md"
+    },
+    {
+      "id": "ASSET-0073",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785679889452-b408ccf3.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785679889452-b408ccf3.json"
+    },
+    {
+      "id": "ASSET-0074",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785679889452-b408ccf3.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785679889452-b408ccf3.md"
+    },
+    {
+      "id": "ASSET-0075",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785680217683-50d92c2d.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785680217683-50d92c2d.json"
+    },
+    {
+      "id": "ASSET-0076",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785680217683-50d92c2d.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785680217683-50d92c2d.md"
+    },
+    {
+      "id": "ASSET-0077",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785680260231-ff7fadc7.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785680260231-ff7fadc7.json"
+    },
+    {
+      "id": "ASSET-0078",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785680260231-ff7fadc7.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785680260231-ff7fadc7.md"
+    },
+    {
+      "id": "ASSET-0079",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785680780932-07ce6b30.json",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785680780932-07ce6b30.json"
+    },
+    {
+      "id": "ASSET-0080",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/reports/memory-benchmark-quick-1785680780932-07ce6b30.md",
+      "newPath": "benchmark/archive/memory/offline/memory-benchmark-quick-1785680780932-07ce6b30.md"
+    },
+    {
+      "id": "ASSET-0081",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/adapters/autoDiscoveryAdapter.ts",
+      "newPath": "benchmark/memory/offline/src/adapters/autoDiscoveryAdapter.ts"
+    },
+    {
+      "id": "ASSET-0082",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/adapters/chatAdapter.ts",
+      "newPath": "benchmark/memory/offline/src/adapters/chatAdapter.ts"
+    },
+    {
+      "id": "ASSET-0083",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/adapters/episodeLocationAdapter.ts",
+      "newPath": "benchmark/memory/offline/src/adapters/episodeLocationAdapter.ts"
+    },
+    {
+      "id": "ASSET-0084",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/adapters/explicitPlaceAdapter.ts",
+      "newPath": "benchmark/memory/offline/src/adapters/explicitPlaceAdapter.ts"
+    },
+    {
+      "id": "ASSET-0085",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/adapters/explicitPlaceToolHarness.mjs",
+      "newPath": "benchmark/memory/offline/src/adapters/explicitPlaceToolHarness.mjs"
+    },
+    {
+      "id": "ASSET-0086",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/checks.ts",
+      "newPath": "benchmark/memory/offline/src/checks.ts"
+    },
+    {
+      "id": "ASSET-0087",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/loader.ts",
+      "newPath": "benchmark/memory/offline/src/loader.ts"
+    },
+    {
+      "id": "ASSET-0088",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/registry.ts",
+      "newPath": "benchmark/memory/offline/src/registry.ts"
+    },
+    {
+      "id": "ASSET-0089",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/report.ts",
+      "newPath": "benchmark/memory/offline/src/report.ts"
+    },
+    {
+      "id": "ASSET-0090",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/runner.ts",
+      "newPath": "benchmark/memory/offline/src/runner.ts"
+    },
+    {
+      "id": "ASSET-0091",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/scoring.ts",
+      "newPath": "benchmark/memory/offline/src/scoring.ts"
+    },
+    {
+      "id": "ASSET-0092",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory-benchmark/src/types.ts",
+      "newPath": "benchmark/memory/offline/src/types.ts"
+    },
+    {
+      "id": "ASSET-0093",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/captureBlindReview.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/captureBlindReview.test.ts"
+    },
+    {
+      "id": "ASSET-0094",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/external.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/external.test.ts"
+    },
+    {
+      "id": "ASSET-0095",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/harness.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/harness.test.ts"
+    },
+    {
+      "id": "ASSET-0096",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/longMemEvalJudge.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/longMemEvalJudge.test.ts"
+    },
+    {
+      "id": "ASSET-0097",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/longMemStream.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/longMemStream.test.ts"
+    },
+    {
+      "id": "ASSET-0098",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/memoryAgentBenchConflictAudit.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/memoryAgentBenchConflictAudit.test.ts"
+    },
+    {
+      "id": "ASSET-0099",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/memoryAgentBenchFinalize.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/memoryAgentBenchFinalize.test.ts"
+    },
+    {
+      "id": "ASSET-0100",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/memoryAgentBenchLongMemJudge.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/memoryAgentBenchLongMemJudge.test.ts"
+    },
+    {
+      "id": "ASSET-0101",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/memoryAgentBenchSummaryJudge.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/memoryAgentBenchSummaryJudge.test.ts"
+    },
+    {
+      "id": "ASSET-0102",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/soakState.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/soakState.test.ts"
+    },
+    {
+      "id": "ASSET-0103",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/memory/__tests__/summaryJudgeBlindReview.test.ts",
+      "newPath": "test-case/benchmark-framework/memory/external/summaryJudgeBlindReview.test.ts"
+    },
+    {
+      "id": "ASSET-0104",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/captureBlindReview.ts",
+      "newPath": "benchmark/memory/external/captureBlindReview.ts"
+    },
+    {
+      "id": "ASSET-0105",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/captureBlindReviewRunner.ts",
+      "newPath": "benchmark/memory/external/captureBlindReviewRunner.ts"
+    },
+    {
+      "id": "ASSET-0106",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/datasets.ts",
+      "newPath": "benchmark/memory/shared/datasets.ts"
+    },
+    {
+      "id": "ASSET-0107",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/external.ts",
+      "newPath": "benchmark/memory/external/external.ts"
+    },
+    {
+      "id": "ASSET-0108",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/externalRunner.ts",
+      "newPath": "benchmark/memory/external/externalRunner.ts"
+    },
+    {
+      "id": "ASSET-0109",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/harness.ts",
+      "newPath": "benchmark/memory/shared/harness.ts"
+    },
+    {
+      "id": "ASSET-0110",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/longMemEvalJudge.ts",
+      "newPath": "benchmark/memory/external/longMemEvalJudge.ts"
+    },
+    {
+      "id": "ASSET-0111",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/longMemJudgeRecoveryAcceptanceRunner.ts",
+      "newPath": "benchmark/memory/external/longMemJudgeRecoveryAcceptanceRunner.ts"
+    },
+    {
+      "id": "ASSET-0112",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/longMemJudgeRubric.ts",
+      "newPath": "benchmark/memory/external/longMemJudgeRubric.ts"
+    },
+    {
+      "id": "ASSET-0113",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/longMemJudgeRunner.ts",
+      "newPath": "benchmark/memory/external/longMemJudgeRunner.ts"
+    },
+    {
+      "id": "ASSET-0114",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchConflictAudit.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchConflictAudit.ts"
+    },
+    {
+      "id": "ASSET-0115",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchConflictAuditRunner.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchConflictAuditRunner.ts"
+    },
+    {
+      "id": "ASSET-0116",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchFinalize.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchFinalize.ts"
+    },
+    {
+      "id": "ASSET-0117",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchFinalizeRunner.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchFinalizeRunner.ts"
+    },
+    {
+      "id": "ASSET-0118",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchLongMemJudge.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchLongMemJudge.ts"
+    },
+    {
+      "id": "ASSET-0119",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchLongMemJudgeRunner.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchLongMemJudgeRunner.ts"
+    },
+    {
+      "id": "ASSET-0120",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchSummaryJudge.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchSummaryJudge.ts"
+    },
+    {
+      "id": "ASSET-0121",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/memoryAgentBenchSummaryJudgeRunner.ts",
+      "newPath": "benchmark/memory/external/memoryAgentBenchSummaryJudgeRunner.ts"
+    },
+    {
+      "id": "ASSET-0122",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/metrics.ts",
+      "newPath": "benchmark/memory/external/metrics.ts"
+    },
+    {
+      "id": "ASSET-0123",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/performanceRunner.ts",
+      "newPath": "benchmark/memory/external/performanceRunner.ts"
+    },
+    {
+      "id": "ASSET-0124",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/recoveryAcceptanceRunner.ts",
+      "newPath": "benchmark/memory/external/recoveryAcceptanceRunner.ts"
+    },
+    {
+      "id": "ASSET-0125",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/bug-mem-19-longmemeval-judge-real402.json",
+      "newPath": "benchmark/archive/memory/external/bug-mem-19-longmemeval-judge-real402.json"
+    },
+    {
+      "id": "ASSET-0126",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/bug-mem-19-mab-longmem-judge-real402-v2.json",
+      "newPath": "benchmark/archive/memory/external/bug-mem-19-mab-longmem-judge-real402-v2.json"
+    },
+    {
+      "id": "ASSET-0127",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/bug-mem-19-mab-longmem-judge-real402.json",
+      "newPath": "benchmark/archive/memory/external/bug-mem-19-mab-longmem-judge-real402.json"
+    },
+    {
+      "id": "ASSET-0128",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/bug-mem-19-mab-summary-judge-real402.json",
+      "newPath": "benchmark/archive/memory/external/bug-mem-19-mab-summary-judge-real402.json"
+    },
+    {
+      "id": "ASSET-0129",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/capture-blind-review-1785102972761/answer-key.json",
+      "newPath": "benchmark/archive/memory/external/capture-blind-review-1785102972761/answer-key.json"
+    },
+    {
+      "id": "ASSET-0130",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/capture-blind-review-1785102972761/review-form.md",
+      "newPath": "benchmark/archive/memory/external/capture-blind-review-1785102972761/review-form.md"
+    },
+    {
+      "id": "ASSET-0131",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/capture-blind-review-1785102972761/review-pack.json",
+      "newPath": "benchmark/archive/memory/external/capture-blind-review-1785102972761/review-pack.json"
+    },
+    {
+      "id": "ASSET-0132",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785025171216.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785025171216.json"
+    },
+    {
+      "id": "ASSET-0133",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785025662570.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785025662570.json"
+    },
+    {
+      "id": "ASSET-0134",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785078675874.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785078675874.json"
+    },
+    {
+      "id": "ASSET-0135",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785079652333.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785079652333.json"
+    },
+    {
+      "id": "ASSET-0136",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785081492394.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785081492394.json"
+    },
+    {
+      "id": "ASSET-0137",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785086722259.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785086722259.json"
+    },
+    {
+      "id": "ASSET-0138",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-1785088063490.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-1785088063490.json"
+    },
+    {
+      "id": "ASSET-0139",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-hybrid-qwen25-7b-1785110036166.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-hybrid-qwen25-7b-1785110036166.json"
+    },
+    {
+      "id": "ASSET-0140",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/longmemeval-judge-longmemeval_s-recent_only-qwen25-7b-1785110324503.json",
+      "newPath": "benchmark/archive/memory/external/longmemeval-judge-longmemeval_s-recent_only-qwen25-7b-1785110324503.json"
+    },
+    {
+      "id": "ASSET-0141",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-performance-1785018920705.json",
+      "newPath": "benchmark/archive/memory/external/memory-performance-1785018920705.json"
+    },
+    {
+      "id": "ASSET-0142",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-performance-1785018997710.json",
+      "newPath": "benchmark/archive/memory/external/memory-performance-1785018997710.json"
+    },
+    {
+      "id": "ASSET-0143",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-performance-1785075909592.json",
+      "newPath": "benchmark/archive/memory/external/memory-performance-1785075909592.json"
+    },
+    {
+      "id": "ASSET-0144",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-performance-1785090135569.json",
+      "newPath": "benchmark/archive/memory/external/memory-performance-1785090135569.json"
+    },
+    {
+      "id": "ASSET-0145",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-performance-1785101987408.json",
+      "newPath": "benchmark/archive/memory/external/memory-performance-1785101987408.json"
+    },
+    {
+      "id": "ASSET-0146",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-performance-1785105146356.json",
+      "newPath": "benchmark/archive/memory/external/memory-performance-1785105146356.json"
+    },
+    {
+      "id": "ASSET-0147",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h-2026-07-26.db-journal",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h-2026-07-26.db-journal"
+    },
+    {
+      "id": "ASSET-0148",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h-2026-07-26.json.lock",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h-2026-07-26.json.lock"
+    },
+    {
+      "id": "ASSET-0149",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h-resume-2026-08-01.stderr.log",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h-resume-2026-08-01.stderr.log"
+    },
+    {
+      "id": "ASSET-0150",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h-resume-2026-08-01.stdout.log",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h-resume-2026-08-01.stdout.log"
+    },
+    {
+      "id": "ASSET-0151",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h-resume.stderr.log",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h-resume.stderr.log"
+    },
+    {
+      "id": "ASSET-0152",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h-resume.stdout.log",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h-resume.stdout.log"
+    },
+    {
+      "id": "ASSET-0153",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h.stderr.log",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h.stderr.log"
+    },
+    {
+      "id": "ASSET-0154",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memory-soak-24h.stdout.log",
+      "newPath": "benchmark/archive/memory/external/memory-soak-24h.stdout.log"
+    },
+    {
+      "id": "ASSET-0155",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-conflict-audit-1785100832617.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-conflict-audit-1785100832617.json"
+    },
+    {
+      "id": "ASSET-0156",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-conflict-audit-1785101131870.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-conflict-audit-1785101131870.json"
+    },
+    {
+      "id": "ASSET-0157",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-conflict-audit-1785101513124.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-conflict-audit-1785101513124.json"
+    },
+    {
+      "id": "ASSET-0158",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-conflict-audit-1785102482573.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-conflict-audit-1785102482573.json"
+    },
+    {
+      "id": "ASSET-0159",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-conflict-audit-1785105316540.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-conflict-audit-1785105316540.json"
+    },
+    {
+      "id": "ASSET-0160",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-judge-hybrid-final.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-judge-hybrid-final.json"
+    },
+    {
+      "id": "ASSET-0161",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-1785106307372.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-1785106307372.json"
+    },
+    {
+      "id": "ASSET-0162",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-1785106613753.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-1785106613753.json"
+    },
+    {
+      "id": "ASSET-0163",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-inprogress-1785106278701.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-inprogress-1785106278701.json"
+    },
+    {
+      "id": "ASSET-0164",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-inprogress-1785106307372.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-inprogress-1785106307372.json"
+    },
+    {
+      "id": "ASSET-0165",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-inprogress-1785106613753.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-inprogress-1785106613753.json"
+    },
+    {
+      "id": "ASSET-0166",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-source-1785106278701.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-source-1785106278701.json"
+    },
+    {
+      "id": "ASSET-0167",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-source-1785106307372.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-source-1785106307372.json"
+    },
+    {
+      "id": "ASSET-0168",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-longmem-recovery-source-1785106613753.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-longmem-recovery-source-1785106613753.json"
+    },
+    {
+      "id": "ASSET-0169",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-summary-judge-hybrid-final.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-summary-judge-hybrid-final.json"
+    },
+    {
+      "id": "ASSET-0170",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-summary-judge-lru50-deepseek.json",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-summary-judge-lru50-deepseek.json"
+    },
+    {
+      "id": "ASSET-0171",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-summary-judge-lru50-deepseek.stderr.log",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-summary-judge-lru50-deepseek.stderr.log"
+    },
+    {
+      "id": "ASSET-0172",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/memoryagentbench-summary-judge-lru50-deepseek.stdout.log",
+      "newPath": "benchmark/archive/memory/external/memoryagentbench-summary-judge-lru50-deepseek.stdout.log"
+    },
+    {
+      "id": "ASSET-0173",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-fts5_only-1785018529398.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-fts5_only-1785018529398.json"
+    },
+    {
+      "id": "ASSET-0174",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-fts5_only-1785019279552.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-fts5_only-1785019279552.json"
+    },
+    {
+      "id": "ASSET-0175",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-fts5_only-test-1785037897196.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-fts5_only-test-1785037897196.json"
+    },
+    {
+      "id": "ASSET-0176",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-fts5_only-test-1785037897196.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-fts5_only-test-1785037897196.md"
+    },
+    {
+      "id": "ASSET-0177",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-full_context-1785018527233.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-full_context-1785018527233.json"
+    },
+    {
+      "id": "ASSET-0178",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-full_context-test-1785037915395.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-full_context-test-1785037915395.json"
+    },
+    {
+      "id": "ASSET-0179",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-full_context-test-1785037915395.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-full_context-test-1785037915395.md"
+    },
+    {
+      "id": "ASSET-0180",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785001990282.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785001990282.json"
+    },
+    {
+      "id": "ASSET-0181",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785002035451.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785002035451.json"
+    },
+    {
+      "id": "ASSET-0182",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785002071441.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785002071441.json"
+    },
+    {
+      "id": "ASSET-0183",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785002147261.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785002147261.json"
+    },
+    {
+      "id": "ASSET-0184",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785002155918.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785002155918.json"
+    },
+    {
+      "id": "ASSET-0185",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785002410152.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785002410152.json"
+    },
+    {
+      "id": "ASSET-0186",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785003084196.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785003084196.json"
+    },
+    {
+      "id": "ASSET-0187",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785014919732.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785014919732.json"
+    },
+    {
+      "id": "ASSET-0188",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785018528962.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785018528962.json"
+    },
+    {
+      "id": "ASSET-0189",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785018529286.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785018529286.json"
+    },
+    {
+      "id": "ASSET-0190",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785018529894.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785018529894.json"
+    },
+    {
+      "id": "ASSET-0191",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785018594357.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785018594357.json"
+    },
+    {
+      "id": "ASSET-0192",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785019279482.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785019279482.json"
+    },
+    {
+      "id": "ASSET-0193",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-1785019279890.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-1785019279890.json"
+    },
+    {
+      "id": "ASSET-0194",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785037946866.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785037946866.json"
+    },
+    {
+      "id": "ASSET-0195",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785037946866.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785037946866.md"
+    },
+    {
+      "id": "ASSET-0196",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785075871311.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785075871311.json"
+    },
+    {
+      "id": "ASSET-0197",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785075871311.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785075871311.md"
+    },
+    {
+      "id": "ASSET-0198",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785075871334.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785075871334.json"
+    },
+    {
+      "id": "ASSET-0199",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785075871334.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785075871334.md"
+    },
+    {
+      "id": "ASSET-0200",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785075871377.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785075871377.json"
+    },
+    {
+      "id": "ASSET-0201",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785075871377.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785075871377.md"
+    },
+    {
+      "id": "ASSET-0202",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785090114107.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785090114107.json"
+    },
+    {
+      "id": "ASSET-0203",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785090114107.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785090114107.md"
+    },
+    {
+      "id": "ASSET-0204",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785101627185.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785101627185.json"
+    },
+    {
+      "id": "ASSET-0205",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785101627185.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785101627185.md"
+    },
+    {
+      "id": "ASSET-0206",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785101636704.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785101636704.json"
+    },
+    {
+      "id": "ASSET-0207",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785101636704.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785101636704.md"
+    },
+    {
+      "id": "ASSET-0208",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785101646250.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785101646250.json"
+    },
+    {
+      "id": "ASSET-0209",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785101646250.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785101646250.md"
+    },
+    {
+      "id": "ASSET-0210",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785104460612.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785104460612.json"
+    },
+    {
+      "id": "ASSET-0211",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785104460612.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785104460612.md"
+    },
+    {
+      "id": "ASSET-0212",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785109075368.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785109075368.json"
+    },
+    {
+      "id": "ASSET-0213",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-all-1785109075368.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-all-1785109075368.md"
+    },
+    {
+      "id": "ASSET-0214",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037774426.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037774426.json"
+    },
+    {
+      "id": "ASSET-0215",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037774426.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037774426.md"
+    },
+    {
+      "id": "ASSET-0216",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037865816.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037865816.json"
+    },
+    {
+      "id": "ASSET-0217",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037865816.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037865816.md"
+    },
+    {
+      "id": "ASSET-0218",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037876493.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037876493.json"
+    },
+    {
+      "id": "ASSET-0219",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037876493.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037876493.md"
+    },
+    {
+      "id": "ASSET-0220",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037887686.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037887686.json"
+    },
+    {
+      "id": "ASSET-0221",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-hybrid-test-1785037887686.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-hybrid-test-1785037887686.md"
+    },
+    {
+      "id": "ASSET-0222",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-recent_only-1785018526293.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-recent_only-1785018526293.json"
+    },
+    {
+      "id": "ASSET-0223",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-recent_only-test-1785037906643.json",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-recent_only-test-1785037906643.json"
+    },
+    {
+      "id": "ASSET-0224",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/mineclaw-zh-recent_only-test-1785037906643.md",
+      "newPath": "benchmark/archive/memory/external/mineclaw-zh-recent_only-test-1785037906643.md"
+    },
+    {
+      "id": "ASSET-0225",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/soak-resume-smoke-20260726-221855.json",
+      "newPath": "benchmark/archive/memory/external/soak-resume-smoke-20260726-221855.json"
+    },
+    {
+      "id": "ASSET-0226",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/soak-resume-smoke-20260726-221855.stderr.log",
+      "newPath": "benchmark/archive/memory/external/soak-resume-smoke-20260726-221855.stderr.log"
+    },
+    {
+      "id": "ASSET-0227",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/soak-resume-smoke-20260726-221855.stdout.log",
+      "newPath": "benchmark/archive/memory/external/soak-resume-smoke-20260726-221855.stdout.log"
+    },
+    {
+      "id": "ASSET-0228",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/reports/soak-resume-smoke-active-20260726-221855.json",
+      "newPath": "benchmark/archive/memory/external/soak-resume-smoke-active-20260726-221855.json"
+    },
+    {
+      "id": "ASSET-0229",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/runner.ts",
+      "newPath": "benchmark/memory/external/runner.ts"
+    },
+    {
+      "id": "ASSET-0230",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/soakRunner.ts",
+      "newPath": "benchmark/memory/external/soakRunner.ts"
+    },
+    {
+      "id": "ASSET-0231",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/soakState.ts",
+      "newPath": "benchmark/memory/external/soakState.ts"
+    },
+    {
+      "id": "ASSET-0232",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/summaryJudgeBlindReview.ts",
+      "newPath": "benchmark/memory/external/summaryJudgeBlindReview.ts"
+    },
+    {
+      "id": "ASSET-0233",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/summaryJudgeBlindReviewRunner.ts",
+      "newPath": "benchmark/memory/external/summaryJudgeBlindReviewRunner.ts"
+    },
+    {
+      "id": "ASSET-0234",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/memory/types.ts",
+      "newPath": "benchmark/memory/shared/types.ts"
+    },
+    {
+      "id": "ASSET-0235",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/plannerEvolutionPreview.ts",
+      "newPath": "benchmark/engineering/plannerEvolutionPreview.ts"
+    },
+    {
+      "id": "ASSET-0236",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/report.ts",
+      "newPath": "benchmark/engineering/core/report.ts"
+    },
+    {
+      "id": "ASSET-0237",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-25T22-50-00-943Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-25T22-50-00-943Z.json"
+    },
+    {
+      "id": "ASSET-0238",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-25T22-50-00-943Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-25T22-50-00-943Z.md"
+    },
+    {
+      "id": "ASSET-0239",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-25T22-51-37-704Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-25T22-51-37-704Z.json"
+    },
+    {
+      "id": "ASSET-0240",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-25T22-51-37-704Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-25T22-51-37-704Z.md"
+    },
+    {
+      "id": "ASSET-0241",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-25T23-20-27-353Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-25T23-20-27-353Z.json"
+    },
+    {
+      "id": "ASSET-0242",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-25T23-20-27-353Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-25T23-20-27-353Z.md"
+    },
+    {
+      "id": "ASSET-0243",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T00-22-23-384Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T00-22-23-384Z.json"
+    },
+    {
+      "id": "ASSET-0244",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T00-22-23-384Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T00-22-23-384Z.md"
+    },
+    {
+      "id": "ASSET-0245",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T00-49-08-933Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T00-49-08-933Z.json"
+    },
+    {
+      "id": "ASSET-0246",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T00-49-08-933Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T00-49-08-933Z.md"
+    },
+    {
+      "id": "ASSET-0247",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T01-14-35-430Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T01-14-35-430Z.json"
+    },
+    {
+      "id": "ASSET-0248",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T01-14-35-430Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T01-14-35-430Z.md"
+    },
+    {
+      "id": "ASSET-0249",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T02-21-41-725Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T02-21-41-725Z.json"
+    },
+    {
+      "id": "ASSET-0250",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T02-21-41-725Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T02-21-41-725Z.md"
+    },
+    {
+      "id": "ASSET-0251",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T02-35-12-598Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T02-35-12-598Z.json"
+    },
+    {
+      "id": "ASSET-0252",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T02-35-12-598Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T02-35-12-598Z.md"
+    },
+    {
+      "id": "ASSET-0253",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T05-12-31-149Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T05-12-31-149Z.json"
+    },
+    {
+      "id": "ASSET-0254",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T05-12-31-149Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T05-12-31-149Z.md"
+    },
+    {
+      "id": "ASSET-0255",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T06-25-15-526Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T06-25-15-526Z.json"
+    },
+    {
+      "id": "ASSET-0256",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T06-25-15-526Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T06-25-15-526Z.md"
+    },
+    {
+      "id": "ASSET-0257",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T08-10-51-614Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T08-10-51-614Z.json"
+    },
+    {
+      "id": "ASSET-0258",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T08-10-51-614Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T08-10-51-614Z.md"
+    },
+    {
+      "id": "ASSET-0259",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T14-37-54-786Z.json",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T14-37-54-786Z.json"
+    },
+    {
+      "id": "ASSET-0260",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/benchmark-2026-07-26T14-37-54-786Z.md",
+      "newPath": "benchmark/archive/engineering/benchmark-2026-07-26T14-37-54-786Z.md"
+    },
+    {
+      "id": "ASSET-0261",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/body-matrix-rerun.pid",
+      "newPath": "benchmark/archive/engineering/runtime/body-matrix-rerun.pid"
+    },
+    {
+      "id": "ASSET-0262",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/body-release-rerun.pid",
+      "newPath": "benchmark/archive/engineering/runtime/body-release-rerun.pid"
+    },
+    {
+      "id": "ASSET-0263",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/bug-cross-26-nav01-local.pid",
+      "newPath": "benchmark/archive/engineering/runtime/bug-cross-26-nav01-local.pid"
+    },
+    {
+      "id": "ASSET-0264",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/bug-cross-26-release-body.pid",
+      "newPath": "benchmark/archive/engineering/runtime/bug-cross-26-release-body.pid"
+    },
+    {
+      "id": "ASSET-0265",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/craft01-diagnostic.pid",
+      "newPath": "benchmark/archive/engineering/runtime/craft01-diagnostic.pid"
+    },
+    {
+      "id": "ASSET-0266",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-crop.png",
+      "newPath": "test-case/archive/webui/desktop-pet-crop.png"
+    },
+    {
+      "id": "ASSET-0267",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-current.png",
+      "newPath": "test-case/archive/webui/desktop-pet-current.png"
+    },
+    {
+      "id": "ASSET-0268",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-fixed.png",
+      "newPath": "test-case/archive/webui/desktop-pet-fixed.png"
+    },
+    {
+      "id": "ASSET-0269",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-live.png",
+      "newPath": "test-case/archive/webui/desktop-pet-live.png"
+    },
+    {
+      "id": "ASSET-0270",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-render.json",
+      "newPath": "test-case/archive/webui/desktop-pet-render.json"
+    },
+    {
+      "id": "ASSET-0271",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-textured-crop.png",
+      "newPath": "test-case/archive/webui/desktop-pet-textured-crop.png"
+    },
+    {
+      "id": "ASSET-0272",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-textured.png",
+      "newPath": "test-case/archive/webui/desktop-pet-textured.png"
+    },
+    {
+      "id": "ASSET-0273",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/eval/reports/desktop-pet-working.png",
+      "newPath": "test-case/archive/webui/desktop-pet-working.png"
+    },
+    {
+      "id": "ASSET-0274",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-06-10T12-45-33-863Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-06-10T12-45-33-863Z.json"
+    },
+    {
+      "id": "ASSET-0275",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-06-10T12-45-33-863Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-06-10T12-45-33-863Z.md"
+    },
+    {
+      "id": "ASSET-0276",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-39-02-001Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-39-02-001Z.json"
+    },
+    {
+      "id": "ASSET-0277",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-39-02-001Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-39-02-001Z.md"
+    },
+    {
+      "id": "ASSET-0278",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-43-21-183Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-43-21-183Z.json"
+    },
+    {
+      "id": "ASSET-0279",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-43-21-183Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-43-21-183Z.md"
+    },
+    {
+      "id": "ASSET-0280",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-44-54-776Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-44-54-776Z.json"
+    },
+    {
+      "id": "ASSET-0281",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-44-54-776Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-44-54-776Z.md"
+    },
+    {
+      "id": "ASSET-0282",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-49-38-965Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-49-38-965Z.json"
+    },
+    {
+      "id": "ASSET-0283",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-49-38-965Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-49-38-965Z.md"
+    },
+    {
+      "id": "ASSET-0284",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-56-26-053Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-56-26-053Z.json"
+    },
+    {
+      "id": "ASSET-0285",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-25T23-56-26-053Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-25T23-56-26-053Z.md"
+    },
+    {
+      "id": "ASSET-0286",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-09-48-108Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-09-48-108Z.json"
+    },
+    {
+      "id": "ASSET-0287",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-09-48-108Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-09-48-108Z.md"
+    },
+    {
+      "id": "ASSET-0288",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-14-38-535Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-14-38-535Z.json"
+    },
+    {
+      "id": "ASSET-0289",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-14-38-535Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-14-38-535Z.md"
+    },
+    {
+      "id": "ASSET-0290",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-17-28-523Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-17-28-523Z.json"
+    },
+    {
+      "id": "ASSET-0291",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-17-28-523Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-17-28-523Z.md"
+    },
+    {
+      "id": "ASSET-0292",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-23-05-453Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-23-05-453Z.json"
+    },
+    {
+      "id": "ASSET-0293",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-23-05-453Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-23-05-453Z.md"
+    },
+    {
+      "id": "ASSET-0294",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-23-43-232Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-23-43-232Z.json"
+    },
+    {
+      "id": "ASSET-0295",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-23-43-232Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-23-43-232Z.md"
+    },
+    {
+      "id": "ASSET-0296",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-24-52-952Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-24-52-952Z.json"
+    },
+    {
+      "id": "ASSET-0297",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-24-52-952Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-24-52-952Z.md"
+    },
+    {
+      "id": "ASSET-0298",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-30-19-579Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-30-19-579Z.json"
+    },
+    {
+      "id": "ASSET-0299",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-30-19-579Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-30-19-579Z.md"
+    },
+    {
+      "id": "ASSET-0300",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-30-48-130Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-30-48-130Z.json"
+    },
+    {
+      "id": "ASSET-0301",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-30-48-130Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-30-48-130Z.md"
+    },
+    {
+      "id": "ASSET-0302",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-47-52-441Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-47-52-441Z.json"
+    },
+    {
+      "id": "ASSET-0303",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-47-52-441Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-47-52-441Z.md"
+    },
+    {
+      "id": "ASSET-0304",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-49-50-578Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-49-50-578Z.json"
+    },
+    {
+      "id": "ASSET-0305",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-49-50-578Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-49-50-578Z.md"
+    },
+    {
+      "id": "ASSET-0306",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-50-27-957Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-50-27-957Z.json"
+    },
+    {
+      "id": "ASSET-0307",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-50-27-957Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-50-27-957Z.md"
+    },
+    {
+      "id": "ASSET-0308",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-51-35-173Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-51-35-173Z.json"
+    },
+    {
+      "id": "ASSET-0309",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-51-35-173Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-51-35-173Z.md"
+    },
+    {
+      "id": "ASSET-0310",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-53-06-390Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-53-06-390Z.json"
+    },
+    {
+      "id": "ASSET-0311",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-53-06-390Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-53-06-390Z.md"
+    },
+    {
+      "id": "ASSET-0312",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-53-39-224Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-53-39-224Z.json"
+    },
+    {
+      "id": "ASSET-0313",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T00-53-39-224Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T00-53-39-224Z.md"
+    },
+    {
+      "id": "ASSET-0314",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-35-52-626Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-35-52-626Z.json"
+    },
+    {
+      "id": "ASSET-0315",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-35-52-626Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-35-52-626Z.md"
+    },
+    {
+      "id": "ASSET-0316",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-36-28-840Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-36-28-840Z.json"
+    },
+    {
+      "id": "ASSET-0317",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-36-28-840Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-36-28-840Z.md"
+    },
+    {
+      "id": "ASSET-0318",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-38-55-058Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-38-55-058Z.json"
+    },
+    {
+      "id": "ASSET-0319",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-38-55-058Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-38-55-058Z.md"
+    },
+    {
+      "id": "ASSET-0320",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-39-50-146Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-39-50-146Z.json"
+    },
+    {
+      "id": "ASSET-0321",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-39-50-146Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-39-50-146Z.md"
+    },
+    {
+      "id": "ASSET-0322",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-40-18-971Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-40-18-971Z.json"
+    },
+    {
+      "id": "ASSET-0323",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T02-40-18-971Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T02-40-18-971Z.md"
+    },
+    {
+      "id": "ASSET-0324",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T05-01-29-136Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T05-01-29-136Z.json"
+    },
+    {
+      "id": "ASSET-0325",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T05-01-29-136Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T05-01-29-136Z.md"
+    },
+    {
+      "id": "ASSET-0326",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T05-11-46-262Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T05-11-46-262Z.json"
+    },
+    {
+      "id": "ASSET-0327",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T05-11-46-262Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T05-11-46-262Z.md"
+    },
+    {
+      "id": "ASSET-0328",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T05-51-46-084Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T05-51-46-084Z.json"
+    },
+    {
+      "id": "ASSET-0329",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T05-51-46-084Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T05-51-46-084Z.md"
+    },
+    {
+      "id": "ASSET-0330",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-01-32-219Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-01-32-219Z.json"
+    },
+    {
+      "id": "ASSET-0331",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-01-32-219Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-01-32-219Z.md"
+    },
+    {
+      "id": "ASSET-0332",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-06-50-431Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-06-50-431Z.json"
+    },
+    {
+      "id": "ASSET-0333",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-06-50-431Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-06-50-431Z.md"
+    },
+    {
+      "id": "ASSET-0334",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-12-29-808Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-12-29-808Z.json"
+    },
+    {
+      "id": "ASSET-0335",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-12-29-808Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-12-29-808Z.md"
+    },
+    {
+      "id": "ASSET-0336",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-17-59-752Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-17-59-752Z.json"
+    },
+    {
+      "id": "ASSET-0337",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-17-59-752Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-17-59-752Z.md"
+    },
+    {
+      "id": "ASSET-0338",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-20-33-687Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-20-33-687Z.json"
+    },
+    {
+      "id": "ASSET-0339",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-20-33-687Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-20-33-687Z.md"
+    },
+    {
+      "id": "ASSET-0340",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-46-19-679Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-46-19-679Z.json"
+    },
+    {
+      "id": "ASSET-0341",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T06-46-19-679Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T06-46-19-679Z.md"
+    },
+    {
+      "id": "ASSET-0342",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-08-41-069Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-08-41-069Z.json"
+    },
+    {
+      "id": "ASSET-0343",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-08-41-069Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-08-41-069Z.md"
+    },
+    {
+      "id": "ASSET-0344",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-41-30-875Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-41-30-875Z.json"
+    },
+    {
+      "id": "ASSET-0345",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-41-30-875Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-41-30-875Z.md"
+    },
+    {
+      "id": "ASSET-0346",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-42-24-867Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-42-24-867Z.json"
+    },
+    {
+      "id": "ASSET-0347",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-42-24-867Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-42-24-867Z.md"
+    },
+    {
+      "id": "ASSET-0348",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-53-48-673Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-53-48-673Z.json"
+    },
+    {
+      "id": "ASSET-0349",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-53-48-673Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-53-48-673Z.md"
+    },
+    {
+      "id": "ASSET-0350",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-55-12-556Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-55-12-556Z.json"
+    },
+    {
+      "id": "ASSET-0351",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-55-12-556Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-55-12-556Z.md"
+    },
+    {
+      "id": "ASSET-0352",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-57-31-697Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-57-31-697Z.json"
+    },
+    {
+      "id": "ASSET-0353",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T07-57-31-697Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T07-57-31-697Z.md"
+    },
+    {
+      "id": "ASSET-0354",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T08-08-02-302Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T08-08-02-302Z.json"
+    },
+    {
+      "id": "ASSET-0355",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T08-08-02-302Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T08-08-02-302Z.md"
+    },
+    {
+      "id": "ASSET-0356",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T08-31-55-310Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T08-31-55-310Z.json"
+    },
+    {
+      "id": "ASSET-0357",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T08-31-55-310Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T08-31-55-310Z.md"
+    },
+    {
+      "id": "ASSET-0358",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T08-43-18-067Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T08-43-18-067Z.json"
+    },
+    {
+      "id": "ASSET-0359",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T08-43-18-067Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T08-43-18-067Z.md"
+    },
+    {
+      "id": "ASSET-0360",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T17-10-12-467Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T17-10-12-467Z.json"
+    },
+    {
+      "id": "ASSET-0361",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T17-10-12-467Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T17-10-12-467Z.md"
+    },
+    {
+      "id": "ASSET-0362",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T18-50-31-906Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T18-50-31-906Z.json"
+    },
+    {
+      "id": "ASSET-0363",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T18-50-31-906Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T18-50-31-906Z.md"
+    },
+    {
+      "id": "ASSET-0364",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-12-45-435Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-12-45-435Z.json"
+    },
+    {
+      "id": "ASSET-0365",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-12-45-435Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-12-45-435Z.md"
+    },
+    {
+      "id": "ASSET-0366",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-17-44-156Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-17-44-156Z.json"
+    },
+    {
+      "id": "ASSET-0367",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-17-44-156Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-17-44-156Z.md"
+    },
+    {
+      "id": "ASSET-0368",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-38-37-927Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-38-37-927Z.json"
+    },
+    {
+      "id": "ASSET-0369",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-38-37-927Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-38-37-927Z.md"
+    },
+    {
+      "id": "ASSET-0370",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-48-46-643Z.json",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-48-46-643Z.json"
+    },
+    {
+      "id": "ASSET-0371",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/reports/eval-2026-07-26T19-48-46-643Z.md",
+      "newPath": "benchmark/archive/engineering/eval-2026-07-26T19-48-46-643Z.md"
+    },
+    {
+      "id": "ASSET-0372",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/runner.ts",
+      "newPath": "benchmark/engineering/core/runner.ts"
+    },
+    {
+      "id": "ASSET-0373",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/combat.ts",
+      "newPath": "benchmark/engineering/body/combat.ts"
+    },
+    {
+      "id": "ASSET-0374",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/craft.ts",
+      "newPath": "benchmark/engineering/body/craft.ts"
+    },
+    {
+      "id": "ASSET-0375",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/follow.ts",
+      "newPath": "benchmark/engineering/body/follow.ts"
+    },
+    {
+      "id": "ASSET-0376",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/gather.ts",
+      "newPath": "benchmark/engineering/body/gather.ts"
+    },
+    {
+      "id": "ASSET-0377",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/index.ts",
+      "newPath": "benchmark/engineering/body/index.ts"
+    },
+    {
+      "id": "ASSET-0378",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/nav.ts",
+      "newPath": "benchmark/engineering/body/nav.ts"
+    },
+    {
+      "id": "ASSET-0379",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/recover.ts",
+      "newPath": "benchmark/engineering/body/recover.ts"
+    },
+    {
+      "id": "ASSET-0380",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/scenarios/survival.ts",
+      "newPath": "benchmark/engineering/body/survival.ts"
+    },
+    {
+      "id": "ASSET-0381",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/subject.ts",
+      "newPath": "benchmark/engineering/core/subject.ts"
+    },
+    {
+      "id": "ASSET-0382",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/template.ts",
+      "newPath": "benchmark/engineering/core/template.ts"
+    },
+    {
+      "id": "ASSET-0383",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/tsconfig.json",
+      "newPath": "benchmark/engineering/core/tsconfig.json"
+    },
+    {
+      "id": "ASSET-0384",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/eval/types.ts",
+      "newPath": "benchmark/engineering/core/types.ts"
+    },
+    {
+      "id": "ASSET-0385",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/scripts/cdp-eval.mjs",
+      "newPath": "test-case/integration/scripts/cdp-eval.mjs"
+    },
+    {
+      "id": "ASSET-0386",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/scripts/combat-defense-canary.mjs",
+      "newPath": "benchmark/capability/combat-survival/scripts/combat-defense-canary.mjs"
+    },
+    {
+      "id": "ASSET-0387",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/scripts/combat-low-health-canary.mjs",
+      "newPath": "benchmark/capability/combat-survival/scripts/combat-low-health-canary.mjs"
+    },
+    {
+      "id": "ASSET-0388",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/scripts/combat-staged-canary.mjs",
+      "newPath": "benchmark/capability/combat-survival/scripts/combat-staged-canary.mjs"
+    },
+    {
+      "id": "ASSET-0389",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/scripts/electronStartupContract.test.mjs",
+      "newPath": "test-case/integration/scripts/electronStartupContract.test.mjs"
+    },
+    {
+      "id": "ASSET-0390",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/scripts/local-rcon.mjs",
+      "newPath": "benchmark/capability/combat-survival/scripts/local-rcon.mjs"
+    },
+    {
+      "id": "ASSET-0391",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/scripts/test-recipe-resolver.ts",
+      "newPath": "test-case/integration/scripts/test-recipe-resolver.ts"
+    },
+    {
+      "id": "ASSET-0392",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/__tests__/runtime.companion.test.ts",
+      "newPath": "test-case/backend/bot/__tests__/runtime.companion.test.ts"
+    },
+    {
+      "id": "ASSET-0393",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/__tests__/runtime.webui.test.ts",
+      "newPath": "test-case/backend/bot/__tests__/runtime.webui.test.ts"
+    },
+    {
+      "id": "ASSET-0394",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/__tests__/runtimeConnectionEvents.test.ts",
+      "newPath": "test-case/backend/bot/__tests__/runtimeConnectionEvents.test.ts"
+    },
+    {
+      "id": "ASSET-0395",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/__tests__/runtimePersistence.test.ts",
+      "newPath": "test-case/backend/bot/__tests__/runtimePersistence.test.ts"
+    },
+    {
+      "id": "ASSET-0396",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/adapter/__tests__/nullAdapters.test.ts",
+      "newPath": "test-case/backend/bot/adapter/__tests__/nullAdapters.test.ts"
+    },
+    {
+      "id": "ASSET-0397",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/adapter/__tests__/switchableAdapters.test.ts",
+      "newPath": "test-case/backend/bot/adapter/__tests__/switchableAdapters.test.ts"
+    },
+    {
+      "id": "ASSET-0398",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/MineflayerGameAdapter.reconnect.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/MineflayerGameAdapter.reconnect.test.ts"
+    },
+    {
+      "id": "ASSET-0399",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/MineflayerNavigationAdapter.door.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/MineflayerNavigationAdapter.door.test.ts"
+    },
+    {
+      "id": "ASSET-0400",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/MineflayerNavigationAdapter.reconnect.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/MineflayerNavigationAdapter.reconnect.test.ts"
+    },
+    {
+      "id": "ASSET-0401",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/doorPassageGeometry.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/doorPassageGeometry.test.ts"
+    },
+    {
+      "id": "ASSET-0402",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/doorTransparentMovements.test.mjs",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/doorTransparentMovements.test.mjs"
+    },
+    {
+      "id": "ASSET-0403",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/gameConnectionLease.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/gameConnectionLease.test.ts"
+    },
+    {
+      "id": "ASSET-0404",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/minecraftChat.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/minecraftChat.test.ts"
+    },
+    {
+      "id": "ASSET-0405",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/mineflayer/__tests__/skinSync.test.ts",
+      "newPath": "test-case/backend/bot/mineflayer/__tests__/skinSync.test.ts"
+    },
+    {
+      "id": "ASSET-0406",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/adapterContract.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/adapterContract.test.ts"
+    },
+    {
+      "id": "ASSET-0407",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/chatMemorySemanticSearchConfig.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/chatMemorySemanticSearchConfig.test.ts"
+    },
+    {
+      "id": "ASSET-0408",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/goalCapabilityRuntime.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/goalCapabilityRuntime.test.ts"
+    },
+    {
+      "id": "ASSET-0409",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/memorySystemRuntimeFlag.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/memorySystemRuntimeFlag.test.ts"
+    },
+    {
+      "id": "ASSET-0410",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/mocks/__tests__/mockBot.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/mocks/__tests__/mockBot.test.ts"
+    },
+    {
+      "id": "ASSET-0411",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/mocks/index.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/mocks/index.ts"
+    },
+    {
+      "id": "ASSET-0412",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/mocks/mockGameAdapter.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/mocks/mockGameAdapter.ts"
+    },
+    {
+      "id": "ASSET-0413",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/mocks/mockNavAdapter.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/mocks/mockNavAdapter.ts"
+    },
+    {
+      "id": "ASSET-0414",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/mocks/mockWorld.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/mocks/mockWorld.ts"
+    },
+    {
+      "id": "ASSET-0415",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/runtimeShutdown.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/runtimeShutdown.test.ts"
+    },
+    {
+      "id": "ASSET-0416",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/__tests__/runner.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/__tests__/runner.test.ts"
+    },
+    {
+      "id": "ASSET-0417",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/farmAskMaster.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/farmAskMaster.test.ts"
+    },
+    {
+      "id": "ASSET-0418",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/farmOnePlot.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/farmOnePlot.test.ts"
+    },
+    {
+      "id": "ASSET-0419",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/follow.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/follow.test.ts"
+    },
+    {
+      "id": "ASSET-0420",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/followUnderAttack.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/followUnderAttack.test.ts"
+    },
+    {
+      "id": "ASSET-0421",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/guard.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/guard.test.ts"
+    },
+    {
+      "id": "ASSET-0422",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/restartResume.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/restartResume.test.ts"
+    },
+    {
+      "id": "ASSET-0423",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/runner.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/runner.ts"
+    },
+    {
+      "id": "ASSET-0424",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/__tests__/scenarios/toolBrokenRecovery.test.ts",
+      "newPath": "test-case/backend/bot/v2/__tests__/scenarios/toolBrokenRecovery.test.ts"
+    },
+    {
+      "id": "ASSET-0425",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/atomic/__tests__/atomics.test.ts",
+      "newPath": "test-case/backend/bot/v2/atomic/__tests__/atomics.test.ts"
+    },
+    {
+      "id": "ASSET-0426",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/atomic/__tests__/locomotionTargetNormalization.test.ts",
+      "newPath": "test-case/backend/bot/v2/atomic/__tests__/locomotionTargetNormalization.test.ts"
+    },
+    {
+      "id": "ASSET-0427",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/atomic/__tests__/openDoor.test.ts",
+      "newPath": "test-case/backend/bot/v2/atomic/__tests__/openDoor.test.ts"
+    },
+    {
+      "id": "ASSET-0428",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/atomic/__tests__/tossSettlement.test.ts",
+      "newPath": "test-case/backend/bot/v2/atomic/__tests__/tossSettlement.test.ts"
+    },
+    {
+      "id": "ASSET-0429",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/atomic/contracts/__tests__/atomicContractRegistry.test.ts",
+      "newPath": "test-case/backend/bot/v2/atomic/contracts/__tests__/atomicContractRegistry.test.ts"
+    },
+    {
+      "id": "ASSET-0430",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/behaviorRegistry.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/behaviorRegistry.test.ts"
+    },
+    {
+      "id": "ASSET-0431",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/chestWithdrawBehavior.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/chestWithdrawBehavior.test.ts"
+    },
+    {
+      "id": "ASSET-0432",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/combatBehaviorAdaptive.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/combatBehaviorAdaptive.test.ts"
+    },
+    {
+      "id": "ASSET-0433",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/craftBehavior-bug-cross-09.test.ts",
+      "newPath": "test-case/bug-regression/backend/bot/v2/behavior/__tests__/craftBehavior-bug-cross-09.test.ts"
+    },
+    {
+      "id": "ASSET-0434",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/deliverToOwnerBehavior.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/deliverToOwnerBehavior.test.ts"
+    },
+    {
+      "id": "ASSET-0435",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/depositToChestBehavior.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/depositToChestBehavior.test.ts"
+    },
+    {
+      "id": "ASSET-0436",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/gatherBehavior-bug-cross-28.test.ts",
+      "newPath": "test-case/bug-regression/backend/bot/v2/behavior/__tests__/gatherBehavior-bug-cross-28.test.ts"
+    },
+    {
+      "id": "ASSET-0437",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/pickupGroundItemBehavior.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/pickupGroundItemBehavior.test.ts"
+    },
+    {
+      "id": "ASSET-0438",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/behavior/__tests__/placeRelativeToOwnerBehavior.test.ts",
+      "newPath": "test-case/backend/bot/v2/behavior/__tests__/placeRelativeToOwnerBehavior.test.ts"
+    },
+    {
+      "id": "ASSET-0439",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/bench/__tests__/benchRunner.test.ts",
+      "newPath": "test-case/backend/bot/v2/bench/__tests__/benchRunner.test.ts"
+    },
+    {
+      "id": "ASSET-0440",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/bench/__tests__/cards.test.ts",
+      "newPath": "test-case/backend/bot/v2/bench/__tests__/cards.test.ts"
+    },
+    {
+      "id": "ASSET-0441",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/bench/__tests__/runRecorder.test.ts",
+      "newPath": "test-case/backend/bot/v2/bench/__tests__/runRecorder.test.ts"
+    },
+    {
+      "id": "ASSET-0442",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/capability/__tests__/mineralProbe.test.ts",
+      "newPath": "test-case/backend/bot/v2/capability/__tests__/mineralProbe.test.ts"
+    },
+    {
+      "id": "ASSET-0443",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/capability/__tests__/worldScanCapability.test.ts",
+      "newPath": "test-case/backend/bot/v2/capability/__tests__/worldScanCapability.test.ts"
+    },
+    {
+      "id": "ASSET-0444",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/cognitive/llm/__tests__/LLMClient.test.ts",
+      "newPath": "test-case/backend/bot/v2/cognitive/llm/__tests__/LLMClient.test.ts"
+    },
+    {
+      "id": "ASSET-0445",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/companion/__tests__/companionCore.test.ts",
+      "newPath": "test-case/backend/bot/v2/companion/__tests__/companionCore.test.ts"
+    },
+    {
+      "id": "ASSET-0446",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/agentContext.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/agentContext.test.ts"
+    },
+    {
+      "id": "ASSET-0447",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/brainNoticeInbox.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/brainNoticeInbox.test.ts"
+    },
+    {
+      "id": "ASSET-0448",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/brainSpeechGateway.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/brainSpeechGateway.test.ts"
+    },
+    {
+      "id": "ASSET-0449",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/friendPersonaPrompt.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/friendPersonaPrompt.test.ts"
+    },
+    {
+      "id": "ASSET-0450",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/goalContinuation.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/goalContinuation.test.ts"
+    },
+    {
+      "id": "ASSET-0451",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/identitySemantics.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/identitySemantics.test.ts"
+    },
+    {
+      "id": "ASSET-0452",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/idleTriggers.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/idleTriggers.test.ts"
+    },
+    {
+      "id": "ASSET-0453",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/llmLoop.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/llmLoop.test.ts"
+    },
+    {
+      "id": "ASSET-0454",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/loopCritic.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/loopCritic.test.ts"
+    },
+    {
+      "id": "ASSET-0455",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/mainBrainPending.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/mainBrainPending.test.ts"
+    },
+    {
+      "id": "ASSET-0456",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/mainBrainShutdown.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/mainBrainShutdown.test.ts"
+    },
+    {
+      "id": "ASSET-0457",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/ownerCancellation.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/ownerCancellation.test.ts"
+    },
+    {
+      "id": "ASSET-0458",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/recoveryPlanner.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/recoveryPlanner.test.ts"
+    },
+    {
+      "id": "ASSET-0459",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/runtimeStateReconciler.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/runtimeStateReconciler.test.ts"
+    },
+    {
+      "id": "ASSET-0460",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/speechThinkingCorrelator.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/speechThinkingCorrelator.test.ts"
+    },
+    {
+      "id": "ASSET-0461",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/supervisorCommit.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/supervisorCommit.test.ts"
+    },
+    {
+      "id": "ASSET-0462",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/supervisorDecide.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/supervisorDecide.test.ts"
+    },
+    {
+      "id": "ASSET-0463",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/taskFeedback.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/taskFeedback.test.ts"
+    },
+    {
+      "id": "ASSET-0464",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/__tests__/triggerOutcomeMemory.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/__tests__/triggerOutcomeMemory.test.ts"
+    },
+    {
+      "id": "ASSET-0465",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalAgentPortV2.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalAgentPortV2.test.ts"
+    },
+    {
+      "id": "ASSET-0466",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalCapabilityDispatcher.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalCapabilityDispatcher.test.ts"
+    },
+    {
+      "id": "ASSET-0467",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalCapabilityRouter.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalCapabilityRouter.test.ts"
+    },
+    {
+      "id": "ASSET-0468",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalCompletionReport.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalCompletionReport.test.ts"
+    },
+    {
+      "id": "ASSET-0469",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalReportSpeechPolicy.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalReportSpeechPolicy.test.ts"
+    },
+    {
+      "id": "ASSET-0470",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalRequestClassifier.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalRequestClassifier.test.ts"
+    },
+    {
+      "id": "ASSET-0471",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/goalSessionWatchdog.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/goalSessionWatchdog.test.ts"
+    },
+    {
+      "id": "ASSET-0472",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/interactionSessionManager.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/interactionSessionManager.test.ts"
+    },
+    {
+      "id": "ASSET-0473",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/__tests__/perceptionAttentionGate.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/goalAgentPort/__tests__/perceptionAttentionGate.test.ts"
+    },
+    {
+      "id": "ASSET-0474",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/decision/tools/__tests__/toolRegistry.test.ts",
+      "newPath": "test-case/backend/bot/v2/decision/tools/__tests__/toolRegistry.test.ts"
+    },
+    {
+      "id": "ASSET-0475",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/arbitrator.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/arbitrator.test.ts"
+    },
+    {
+      "id": "ASSET-0476",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/asyncTaskQueue.shutdown.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/asyncTaskQueue.shutdown.test.ts"
+    },
+    {
+      "id": "ASSET-0477",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/botMemory.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/botMemory.test.ts"
+    },
+    {
+      "id": "ASSET-0478",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/chatMemory.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/chatMemory.test.ts"
+    },
+    {
+      "id": "ASSET-0479",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/eventBus.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/eventBus.test.ts"
+    },
+    {
+      "id": "ASSET-0480",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/eventDurability.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/eventDurability.test.ts"
+    },
+    {
+      "id": "ASSET-0481",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/heartbeat.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/heartbeat.test.ts"
+    },
+    {
+      "id": "ASSET-0482",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/memory.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/memory.test.ts"
+    },
+    {
+      "id": "ASSET-0483",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/sanitizeSpeech.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/sanitizeSpeech.test.ts"
+    },
+    {
+      "id": "ASSET-0484",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/sqliteDatabase.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/sqliteDatabase.test.ts"
+    },
+    {
+      "id": "ASSET-0485",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/worldMapStore.feat-l1-05.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/worldMapStore.feat-l1-05.test.ts"
+    },
+    {
+      "id": "ASSET-0486",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/infra/__tests__/worldMapStore.test.ts",
+      "newPath": "test-case/backend/bot/v2/infra/__tests__/worldMapStore.test.ts"
+    },
+    {
+      "id": "ASSET-0487",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/knowledge/__tests__/dialogueSlots.test.ts",
+      "newPath": "test-case/backend/bot/v2/knowledge/__tests__/dialogueSlots.test.ts"
+    },
+    {
+      "id": "ASSET-0488",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/knowledge/__tests__/recipeResolver-bug-cross-09.test.ts",
+      "newPath": "test-case/bug-regression/backend/bot/v2/knowledge/__tests__/recipeResolver-bug-cross-09.test.ts"
+    },
+    {
+      "id": "ASSET-0489",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/knowledge/__tests__/recipeResolver-bug-l6-05.test.ts",
+      "newPath": "test-case/bug-regression/backend/bot/v2/knowledge/__tests__/recipeResolver-bug-l6-05.test.ts"
+    },
+    {
+      "id": "ASSET-0490",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/knowledge/__tests__/slotNormalizer.test.ts",
+      "newPath": "test-case/backend/bot/v2/knowledge/__tests__/slotNormalizer.test.ts"
+    },
+    {
+      "id": "ASSET-0491",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/memory/__tests__/episodeAssembler.test.ts",
+      "newPath": "test-case/backend/bot/v2/memory/__tests__/episodeAssembler.test.ts"
+    },
+    {
+      "id": "ASSET-0492",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/memory/__tests__/memoryFoundation.test.ts",
+      "newPath": "test-case/backend/bot/v2/memory/__tests__/memoryFoundation.test.ts"
+    },
+    {
+      "id": "ASSET-0493",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/memory/__tests__/memorySystem.test.ts",
+      "newPath": "test-case/backend/bot/v2/memory/__tests__/memorySystem.test.ts"
+    },
+    {
+      "id": "ASSET-0494",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/memory/__tests__/runtimeEpisodeCapture.test.ts",
+      "newPath": "test-case/backend/bot/v2/memory/__tests__/runtimeEpisodeCapture.test.ts"
+    },
+    {
+      "id": "ASSET-0495",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/motor/__tests__/motorService.test.ts",
+      "newPath": "test-case/backend/bot/v2/motor/__tests__/motorService.test.ts"
+    },
+    {
+      "id": "ASSET-0496",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/narration/__tests__/narration.test.ts",
+      "newPath": "test-case/backend/bot/v2/narration/__tests__/narration.test.ts"
+    },
+    {
+      "id": "ASSET-0497",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/navigation/__tests__/globalVoxelPlanner.test.ts",
+      "newPath": "test-case/backend/bot/v2/navigation/__tests__/globalVoxelPlanner.test.ts"
+    },
+    {
+      "id": "ASSET-0498",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/navigation/__tests__/navigationRouter.test.ts",
+      "newPath": "test-case/backend/bot/v2/navigation/__tests__/navigationRouter.test.ts"
+    },
+    {
+      "id": "ASSET-0499",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/navigation/__tests__/pitGeometry.test.ts",
+      "newPath": "test-case/backend/bot/v2/navigation/__tests__/pitGeometry.test.ts"
+    },
+    {
+      "id": "ASSET-0500",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/navigation/__tests__/stuckRecovery.test.ts",
+      "newPath": "test-case/backend/bot/v2/navigation/__tests__/stuckRecovery.test.ts"
+    },
+    {
+      "id": "ASSET-0501",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/perception/__tests__/pipeline.test.ts",
+      "newPath": "test-case/backend/bot/v2/perception/__tests__/pipeline.test.ts"
+    },
+    {
+      "id": "ASSET-0502",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/skills/__tests__/mcpClient.test.ts",
+      "newPath": "test-case/backend/bot/v2/skills/__tests__/mcpClient.test.ts"
+    },
+    {
+      "id": "ASSET-0503",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/skills/__tests__/skillRegistry.test.ts",
+      "newPath": "test-case/backend/bot/v2/skills/__tests__/skillRegistry.test.ts"
+    },
+    {
+      "id": "ASSET-0504",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/skills/__tests__/skillSelfImprove.test.ts",
+      "newPath": "test-case/backend/bot/v2/skills/__tests__/skillSelfImprove.test.ts"
+    },
+    {
+      "id": "ASSET-0505",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/skills/__tests__/skillSubsetByAgent.test.ts",
+      "newPath": "test-case/backend/bot/v2/skills/__tests__/skillSubsetByAgent.test.ts"
+    },
+    {
+      "id": "ASSET-0506",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/doorMonitor.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/doorMonitor.test.ts"
+    },
+    {
+      "id": "ASSET-0507",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/farmStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/farmStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0508",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/farmStrategyContinuous.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/farmStrategyContinuous.test.ts"
+    },
+    {
+      "id": "ASSET-0509",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/farmStrategyE3.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/farmStrategyE3.test.ts"
+    },
+    {
+      "id": "ASSET-0510",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/followStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/followStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0511",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/followStrategyFull.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/followStrategyFull.test.ts"
+    },
+    {
+      "id": "ASSET-0512",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/gatherStrategyBlacklist.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/gatherStrategyBlacklist.test.ts"
+    },
+    {
+      "id": "ASSET-0513",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/gotoStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/gotoStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0514",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/guardStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/guardStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0515",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/navFailureFeedback.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/navFailureFeedback.test.ts"
+    },
+    {
+      "id": "ASSET-0516",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/pitEscapeStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/pitEscapeStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0517",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/reflexStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/reflexStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0518",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/reflexStrategyTest.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/reflexStrategyTest.test.ts"
+    },
+    {
+      "id": "ASSET-0519",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/__tests__/survivalStrategy.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/__tests__/survivalStrategy.test.ts"
+    },
+    {
+      "id": "ASSET-0520",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/strategy/bt/__tests__/runner.test.ts",
+      "newPath": "test-case/backend/bot/v2/strategy/bt/__tests__/runner.test.ts"
+    },
+    {
+      "id": "ASSET-0521",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/decisionPolicy.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/decisionPolicy.test.ts"
+    },
+    {
+      "id": "ASSET-0522",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/failureReason.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/failureReason.test.ts"
+    },
+    {
+      "id": "ASSET-0523",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/falseSuccessGate.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/falseSuccessGate.test.ts"
+    },
+    {
+      "id": "ASSET-0524",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/providers.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/providers.test.ts"
+    },
+    {
+      "id": "ASSET-0525",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/resourceResolver.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/resourceResolver.test.ts"
+    },
+    {
+      "id": "ASSET-0526",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/subtaskInjector.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/subtaskInjector.test.ts"
+    },
+    {
+      "id": "ASSET-0527",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/__tests__/taskRuntime.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/__tests__/taskRuntime.test.ts"
+    },
+    {
+      "id": "ASSET-0528",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/contracts/__tests__/contracts.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/contracts/__tests__/contracts.test.ts"
+    },
+    {
+      "id": "ASSET-0529",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/critic/__tests__/compositeCritic.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/critic/__tests__/compositeCritic.test.ts"
+    },
+    {
+      "id": "ASSET-0530",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/critic/__tests__/criticIntegration.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/critic/__tests__/criticIntegration.test.ts"
+    },
+    {
+      "id": "ASSET-0531",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/critic/__tests__/postconditionBuilder.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/critic/__tests__/postconditionBuilder.test.ts"
+    },
+    {
+      "id": "ASSET-0532",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/execution/__tests__/actionPreparer.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/execution/__tests__/actionPreparer.test.ts"
+    },
+    {
+      "id": "ASSET-0533",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/execution/__tests__/executionFactLog.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/execution/__tests__/executionFactLog.test.ts"
+    },
+    {
+      "id": "ASSET-0534",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/execution/__tests__/failureEnvelope.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/execution/__tests__/failureEnvelope.test.ts"
+    },
+    {
+      "id": "ASSET-0535",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/execution/__tests__/recoveryRouter.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/execution/__tests__/recoveryRouter.test.ts"
+    },
+    {
+      "id": "ASSET-0536",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/execution/__tests__/spatialGrounding.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/execution/__tests__/spatialGrounding.test.ts"
+    },
+    {
+      "id": "ASSET-0537",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/execution/__tests__/taskRuntimeFactBridge.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/execution/__tests__/taskRuntimeFactBridge.test.ts"
+    },
+    {
+      "id": "ASSET-0538",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/actorNode.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/actorNode.test.ts"
+    },
+    {
+      "id": "ASSET-0539",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/containerTargetResolver.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/containerTargetResolver.test.ts"
+    },
+    {
+      "id": "ASSET-0540",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/criticRecoveryNodes.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/criticRecoveryNodes.test.ts"
+    },
+    {
+      "id": "ASSET-0541",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/executeNode.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/executeNode.test.ts"
+    },
+    {
+      "id": "ASSET-0542",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentActionLedger.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentActionLedger.test.ts"
+    },
+    {
+      "id": "ASSET-0543",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentArchitecture.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentArchitecture.test.ts"
+    },
+    {
+      "id": "ASSET-0544",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentFacade.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentFacade.test.ts"
+    },
+    {
+      "id": "ASSET-0545",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentKernelAcceptance.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentKernelAcceptance.test.ts"
+    },
+    {
+      "id": "ASSET-0546",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentLoop.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentLoop.test.ts"
+    },
+    {
+      "id": "ASSET-0547",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentModelRuntime.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentModelRuntime.test.ts"
+    },
+    {
+      "id": "ASSET-0548",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentProductionCandidates.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentProductionCandidates.test.ts"
+    },
+    {
+      "id": "ASSET-0549",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentSessionStore.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentSessionStore.test.ts"
+    },
+    {
+      "id": "ASSET-0550",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentState.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentState.test.ts"
+    },
+    {
+      "id": "ASSET-0551",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentStateGraphIntegration.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentStateGraphIntegration.test.ts"
+    },
+    {
+      "id": "ASSET-0552",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/goalAgentTaskProjection.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/goalAgentTaskProjection.test.ts"
+    },
+    {
+      "id": "ASSET-0553",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/inputNodes.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/inputNodes.test.ts"
+    },
+    {
+      "id": "ASSET-0554",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/plannerNodes.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/plannerNodes.test.ts"
+    },
+    {
+      "id": "ASSET-0555",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalAgent/__tests__/reflectionTerminalNodes.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalAgent/__tests__/reflectionTerminalNodes.test.ts"
+    },
+    {
+      "id": "ASSET-0556",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalRunner/__tests__/behaviorCatalog.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalRunner/__tests__/behaviorCatalog.test.ts"
+    },
+    {
+      "id": "ASSET-0557",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/goalRunner/__tests__/goalCriteriaEvaluator.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/goalRunner/__tests__/goalCriteriaEvaluator.test.ts"
+    },
+    {
+      "id": "ASSET-0558",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/__tests__/experienceBundle.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/__tests__/experienceBundle.test.ts"
+    },
+    {
+      "id": "ASSET-0559",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/__tests__/experienceIsolation.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/__tests__/experienceIsolation.test.ts"
+    },
+    {
+      "id": "ASSET-0560",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/__tests__/parentGoalIntake.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/__tests__/parentGoalIntake.test.ts"
+    },
+    {
+      "id": "ASSET-0561",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/__tests__/recipeMilestonePlanner.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/__tests__/recipeMilestonePlanner.test.ts"
+    },
+    {
+      "id": "ASSET-0562",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/candidateExperimentOrchestrator.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/candidateExperimentOrchestrator.test.ts"
+    },
+    {
+      "id": "ASSET-0563",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/candidateGeneration.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/candidateGeneration.test.ts"
+    },
+    {
+      "id": "ASSET-0564",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/candidateSuccessorReflector.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/candidateSuccessorReflector.test.ts"
+    },
+    {
+      "id": "ASSET-0565",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/executionFactIngestor.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/executionFactIngestor.test.ts"
+    },
+    {
+      "id": "ASSET-0566",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/graphPolicyStore.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/graphPolicyStore.test.ts"
+    },
+    {
+      "id": "ASSET-0567",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/learningPipeline.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/learningPipeline.test.ts"
+    },
+    {
+      "id": "ASSET-0568",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/planEpisodeAggregation.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/planEpisodeAggregation.test.ts"
+    },
+    {
+      "id": "ASSET-0569",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/planExperienceProjection.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/planExperienceProjection.test.ts"
+    },
+    {
+      "id": "ASSET-0570",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/resourceDemandLearner.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/resourceDemandLearner.test.ts"
+    },
+    {
+      "id": "ASSET-0571",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/planner/evolution/__tests__/runtimeIntegration.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/planner/evolution/__tests__/runtimeIntegration.test.ts"
+    },
+    {
+      "id": "ASSET-0572",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/strategy/__tests__/btInterpreter.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/strategy/__tests__/btInterpreter.test.ts"
+    },
+    {
+      "id": "ASSET-0573",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/strategy/__tests__/strategyExecutor.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/strategy/__tests__/strategyExecutor.test.ts"
+    },
+    {
+      "id": "ASSET-0574",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/strategy/__tests__/strategyMatcher.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/strategy/__tests__/strategyMatcher.test.ts"
+    },
+    {
+      "id": "ASSET-0575",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/bot/v2/task/strategy/__tests__/strategyStore.test.ts",
+      "newPath": "test-case/backend/bot/v2/task/strategy/__tests__/strategyStore.test.ts"
+    },
+    {
+      "id": "ASSET-0576",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/character/__tests__/characterCard.test.ts",
+      "newPath": "test-case/backend/character/__tests__/characterCard.test.ts"
+    },
+    {
+      "id": "ASSET-0577",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/autoReady.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/autoReady.test.ts"
+    },
+    {
+      "id": "ASSET-0578",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/characterCardApi.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/characterCardApi.test.ts"
+    },
+    {
+      "id": "ASSET-0579",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/desktopPetConfig.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/desktopPetConfig.test.ts"
+    },
+    {
+      "id": "ASSET-0580",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/llmConfigRuntime.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/llmConfigRuntime.test.ts"
+    },
+    {
+      "id": "ASSET-0581",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/llmTestEndpoint.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/llmTestEndpoint.test.ts"
+    },
+    {
+      "id": "ASSET-0582",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/plannerEvolutionApi.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/plannerEvolutionApi.test.ts"
+    },
+    {
+      "id": "ASSET-0583",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/plannerExperienceExporter.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/plannerExperienceExporter.test.ts"
+    },
+    {
+      "id": "ASSET-0584",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/profileSecurity.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/profileSecurity.test.ts"
+    },
+    {
+      "id": "ASSET-0585",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/profileTasksApi.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/profileTasksApi.test.ts"
+    },
+    {
+      "id": "ASSET-0586",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/serverPresetStore.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/serverPresetStore.test.ts"
+    },
+    {
+      "id": "ASSET-0587",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/serverStatic.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/serverStatic.test.ts"
+    },
+    {
+      "id": "ASSET-0588",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/src/hub/__tests__/skinSyncService.test.ts",
+      "newPath": "test-case/backend/hub/__tests__/skinSyncService.test.ts"
+    },
+    {
+      "id": "ASSET-0589",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/test-scenarios/combat/zombie-single-mobile-staged-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/zombie-single-mobile-staged-v1.json"
+    },
+    {
+      "id": "ASSET-0590",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/test-scenarios/combat/zombie-single-static-staged-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/zombie-single-static-staged-v1.json"
+    },
+    {
+      "id": "ASSET-0591",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/test-scenarios/combat/zombie-three-mobile-staged-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/zombie-three-mobile-staged-v1.json"
+    },
+    {
+      "id": "ASSET-0592",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/test-scenarios/combat/zombie-three-static-staged-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/zombie-three-static-staged-v1.json"
+    },
+    {
+      "id": "ASSET-0593",
+      "layer": "benchmark",
+      "oldPath": "apps/minecraft-companion/test-scenarios/combat/zombie-two-mobile-staged-v1.json",
+      "newPath": "benchmark/capability/combat-survival/fixtures/zombie-two-mobile-staged-v1.json"
+    },
+    {
+      "id": "ASSET-0594",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/web/src/components/__tests__/taskbarPanel.test.mjs",
+      "newPath": "test-case/web/components/__tests__/taskbarPanel.test.mjs"
+    },
+    {
+      "id": "ASSET-0595",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/web/src/lib/__tests__/chunkGrid.test.mjs",
+      "newPath": "test-case/web/lib/__tests__/chunkGrid.test.mjs"
+    },
+    {
+      "id": "ASSET-0596",
+      "layer": "test-case",
+      "oldPath": "apps/minecraft-companion/web/src/lib/__tests__/profileTasks.test.mjs",
+      "newPath": "test-case/web/lib/__tests__/profileTasks.test.mjs"
+    }
+  ]
+}

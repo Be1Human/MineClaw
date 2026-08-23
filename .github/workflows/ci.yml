@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/minecraft-companion/package-lock.json
+            apps/minecraft-companion/web/package-lock.json
+            apps/minefriend-site/package-lock.json
+      - run: node scripts/check-release.mjs
+
+  build:
+    needs: hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/minecraft-companion/package-lock.json
+            apps/minecraft-companion/web/package-lock.json
+            apps/minefriend-site/package-lock.json
+      - run: npm ci --prefix apps/minecraft-companion
+      - run: npm ci --prefix apps/minecraft-companion/web
+      - run: npm ci --prefix apps/minefriend-site
+      - run: npm run build --prefix apps/minecraft-companion
+      - run: npm run build --prefix apps/minecraft-companion/web
+      - run: npm run build --prefix apps/minefriend-site
+
+  test-backend:
+    needs: hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/minecraft-companion/package-lock.json
+      - run: npm ci --prefix apps/minecraft-companion
+      - run: npm run test:v2 --prefix apps/minecraft-companion

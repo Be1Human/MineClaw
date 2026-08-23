@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Runtime state
+apps/minecraft-companion/data/
+apps/minecraft-companion/data-gym/
+apps/minecraft-companion/.runtime-logs/
+*.log
+*.db
+*.db-shm
+*.db-wal
+!test-case/fixtures/memory/chat-memory-testOwner.db
+
+# Build output
+dist/
+out/
+dist-electron/
+apps/minefriend-site/release/
+coverage/
+
+# Test and benchmark output
+test-case/results/
+benchmark/archive/
+benchmark/reports/
+
+# Local tooling state
+.agentmem/
+.claude/
+.codex/
+.cursor/
+.run-logs/
+.tmp/
+.workflow/
+.worktrees/
+
+# Minecraft infrastructure and caches
+mc-server/
+cache/

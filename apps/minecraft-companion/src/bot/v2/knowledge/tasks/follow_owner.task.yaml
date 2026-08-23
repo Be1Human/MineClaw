@@ -1,0 +1,56 @@
+kind: follow_owner
+aliases: [跟着我, 过来, 来找我, 来我这, follow, come]
+summary: "前往主人位置并持续跟随"
+
+priority:
+  default: 40
+  tier: owner_command
+
+persistent: true
+
+slots:
+  required:
+    - name: ownerName
+      type: entity
+      description: "跟随目标名称"
+      # FEAT-L7-13 · owner 取值器注入配置的主人名（原 dispatcher follow_owner 补名硬编码）
+      defaultFrom: [dialogue, owner]
+      askable: false
+  optional:
+    - name: targetPosition
+      type: location
+      description: "主人告知的坐标（主人不在视野时使用）"
+      # FEAT-L7-13 · ownerPosition 坐标别名归一 + 对话坐标兜底（原 BUG-CROSS-01 热修硬编码）
+      aliases: [ownerPosition]
+      defaultFrom: [dialogue]
+      askable: true
+
+preconditions:
+  - owner_known_or_has_position
+
+strategy: FollowStrategy
+
+cookbook:
+  steps:
+    - 确认主人位置（感知或坐标）
+    - 寻路前往
+    - 靠近后保持跟随距离（≤3格）
+  failures:
+    - condition: "看不到主人且无坐标"
+      strategies: ["ask_master"]
+    - condition: "寻路卡住"
+      strategies: ["reset_pathfinder", "ask_master"]
+    - condition: "被攻击"
+      strategies: ["delegate_supervisor"]
+  completion: "持续任务，主人说停才停"
+  estimatedDuration:
+    minSec: 10
+    maxSec: null
+
+examples:
+  - "跟着我"
+  - "你过来，我在 -87 107 126"
+  - "来找我"
+
+# FEAT-L7-13 · 同类任务复用时允许合并的参数键（原 MERGE_KEYS 常量声明化）
+mergeKeys: [targetPosition, ownerPosition]

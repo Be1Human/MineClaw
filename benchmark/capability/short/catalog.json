@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "mineclaw-capability-catalog/v1",
+  "suite": "short",
+  "capability": "short-horizon-player-actions",
+  "cases": [
+    {"id":"TC-SC-01","fixture":"short-delivery-iron-pickaxe.json","instruction":"把你背包里的铁镐丢给我。","gate":"owner iron_pickaxe +1; bot -1; no ground residue"},
+    {"id":"TC-SC-02","fixture":"short-delivery-torch.json","instruction":"给我八支火把。","gate":"owner torch +8; bot -8; exact quantity"},
+    {"id":"TC-SC-03","fixture":"short-delivery-bread.json","instruction":"丢三块面包给我。","gate":"owner bread +3; bot -3"},
+    {"id":"TC-SC-04","fixture":"short-delivery-red-bed.json","instruction":"把红床给我，先不要放。","gate":"owner red_bed +1; no new bed block"},
+    {"id":"TC-SC-05","fixture":"short-delivery-oak-planks.json","instruction":"给我十六块橡木板。","gate":"owner oak_planks +16; bot -16"},
+    {"id":"TC-SC-06","fixture":"short-chest-left-iron-pickaxe.json","instruction":"去我左边的箱子里拿一把铁镐过来给我。","gate":"left chest -1; owner +1; no residue"},
+    {"id":"TC-SC-07","fixture":"short-chest-left-torch.json","instruction":"从我左边的箱子拿八支火把给我。","gate":"left chest -8; owner +8; exact remainder"},
+    {"id":"TC-SC-08","fixture":"short-chest-right-red-bed.json","instruction":"把我右边箱子里的红床拿来给我，不要放地上。","gate":"right chest -1; owner +1; no bed block"},
+    {"id":"TC-SC-09","fixture":"short-chest-left-deposit-cobblestone.json","instruction":"把你背包里的十六块圆石放进我左边的箱子。","gate":"bot -16; left chest +16"},
+    {"id":"TC-SC-10","fixture":"short-chest-transfer-oak-log.json","instruction":"把左边箱子里的八根橡木原木搬到右边箱子。","gate":"left chest -8; right chest +8; bot empty"},
+    {"id":"TC-SC-11","fixture":"short-craft-place-crafting-table.json","instruction":"用你身上的木板做一个工作台，放在我脚边。","gate":"crafting_table within 1.5 blocks; materials conserved"},
+    {"id":"TC-SC-12","fixture":"short-craft-place-furnace.json","instruction":"用这些圆石做一个熔炉，放在我旁边。","gate":"furnace within 1.5 blocks; cobblestone -8"},
+    {"id":"TC-SC-13","fixture":"short-craft-place-chest-right.json","instruction":"做一个箱子放在我右手边。","gate":"chest at owner-right target; materials conserved"},
+    {"id":"TC-SC-14","fixture":"short-place-red-bed-at-owner.json","instruction":"把你背包里的红床放在我这个位置。","gate":"one red_bed at captured target; bot -1"},
+    {"id":"TC-SC-15","fixture":"short-place-torch-on-front-stone.json","instruction":"把火把插在我面前这块石头上。","gate":"torch on marked support face; bot -1"},
+    {"id":"TC-SC-16","fixture":"short-move-to-owner.json","instruction":"过来我身边。","gate":"distance <=2 blocks and stable for 2 seconds"},
+    {"id":"TC-SC-17","fixture":"short-follow-owner-to-marker.json","instruction":"跟着我走，到前面的黄色标记就停。","gate":"distance <=3 blocks at marker; no drift >2 blocks"},
+    {"id":"TC-SC-18","fixture":"short-ground-pickaxe-delivery.json","instruction":"把地上的铁镐捡起来给我。","gate":"ground entity gone; owner +1; bot empty"},
+    {"id":"TC-SC-19","fixture":"short-marked-dirt-dig.json","instruction":"把红色标记旁边这块泥土挖掉。","gate":"marked block becomes air; dirt conserved; neighbors intact"},
+    {"id":"TC-SC-20","fixture":"short-marked-oak-log-delivery.json","instruction":"把标记的这根橡木原木砍下来给我。","gate":"marked log gone; owner +1; bot empty"},
+    {"id":"TC-SC-21","fixture":"short-harvest-wheat-to-home-chest.json","instruction":"把这片 9×9 麦田里成熟的小麦全部收割，收获的小麦和种子都放进旁边家里的箱子。","gate":"owner starts outside crop pickup radius; 80 mature wheat gone; home chest wheat >=80 and seeds >0; no owner/bot/ground harvest residue; unique completed terminal"}
+  ]
+}

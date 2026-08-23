@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/minecraft-companion
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /apps/minecraft-companion/web
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /apps/minefriend-site
+    schedule:
+      interval: weekly

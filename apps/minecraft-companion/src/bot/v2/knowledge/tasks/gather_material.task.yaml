@@ -1,0 +1,63 @@
+kind: gather_material
+aliases: [采集, 砍, 砍树, 挖, 挖矿, 收集, gather, mine, chop, collect]
+summary: "就地采集原料（砍树/挖矿/挖泥沙等）到指定数量，自动找最近资源并拾取掉落"
+
+priority:
+  default: 30
+  tier: autonomous
+
+persistent: false
+
+slots:
+  required:
+    - name: material
+      type: item
+      description: "要采集的物品名（minecraft id，如 oak_log / cobblestone / dirt / sand / coal）"
+      # FEAT-L7-13 · LLM 常用的别名键 · slotNormalizer 声明式归一（原 dispatcher pickAlias 硬编码）
+      aliases: [target, name, block, item, resource, blockName]
+      defaultFrom: [dialogue]
+      askable: true
+  optional:
+    - name: count
+      type: number
+      description: "目标数量（默认 8）"
+      defaultFrom: [dialogue]
+      askable: false
+    - name: maxDistance
+      type: number
+      description: "搜索半径（默认 48 格）"
+      askable: false
+
+preconditions: []
+
+strategy: GatherStrategy
+
+cookbook:
+  steps:
+    - 查物品来源方块与工具门槛（minecraft-data）
+    - 若需工具且没有，先提示/失败（合成场景由 craft_item 预先备好工具）
+    - findBlocks 最近源方块 → 寻路 → 挖 → 踩点拾取掉落
+    - 循环直到库存达标
+  failures:
+    - condition: "附近找不到资源"
+      strategies: ["say", "fail"]
+    - condition: "缺采集工具"
+      strategies: ["say", "fail"]
+  completion: "库存达到目标数量即完成"
+  estimatedDuration:
+    minSec: 5
+    maxSec: null
+
+examples:
+  - "砍点木头"
+  - "挖 16 个圆石"
+  - "gather oak_log 4"
+  - "mine cobblestone 10"
+
+postconditions:
+  - type: inventory_gte
+    item: { fromSlot: material }
+    count: { fromSlot: count, default: 8 }
+
+# FEAT-L7-13 · 同类任务复用时允许合并的参数键（原 MERGE_KEYS 常量声明化）
+mergeKeys: [material, count, maxDistance]

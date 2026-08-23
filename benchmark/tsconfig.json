@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "typeRoots": ["../apps/minecraft-companion/node_modules/@types"],
+    "baseUrl": ".",
+    "paths": {
+      "mineflayer": ["../apps/minecraft-companion/node_modules/mineflayer/index.d.ts"],
+      "mineflayer-pathfinder": ["../apps/minecraft-companion/node_modules/mineflayer-pathfinder/index.d.ts"],
+      "vec3": ["../apps/minecraft-companion/node_modules/vec3/index.d.ts"],
+      "dotenv/config": ["../apps/minecraft-companion/node_modules/dotenv/config.js"],
+      "*": ["../apps/minecraft-companion/node_modules/*"]
+    },
+    "ignoreDeprecations": "6.0",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["engineering/**/*.ts", "memory/**/*.ts"],
+  "exclude": ["archive", "reports", "**/datasets/**"]
+}

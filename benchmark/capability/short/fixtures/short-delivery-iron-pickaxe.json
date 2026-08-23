@@ -1,0 +1,13 @@
+{
+  "id": "short-delivery-iron-pickaxe",
+  "description": "Place the named Bot four blocks from cloudboyboy for TC-SC-01; preserve inventories and remove stale item drops.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "kill @e[type=item,x=-32,y=-64,z=-32,dx=64,dy=64,dz=64]",
+    "tp {{bot}} 13.6 -59 15.5"
+  ]
+}

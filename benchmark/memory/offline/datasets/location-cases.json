@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "mineclaw-location-memory-cases/v1",
+  "cases": [
+    {
+      "id": "explicit-home-named",
+      "domain": "explicit_place",
+      "split": "test",
+      "critical": true,
+      "tags": ["home", "named", "restart", "unified-recall"],
+      "input": {"kind": "home", "name": "家", "position": {"x": 151, "y": 72, "z": -62}, "query": "我们的家在哪里"},
+      "expected": {"kind": "home", "name": "家", "position": {"x": 151, "y": 72, "z": -62}, "coordinateTolerance": 0}
+    },
+    {
+      "id": "explicit-landmark-mine-entrance",
+      "domain": "explicit_place",
+      "split": "test",
+      "critical": true,
+      "tags": ["landmark", "named", "restart"],
+      "input": {"kind": "landmark", "name": "矿洞口", "position": {"x": -34, "y": 63, "z": 208}, "query": "矿洞口在哪里"},
+      "expected": {"kind": "landmark", "name": "矿洞口", "position": {"x": -34, "y": 63, "z": 208}, "coordinateTolerance": 0}
+    },
+    {
+      "id": "explicit-chest-supply",
+      "domain": "explicit_place",
+      "split": "dev",
+      "critical": true,
+      "tags": ["chest", "named", "negative-coordinate"],
+      "input": {"kind": "chest", "name": "物资箱", "position": {"x": -5.4, "y": 64.2, "z": -8.6}, "query": "物资箱的位置"},
+      "expected": {"kind": "chest", "name": "物资箱", "position": {"x": -5, "y": 64, "z": -9}, "coordinateTolerance": 0}
+    },
+    {
+      "id": "explicit-profile-isolation",
+      "domain": "explicit_place",
+      "split": "dev",
+      "critical": true,
+      "tags": ["profile-isolation", "landmark"],
+      "input": {"kind": "landmark", "name": "秘密基地", "position": {"x": 7, "y": 70, "z": 9}, "query": "秘密基地在哪里"},
+      "expected": {"kind": "landmark", "name": "秘密基地", "position": {"x": 7, "y": 70, "z": 9}, "coordinateTolerance": 0}
+    },
+    {
+      "id": "auto-worldscan-chest",
+      "domain": "auto_discovery",
+      "split": "test",
+      "critical": true,
+      "tags": ["world-scan", "chest", "restart"],
+      "input": {"producer": "world_scan", "blockName": "chest", "positions": [{"x": 10, "y": 64, "z": 20}], "ticks": 2},
+      "expected": {"kind": "chest", "semanticMeta": {"blockName": "chest"}, "positions": [{"x": 10, "y": 64, "z": 20}], "coordinateTolerance": 0, "deduplicatedCount": 1}
+    },
+    {
+      "id": "auto-worldscan-furnace",
+      "domain": "auto_discovery",
+      "split": "dev",
+      "critical": true,
+      "tags": ["world-scan", "resource"],
+      "input": {"producer": "world_scan", "blockName": "furnace", "positions": [{"x": -2, "y": 65, "z": 3}], "ticks": 1},
+      "expected": {"kind": "resource", "semanticMeta": {"blockName": "furnace"}, "positions": [{"x": -2, "y": 65, "z": 3}], "coordinateTolerance": 0, "deduplicatedCount": 1}
+    },
+    {
+      "id": "auto-mineral-diamond",
+      "domain": "auto_discovery",
+      "split": "test",
+      "critical": true,
+      "tags": ["mineral-probe", "diamond", "restart"],
+      "input": {"producer": "mineral_probe", "blockName": "diamond_ore", "positions": [{"x": 4, "y": -42, "z": 11}], "ticks": 2},
+      "expected": {"kind": "resource", "semanticMeta": {"blockName": "diamond_ore", "mineralType": "diamond"}, "positions": [{"x": 4, "y": -42, "z": 11}], "coordinateTolerance": 0, "deduplicatedCount": 1}
+    },
+    {
+      "id": "auto-mineral-iron-multiple",
+      "domain": "auto_discovery",
+      "split": "test",
+      "critical": true,
+      "tags": ["mineral-probe", "iron", "multiple"],
+      "input": {"producer": "mineral_probe", "blockName": "deepslate_iron_ore", "positions": [{"x": 1, "y": -12, "z": 1}, {"x": 2, "y": -12, "z": 1}], "ticks": 1},
+      "expected": {"kind": "resource", "semanticMeta": {"blockName": "deepslate_iron_ore", "mineralType": "iron"}, "positions": [{"x": 1, "y": -12, "z": 1}, {"x": 2, "y": -12, "z": 1}], "coordinateTolerance": 0, "deduplicatedCount": 2}
+    },
+    {
+      "id": "episode-zombie-village",
+      "domain": "episode_location",
+      "split": "test",
+      "critical": true,
+      "tags": ["combat", "zombie", "restart", "deep-recall"],
+      "input": {
+        "profileId": "profile-a", "kind": "combat", "locationRef": "village-north-gate", "query": "上次在村庄北门打僵尸好惊险呀",
+        "observations": [
+          {"id": "start", "phase": "started", "timestamp": 1000, "eventSummary": "夜晚在村庄北门遭遇僵尸", "health": 20, "isRaining": false, "hostiles": ["zombie-1"]},
+          {"id": "hurt", "phase": "event", "timestamp": 3000, "eventSummary": "被两只僵尸围攻，生命下降", "health": 12, "isRaining": false, "hostiles": ["zombie-1", "zombie-2"], "hazards": ["surrounded"], "emotionTags": ["惊险"], "keyFrame": true},
+          {"id": "terminal", "phase": "terminal", "timestamp": 5000, "eventSummary": "击败僵尸并脱险", "health": 12, "isRaining": false, "hostiles": [], "outcome": "survived"}
+        ]
+      },
+      "expected": {"state": "finalized", "outcome": "survived", "participants": ["LanYi", "owner", "zombie-1"], "minimumSnapshots": 2, "minimumSourceRefs": 3, "minimumHealth": 12, "locationRef": "village-north-gate", "isRaining": false}
+    },
+    {
+      "id": "episode-danger-rainy-cave",
+      "domain": "episode_location",
+      "split": "test",
+      "critical": true,
+      "tags": ["danger", "rain", "location"],
+      "input": {
+        "profileId": "profile-a", "kind": "danger", "locationRef": "cave-entrance", "query": "上次在矿洞口遇险是什么情况",
+        "observations": [
+          {"id": "start", "phase": "started", "timestamp": 10000, "eventSummary": "雨天在矿洞口遇到危险", "health": 18, "isRaining": true, "hostiles": ["skeleton-1"]},
+          {"id": "terminal", "phase": "terminal", "timestamp": 12000, "eventSummary": "撤回地面脱险", "health": 15, "isRaining": true, "hostiles": [], "outcome": "escaped", "keyFrame": true}
+        ]
+      },
+      "expected": {"state": "finalized", "outcome": "escaped", "participants": ["LanYi", "owner", "skeleton-1"], "minimumSnapshots": 1, "minimumSourceRefs": 2, "minimumHealth": 15, "locationRef": "cave-entrance", "isRaining": true}
+    },
+    {
+      "id": "episode-task-resource-site",
+      "domain": "episode_location",
+      "split": "dev",
+      "critical": true,
+      "tags": ["task", "resource", "profile-isolation"],
+      "input": {
+        "profileId": "profile-a", "kind": "task", "locationRef": "iron-vein-7", "query": "上次在铁矿点做任务的结果",
+        "observations": [
+          {"id": "start", "phase": "started", "timestamp": 20000, "eventSummary": "开始在铁矿点采矿", "health": 20, "isRaining": false, "hostiles": []},
+          {"id": "terminal", "phase": "terminal", "timestamp": 24000, "eventSummary": "采到铁矿并返回", "health": 20, "isRaining": false, "hostiles": [], "outcome": "completed", "keyFrame": true}
+        ]
+      },
+      "expected": {"state": "finalized", "outcome": "completed", "participants": ["LanYi", "owner"], "minimumSnapshots": 1, "minimumSourceRefs": 2, "minimumHealth": 20, "locationRef": "iron-vein-7", "isRaining": false}
+    }
+  ]
+}

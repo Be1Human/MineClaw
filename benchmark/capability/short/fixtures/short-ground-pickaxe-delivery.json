@@ -1,0 +1,19 @@
+{
+  "id": "short-ground-pickaxe-delivery",
+  "description": "Prepare TC-SC-18 with one iron pickaxe item entity five blocks from the Bot and empty Bot/owner inventories.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:iron_pickaxe",
+    "fill 48 -61 33 64 -61 41 minecraft:stone",
+    "fill 48 -60 33 64 -57 41 minecraft:air",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 52 -60 37 90 0",
+    "execute positioned 57 -60 37 run summon minecraft:item ~ ~ ~ {Item:{id:\"minecraft:iron_pickaxe\",count:1}}"
+  ]
+}

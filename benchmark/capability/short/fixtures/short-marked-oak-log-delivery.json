@@ -1,0 +1,21 @@
+{
+  "id": "short-marked-oak-log-delivery",
+  "description": "Prepare TC-SC-20 with one unique marked oak log, an iron axe in the Bot inventory, and no oak logs in the owner inventory.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:oak_log",
+    "give {{bot}} minecraft:iron_axe 1",
+    "fill 48 -64 33 64 -61 41 minecraft:stone",
+    "fill 48 -60 33 64 -57 41 minecraft:air",
+    "fill 57 -60 37 57 -60 37 minecraft:oak_log",
+    "fill 57 -61 38 57 -61 38 minecraft:yellow_concrete",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 52 -60 37 90 0"
+  ]
+}

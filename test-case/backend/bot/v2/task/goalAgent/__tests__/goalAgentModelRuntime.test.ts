@@ -1,0 +1,333 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { LLMChatMessage, LLMToolCallResult } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/types.js';
+import type { GoalRequestV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
+import { GoalAgentContextCompiler } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentContextCompiler.js';
+import {
+  GoalAgentModelBudgetExceededError,
+  GoalAgentModelContextConflictError,
+  GoalAgentModelRuntime,
+  goalAgentTraceInteractionId,
+  type GoalAgentModelTrace,
+} from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentModelRuntime.js';
+import { cloneGoalAgentState, createGoalAgentState, type GoalAgentStateV1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
+import { GoalAgentSessionStore } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionStore.js';
+import { InMemoryGoalAgentSessionEventLog } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionEventLog.js';
+import type { LlmTraceCallContext } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/llmTrace/index.js';
+
+function request(): GoalRequestV2 {
+  return {
+    meta: {
+      schemaVersion: 2, sessionId: 'interaction-1', messageId: 'request-1', correlationId: 'correlation-1',
+      conversationId: 'conversation-1', sequence: 1, emittedAt: '2026-08-20T00:00:00.000Z', idempotencyKey: 'request-1',
+    },
+    origin: 'player_message', originalText: 'make a pickaxe', requestText: 'make a pickaxe',
+    requestKind: 'task', constraints: [],
+  };
+}
+
+function state(sessionId = 'goal-1'): GoalAgentStateV1 {
+  return createGoalAgentState({
+    sessionId, interactionSessionId: 'interaction-1', request: request(),
+    budget: { maxLlmCalls: 8, maxTotalTokens: 30_000 },
+  });
+}
+
+function response(content: string, toolCalls: LLMToolCallResult['toolCalls'] = []): LLMToolCallResult {
+  return { content, toolCalls };
+}
+
+function commitModelResult(
+  store: GoalAgentSessionStore,
+  current: GoalAgentStateV1,
+  result: Awaited<ReturnType<GoalAgentModelRuntime['invoke']>>,
+): GoalAgentStateV1 {
+  const next = cloneGoalAgentState(current);
+  next.revision += 1;
+  next.updatedAt = new Date(Date.parse(current.updatedAt) + 1_000).toISOString();
+  next.budget = structuredClone(result.budget);
+  return store.commit({
+    expectedRevision: current.revision, expectedEpoch: current.epoch, state: next,
+    messages: result.messagesToAppend,
+    ...(result.compaction ? { compaction: result.compaction } : {}),
+  });
+}
+
+test('one Event Log carries every committed Step into the next model request', async () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  const prompts: LLMChatMessage[][] = [];
+  const traces: GoalAgentModelTrace[] = [];
+  const runtime = new GoalAgentModelRuntime({
+    async callWithTools(args) { prompts.push(structuredClone(args.messages)); return response('{"ok":true}'); },
+  }, { eventLog: store, trace: value => traces.push(value) });
+  let shared = state();
+  store.create(shared);
+  const first = await runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round',
+    instruction: 'Inspect the task.', historyInstruction: 'Inspect task.', state: shared,
+    parse: JSON.parse, signal: new AbortController().signal,
+  });
+  shared = commitModelResult(store, shared, first);
+  const second = await runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 1, node: 'round',
+    instruction: 'Continue from the result.', historyInstruction: 'Continue.', state: shared,
+    parse: JSON.parse, signal: new AbortController().signal,
+  });
+  assert.equal(second.budget.llmCalls, 2);
+  assert.equal(traces.length, 2);
+  assert.match(prompts[1].map(message => message.content).join('\n'), /GoalAgent delegated request/);
+  assert.match(prompts[1].map(message => message.content).join('\n'), /Inspect task/);
+  assert.equal(store.deriveMessages(shared.sessionId).length, 3);
+  store.close();
+});
+
+test('uncommitted model output remains audit-only and cannot become ghost context', async () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  const shared = state();
+  store.create(shared);
+  const prompts: LLMChatMessage[][] = [];
+  const client = {
+    async callWithTools(args: { messages: LLMChatMessage[] }) {
+      prompts.push(structuredClone(args.messages));
+      return response('{"attempt":"answer"}');
+    },
+  };
+  await new GoalAgentModelRuntime(client, { eventLog: store }).invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'uncommitted secret',
+    state: shared, parse: JSON.parse, signal: new AbortController().signal,
+  });
+  const restored = store.getActive(shared.sessionId)!;
+  await new GoalAgentModelRuntime(client, { eventLog: store }).invoke({
+    sessionId: restored.sessionId, expectedRevision: 0, node: 'round', instruction: 'fresh retry',
+    state: restored, parse: JSON.parse, signal: new AbortController().signal,
+  });
+  assert.doesNotMatch(prompts[1].map(message => message.content).join('\n'), /uncommitted secret|"attempt":"answer"/);
+  assert.equal(store.deriveMessages(shared.sessionId).length, 1);
+  assert.equal(store.listSessionEvents(shared.sessionId).filter(event => event.type === 'model.responded').length, 2);
+  store.close();
+});
+
+test('frozen request keeps exact input while committed history keeps only semantic instruction', async () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  let shared = state();
+  store.create(shared);
+  const runtime = new GoalAgentModelRuntime({ async callWithTools() { return response('{"ok":true}'); } }, { eventLog: store });
+  const result = await runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round',
+    instruction: 'Large current-only catalog: SECRET-CATALOG', historyInstruction: 'Search the target catalog.',
+    state: shared, parse: JSON.parse, signal: new AbortController().signal,
+  });
+  shared = commitModelResult(store, shared, result);
+  const frozen = store.listSessionEvents(shared.sessionId).find(event => event.type === 'model.requested')!;
+  assert.match(JSON.stringify(frozen.payload.messages), /SECRET-CATALOG/);
+  assert.doesNotMatch(JSON.stringify(store.deriveMessages(shared.sessionId)), /SECRET-CATALOG/);
+  assert.match(JSON.stringify(store.deriveMessages(shared.sessionId)), /Search the target catalog/);
+  store.close();
+});
+
+test('context stack keeps stable prefix first and dynamic state at the tail', () => {
+  const history: LLMChatMessage[] = [
+    { role: 'user', content: 'old input' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'world_observe', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'c1', content: '{"ok":true}' },
+  ];
+  const shared = state();
+  const compiler = new GoalAgentContextCompiler();
+  const compiled = compiler.compile({
+    state: shared, node: 'round', instruction: 'Continue.', historyMessages: history,
+  });
+  assert.equal(compiled.messages[0].role, 'system');
+  assert.match(compiled.messages[0].content, /continuous model-tool-result loop/);
+  assert.equal(compiled.messages.at(-2)?.role, 'user');
+  assert.match(compiled.messages.at(-2)?.content ?? '', /Shared GoalAgent state/);
+  assert.match(compiled.messages.at(-1)?.content ?? '', /Continue/);
+  assert.match(JSON.stringify(compiled.messages), /world_observe/);
+  const changed = cloneGoalAgentState(shared);
+  changed.revision = 1;
+  changed.phase = 'running';
+  changed.activeNode = 'round';
+  changed.budget.actions = 1;
+  const recompiled = compiler.compile({
+    state: changed, node: 'round', instruction: 'Continue.', historyMessages: history,
+  });
+  assert.deepEqual(recompiled.messages.slice(0, -2), compiled.messages.slice(0, -2));
+  assert.notEqual(recompiled.messages.at(-2)?.content, compiled.messages.at(-2)?.content);
+});
+
+test('compaction replaces only model surface and retains every raw event', () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  const shared = state();
+  store.create(shared);
+  for (let index = 0; index < 6; index += 1) {
+    store.appendMessage({
+      sessionId: shared.sessionId, node: 'round', stateRevision: 0, epoch: 1,
+      message: { role: index % 2 === 0 ? 'user' : 'assistant', content: `${index}:${'x'.repeat(700)}` },
+    });
+  }
+  const rawBefore = store.deriveMessages(shared.sessionId);
+  const compiled = new GoalAgentContextCompiler({ maxHistoryCharacters: 2_000 }).compile({
+    state: shared, node: 'round', instruction: 'Continue.', historyMessages: rawBefore,
+  });
+  assert.ok(compiled.compaction);
+  store.recordCompaction({
+    sessionId: shared.sessionId, node: 'round', stateRevision: 0, epoch: 1,
+    occurredAt: shared.updatedAt, ...compiled.compaction!,
+  });
+  const projection = store.projectMessages(shared.sessionId);
+  assert.equal(store.deriveMessages(shared.sessionId).length, rawBefore.length);
+  assert.equal(projection.compactedThroughMessageIndex, compiled.compaction!.throughMessageIndex);
+  assert.equal(projection.messages.length, rawBefore.length - compiled.compaction!.throughMessageIndex);
+  assert.match(projection.compactionSummary ?? '', /GoalAgent compaction/);
+  store.close();
+});
+
+test('trace context identifies exact GoalAgent Step and its manifest', async () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  const shared = state();
+  store.create(shared);
+  let captured: LlmTraceCallContext | undefined;
+  const runtime = new GoalAgentModelRuntime({
+    async callWithTools(args) { captured = structuredClone(args.traceContext); return response('{}'); },
+  }, { eventLog: store });
+  await runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Continue.',
+    state: shared, parse: JSON.parse, signal: new AbortController().signal,
+  });
+  assert.equal(captured?.agent, 'goalagent');
+  assert.equal(captured?.interactionSessionId, 'conversation-1');
+  assert.equal(captured?.goalSessionId, 'goal-1');
+  assert.equal(captured?.node, 'round');
+  assert.equal(captured?.stateRevision, 0);
+  assert.ok((captured?.contextSources?.selected.length ?? 0) >= 4);
+  store.close();
+});
+
+test('GoalPort delivery session remains separate from shared trace root', () => {
+  const shared = state();
+  assert.equal(shared.interactionSessionId, 'interaction-1');
+  assert.equal(goalAgentTraceInteractionId(shared), 'conversation-1');
+});
+
+test('main loop model access is fenced by identity, terminal and budget', async () => {
+  let calls = 0;
+  const runtime = new GoalAgentModelRuntime(
+    { async callWithTools() { calls += 1; return response('{}'); } },
+    { eventLog: new InMemoryGoalAgentSessionEventLog() },
+  );
+  const shared = state();
+  await assert.rejects(() => runtime.invoke({
+    sessionId: 'other', expectedRevision: 0, node: 'round', instruction: 'x', state: shared,
+    parse: JSON.parse, signal: new AbortController().signal,
+  }), GoalAgentModelContextConflictError);
+  const terminal = cloneGoalAgentState(shared);
+  terminal.phase = 'completed';
+  terminal.terminal = { outcome: 'completed', summary: 'verified', completedAt: terminal.updatedAt, evidenceRefs: ['verified:1'] };
+  await assert.rejects(() => runtime.invoke({
+    sessionId: terminal.sessionId, expectedRevision: 0, node: 'round', instruction: 'continue', state: terminal,
+    parse: JSON.parse, signal: new AbortController().signal,
+  }), /cannot run after terminal/);
+  const exhausted = cloneGoalAgentState(shared);
+  exhausted.budget.llmCalls = exhausted.budget.maxLlmCalls;
+  await assert.rejects(() => runtime.invoke({
+    sessionId: exhausted.sessionId, expectedRevision: 0, node: 'round', instruction: 'continue', state: exhausted,
+    parse: JSON.parse, signal: new AbortController().signal,
+  }), GoalAgentModelBudgetExceededError);
+  assert.equal(calls, 0);
+});
+
+test('BUG-CROSS-77 · null token limit keeps telemetry without terminating the session', async () => {
+  let calls = 0;
+  const runtime = new GoalAgentModelRuntime(
+    { async callWithTools() { calls += 1; return response('{}'); } },
+    { eventLog: new InMemoryGoalAgentSessionEventLog() },
+  );
+  const unlimited = createGoalAgentState({
+    sessionId: 'goal-unlimited-token', interactionSessionId: 'interaction-unlimited-token', request: request(),
+    budget: { maxLlmCalls: 8, maxTotalTokens: null },
+  });
+  unlimited.budget.promptTokens = 130_000;
+  const result = await runtime.invoke({
+    sessionId: unlimited.sessionId, expectedRevision: 0, node: 'round', instruction: 'continue', state: unlimited,
+    parse: JSON.parse, signal: new AbortController().signal,
+  });
+  assert.equal(result.budget.llmCalls, 1);
+  assert.ok(result.budget.promptTokens >= 130_000);
+  assert.equal(result.budget.maxTotalTokens, null);
+  assert.equal(calls, 1);
+
+  const limited = cloneGoalAgentState(unlimited);
+  limited.sessionId = 'goal-limited-token';
+  limited.interactionSessionId = 'interaction-limited-token';
+  limited.budget.maxTotalTokens = 120_000;
+  await assert.rejects(() => runtime.invoke({
+    sessionId: limited.sessionId, expectedRevision: 0, node: 'round', instruction: 'continue', state: limited,
+    parse: JSON.parse, signal: new AbortController().signal,
+  }), (error: unknown) => error instanceof GoalAgentModelBudgetExceededError && error.budget === 'tokens');
+  assert.equal(calls, 1);
+});
+
+test('terminal reflection uses a read-only frozen request outside the main message surface', async () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  const initial = state();
+  store.create(initial);
+  const terminal = cloneGoalAgentState(initial);
+  terminal.revision = 1;
+  terminal.phase = 'completed';
+  terminal.updatedAt = '2026-08-20T00:00:01.000Z';
+  terminal.terminal = {
+    outcome: 'completed', summary: 'verified', completedAt: terminal.updatedAt, evidenceRefs: ['verified:1'],
+  };
+  terminal.verdict = {
+    decision: 'complete', summary: 'verified', machineCriteriaSatisfied: true,
+    ownerActionable: false, retryable: false, evidenceRefs: ['verified:1'],
+  };
+  store.commit({ expectedRevision: 0, expectedEpoch: 1, state: terminal });
+  const beforeMessages = store.deriveMessages(initial.sessionId);
+  const runtime = new GoalAgentModelRuntime({
+    async callWithTools() { return response('{"summary":"reuse only verified evidence"}'); },
+  }, { eventLog: store });
+  const reflected = await runtime.reflectTerminal(store.get(initial.sessionId)!, new AbortController().signal);
+  assert.equal(reflected.summary, 'reuse only verified evidence');
+  assert.deepEqual(store.deriveMessages(initial.sessionId), beforeMessages);
+  assert.equal(store.get(initial.sessionId)?.terminal?.summary, 'verified');
+  const reflectionRequest = store.listSessionEvents(initial.sessionId)
+    .find(event => event.type === 'model.requested' && event.payload.purpose === 'quarantined_reflection');
+  assert.ok(reflectionRequest);
+  store.close();
+});
+
+test('assistant tool calls are preserved for atomic call/result commit', async () => {
+  const runtime = new GoalAgentModelRuntime({
+    async callWithTools() { return response('', [{ id: 'call-1', name: 'world_observe', arguments: {} }]); },
+  }, { eventLog: new InMemoryGoalAgentSessionEventLog() });
+  const shared = state();
+  const result = await runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Observe.', state: shared,
+    parse: (_content, calls) => calls, signal: new AbortController().signal,
+  });
+  assert.equal(result.toolCalls[0].name, 'world_observe');
+  assert.equal(result.messagesToAppend[1].tool_calls?.[0].function.name, 'world_observe');
+});
+
+test('explicit tool choice and abort signal pass through unified runtime', async () => {
+  let choice: unknown;
+  let calls = 0;
+  const runtime = new GoalAgentModelRuntime({
+    async callWithTools(args) { calls += 1; choice = structuredClone(args.toolChoice); return response('{}'); },
+  }, { eventLog: new InMemoryGoalAgentSessionEventLog() });
+  const shared = state();
+  await runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Observe.', state: shared,
+    tools: [{ type: 'function', function: { name: 'world_observe', description: 'observe', parameters: { type: 'object', properties: {} } } }],
+    toolChoice: { type: 'function', function: { name: 'world_observe' } },
+    parse: JSON.parse, signal: new AbortController().signal,
+  });
+  assert.deepEqual(choice, { type: 'function', function: { name: 'world_observe' } });
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(() => runtime.invoke({
+    sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'x', state: shared,
+    parse: JSON.parse, signal: controller.signal,
+  }), { name: 'AbortError' });
+  assert.equal(calls, 1);
+});

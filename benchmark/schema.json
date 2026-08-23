@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mineclaw-benchmark-manifest/v1",
+  "type": "object",
+  "required": ["schemaVersion", "workspace", "suites"],
+  "properties": {
+    "schemaVersion": {"const": "mineclaw-benchmark-manifest/v1"},
+    "workspace": {"const": "benchmark"},
+    "suites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "capability", "root", "profiles", "runner", "reportDir"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "capability": {"type": "string", "minLength": 1},
+          "root": {"type": "string", "minLength": 1},
+          "profiles": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "runner": {
+            "type": "object",
+            "required": ["cwd", "command", "args"],
+            "properties": {
+              "cwd": {"type": "string"},
+              "command": {"type": "string", "minLength": 1},
+              "args": {"type": "array", "items": {"type": "string"}},
+              "profileArg": {"type": "string"}
+            }
+          },
+          "reportDir": {"type": "string", "minLength": 1},
+          "baselineDir": {"type": "string"}
+        }
+      }
+    }
+  }
+}

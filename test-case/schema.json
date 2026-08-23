@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mineclaw-test-case-manifest/v1",
+  "type": "object",
+  "required": ["schemaVersion", "workspace", "collections"],
+  "properties": {
+    "schemaVersion": {"const": "mineclaw-test-case-manifest/v1"},
+    "workspace": {"const": "test-case"},
+    "collections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "target", "root", "runner"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "target": {
+            "type": "object",
+            "required": ["kind", "path"],
+            "properties": {
+              "kind": {"enum": ["module", "interface", "feature", "bug", "benchmark-framework"]},
+              "path": {"type": "string", "minLength": 1}
+            }
+          },
+          "root": {"type": "string", "minLength": 1},
+          "runner": {
+            "type": "object",
+            "required": ["cwd", "command", "args"],
+            "properties": {
+              "cwd": {"type": "string"},
+              "command": {"type": "string", "minLength": 1},
+              "args": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

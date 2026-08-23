@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "mineclaw-memory-benchmark-config/v1",
+  "benchmarkVersion": "1.0.0",
+  "defaultProfile": "quick",
+  "profiles": {
+    "quick": {
+      "chatCaseLimit": 9,
+      "includeSplits": ["dev", "test"],
+      "includeDomains": ["chat", "explicit_place", "auto_discovery", "episode_location"]
+    },
+    "full": {
+      "chatCaseLimit": null,
+      "includeSplits": ["dev", "test"],
+      "includeDomains": ["chat", "explicit_place", "auto_discovery", "episode_location"]
+    }
+  },
+  "domainWeights": {
+    "chat": 0.35,
+    "explicit_place": 0.2,
+    "auto_discovery": 0.2,
+    "episode_location": 0.25
+  },
+  "gates": {
+    "minimumTotalScore": 0.9,
+    "minimumDomainScore": 0.85,
+    "maximumProfileLeakRate": 0,
+    "minimumRestartPassRate": 1,
+    "minimumEvidenceCoverage": 0.95,
+    "requireAllDomains": true,
+    "failOnCriticalCheck": true
+  }
+}

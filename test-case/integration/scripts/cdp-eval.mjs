@@ -1,0 +1,15 @@
+const PORT = 9222;
+const expr = process.argv[2] || '1';
+const res = await fetch(`http://127.0.0.1:${PORT}/json`);
+const targets = await res.json();
+const page = targets.find((t) => t.type === 'page') || targets[0];
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((r, j) => { ws.addEventListener('open', r); ws.addEventListener('error', j); });
+let id = 0; const pending = new Map();
+ws.addEventListener('message', (ev) => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const out = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
+if (out.error) console.error('CDP error:', JSON.stringify(out.error));
+else if (out.result?.exceptionDetails) console.error('JS error:', JSON.stringify(out.result.exceptionDetails));
+else console.log(JSON.stringify(out.result.result.value, null, 2));
+ws.close();

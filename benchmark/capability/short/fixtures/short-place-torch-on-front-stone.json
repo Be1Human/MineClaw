@@ -1,0 +1,19 @@
+{
+  "id": "short-place-torch-on-front-stone",
+  "description": "Prepare TC-SC-15 with one torch on the Bot and a marked stone directly in front of the owner.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "fill 52 -61 31 64 -61 45 minecraft:stone",
+    "fill 52 -60 31 64 -57 45 minecraft:air",
+    "fill 59 -60 37 59 -60 37 minecraft:stone",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 55 -60 37 90 0",
+    "give {{bot}} minecraft:torch 1"
+  ]
+}

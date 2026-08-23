@@ -1,0 +1,14 @@
+{
+  "id": "zombie-combat-triple-static-v1",
+  "description": "Reset X inside the protected arena and spawn three stationary tagged zombies in a spread.",
+  "commands": [
+    "kill @e[tag=mineclaw_test]",
+    "tp {{bot}} 48 -60 22",
+    "gamemode adventure {{bot}}",
+    "effect give {{bot}} minecraft:instant_health 1 10 true",
+    "effect give {{bot}} minecraft:saturation 1 10 true",
+    "execute at {{bot}} run summon minecraft:zombie ~6 ~ ~ {Tags:[\"mineclaw_test\"],NoAI:1b,Silent:1b,PersistenceRequired:1b,CanPickUpLoot:0b,Health:20.0f}",
+    "execute at {{bot}} run summon minecraft:zombie ~5 ~ ~3 {Tags:[\"mineclaw_test\"],NoAI:1b,Silent:1b,PersistenceRequired:1b,CanPickUpLoot:0b,Health:20.0f}",
+    "execute at {{bot}} run summon minecraft:zombie ~5 ~ ~-3 {Tags:[\"mineclaw_test\"],NoAI:1b,Silent:1b,PersistenceRequired:1b,CanPickUpLoot:0b,Health:20.0f}"
+  ]
+}

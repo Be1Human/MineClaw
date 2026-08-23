@@ -1,0 +1,20 @@
+{
+  "id": "short-craft-place-chest-right",
+  "description": "Prepare TC-SC-13 with eight oak planks on the Bot, a nearby crafting table, and an empty owner-right target cell.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "fill 52 -61 31 64 -61 45 minecraft:stone",
+    "fill 52 -60 31 64 -57 45 minecraft:air",
+    "fill 60 -61 37 60 -61 37 minecraft:yellow_concrete",
+    "fill 56 -60 38 56 -60 38 minecraft:crafting_table",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 55 -60 37 90 0",
+    "give {{bot}} minecraft:oak_planks 8"
+  ]
+}

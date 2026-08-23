@@ -1,0 +1,15 @@
+{
+  "id": "zombie-combat-low-health-v1",
+  "description": "Reset X with food, reduce health to six, drain hunger, and spawn one mobile tagged zombie for recovery testing.",
+  "commands": [
+    "kill @e[tag=mineclaw_test]",
+    "tp {{bot}} 48 -60 22",
+    "gamemode adventure {{bot}}",
+    "effect give {{bot}} minecraft:instant_health 1 10 true",
+    "effect give {{bot}} minecraft:saturation 1 10 true",
+    "give {{bot}} minecraft:bread 3",
+    "damage {{bot}} 14 minecraft:out_of_world",
+    "effect give {{bot}} minecraft:hunger 3 20 true",
+    "execute at {{bot}} run summon minecraft:zombie ~7 ~ ~ {Tags:[\"mineclaw_test\"],NoAI:0b,Silent:1b,PersistenceRequired:1b,CanPickUpLoot:0b,Health:20.0f}"
+  ]
+}

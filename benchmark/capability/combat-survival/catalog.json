@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "mineclaw-capability-catalog/v1",
+  "suite": "combat-survival",
+  "capability": "combat-and-survival",
+  "cases": [
+    {"id":"COMBAT-01","fixture":"zombie-single-mobile-staged-v1.json","instruction":"处理掉一只正在移动的僵尸。使用石剑，保护自己，只按实际结果报告。","gate":"1->0 hostiles; bot survives; completed terminal"},
+    {"id":"COMBAT-02","fixture":"zombie-two-mobile-staged-v1.json","instruction":"处理掉两只正在移动的僵尸，保护自己，只按实际结果报告。","gate":"2->0 hostiles; bot survives; completed terminal"},
+    {"id":"COMBAT-03","fixture":"zombie-three-mobile-staged-v1.json","instruction":"处理掉三只正在移动的僵尸，保护自己，只按实际结果报告。","gate":"3->0 hostiles; target switching; bot survives"},
+    {"id":"COMBAT-04","fixture":"zombie-single-static-staged-v1.json","instruction":"处理掉一只静止的僵尸，保护自己，只按实际结果报告。","gate":"1->0 hostiles; attack evidence; bot survives"},
+    {"id":"COMBAT-05","fixture":"zombie-three-static-staged-v1.json","instruction":"处理掉三只静止的僵尸，保护自己，只按实际结果报告。","gate":"3->0 hostiles; target switching; bot survives"}
+  ]
+}

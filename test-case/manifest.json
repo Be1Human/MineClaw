@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "mineclaw-test-case-manifest/v1",
+  "workspace": "test-case",
+  "resultDir": "test-case/results",
+  "migrationMap": "test-case/migration-map.json",
+  "collections": [
+    {
+      "id": "backend",
+      "target": {"kind": "module", "path": "apps/minecraft-companion/src"},
+      "root": "test-case/backend",
+      "runner": {"cwd": "apps/minecraft-companion", "command": "node", "args": ["--import", "tsx/esm", "--import", "../../scripts/register-test-module-resolver.mjs", "--test", "../../test-case/backend/**/*.test.ts", "../../test-case/backend/**/*.test.mjs"]}
+    },
+    {
+      "id": "web",
+      "target": {"kind": "feature", "path": "apps/minecraft-companion/web/src"},
+      "root": "test-case/web",
+      "runner": {"cwd": "apps/minecraft-companion/web", "command": "node", "args": ["--import", "../../../scripts/register-test-module-resolver.mjs", "--test", "../../../test-case/web/**/*.test.mjs"]}
+    },
+    {
+      "id": "integration",
+      "target": {"kind": "interface", "path": "apps/minecraft-companion"},
+      "root": "test-case/integration",
+      "runner": {"cwd": "apps/minecraft-companion", "command": "node", "args": ["--import", "tsx/esm", "--import", "../../scripts/register-test-module-resolver.mjs", "--test", "../../test-case/integration/**/*.test.ts", "../../test-case/integration/**/*.test.mjs"]}
+    },
+    {
+      "id": "bug-regression",
+      "target": {"kind": "test-suite", "path": "test-case/bug-regression"},
+      "root": "test-case/bug-regression",
+      "runner": {"cwd": "apps/minecraft-companion", "command": "node", "args": ["--import", "tsx/esm", "--import", "../../scripts/register-test-module-resolver.mjs", "--test", "../../test-case/bug-regression/**/*.test.ts"]}
+    },
+    {
+      "id": "benchmark-framework",
+      "target": {"kind": "benchmark-framework", "path": "benchmark"},
+      "root": "test-case/benchmark-framework",
+      "runner": {"cwd": "apps/minecraft-companion", "command": "node", "args": ["--import", "tsx/esm", "--import", "../../scripts/register-test-module-resolver.mjs", "--test", "../../test-case/benchmark-framework/**/*.test.ts"]}
+    }
+  ]
+}

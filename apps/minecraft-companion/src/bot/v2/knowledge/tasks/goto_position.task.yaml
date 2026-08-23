@@ -1,0 +1,45 @@
+kind: goto_position
+aliases: [走到, 过去, 去那里, 去那边, 走过去, goto, move to]
+summary: "走到一个固定坐标后停下（一次性 · 到达即完成）"
+
+priority:
+  default: 40
+  tier: owner_command
+
+persistent: false
+
+slots:
+  required:
+    - name: targetPosition
+      type: location
+      description: "要走到的坐标 {x,y,z}（常来自 locate_block 返回的地标块坐标）"
+      # FEAT-L7-13 · ownerPosition 坐标别名归一 + 对话坐标兜底（原 BUG-CROSS-01 热修硬编码）
+      aliases: [ownerPosition, position]
+      defaultFrom: [dialogue]
+      askable: true
+  optional: []
+
+preconditions: []
+
+strategy: GotoStrategy
+
+cookbook:
+  steps:
+    - 收到目标坐标
+    - 寻路前往
+    - 水平距 ≤3 格即到达完成
+  failures:
+    - condition: "长时间走不到（无路/够不到）"
+      strategies: ["ask_master"]
+  completion: "水平距 ≤3 格即 success（终态任务，不持续）"
+  estimatedDuration:
+    minSec: 2
+    maxSec: 30
+
+examples:
+  - "走到金块那里（先 locate_block 拿坐标再建本任务）"
+  - "去 8 -60 0"
+  - "到那个箱子旁边"
+
+# FEAT-L7-13 · 同类任务复用时允许合并的参数键（原 MERGE_KEYS 常量声明化）
+mergeKeys: [targetPosition, ownerPosition]

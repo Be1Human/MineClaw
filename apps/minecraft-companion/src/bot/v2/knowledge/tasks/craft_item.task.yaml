@@ -1,0 +1,60 @@
+kind: craft_item
+aliases: [做, 做个, 做把, 合成, 制作, 造, 造个, craft, make, build]
+summary: "创建道具（自动就地取材 + 递归合成 + 工具进阶），如工具/工作台/箱子/熔炉等"
+
+priority:
+  default: 32
+  tier: owner_command
+
+persistent: false
+
+slots:
+  required:
+    - name: item
+      type: item
+      description: "要创建的物品名（minecraft id，如 wooden_pickaxe / crafting_table / chest / stone_axe）"
+      # FEAT-L7-13 · LLM 常用的别名键 · slotNormalizer 声明式归一（原 dispatcher pickAlias 硬编码）
+      aliases: [target, name, itemName, material, recipe]
+      defaultFrom: [dialogue]
+      askable: true
+  optional:
+    - name: count
+      type: number
+      description: "数量（默认 1）"
+      defaultFrom: [dialogue]
+      askable: false
+
+preconditions: []
+
+strategy: ProvisionStrategy
+
+cookbook:
+  steps:
+    - RecipeResolver 递归反推材料树（minecraft-data，零硬编码）
+    - 缺原料 → 派生 gather_material 子任务采集（含工具档位门槛：挖石头先造镐）
+    - 需工作台 → 找附近 / 放置 / 先造一个
+    - 材料齐 → 合成；重复直到产出目标
+  failures:
+    - condition: "无配方且无采集来源"
+      strategies: ["say", "fail"]
+    - condition: "材料采集不到"
+      strategies: ["say", "fail"]
+  completion: "库存出现目标物品即完成"
+  estimatedDuration:
+    minSec: 10
+    maxSec: null
+
+examples:
+  - "做把木镐"
+  - "给我合成一个工作台"
+  - "craft wooden_pickaxe"
+  - "make a chest"
+  - "做把石镐"
+
+postconditions:
+  - type: inventory_gte
+    item: { fromSlot: item }
+    count: { fromSlot: count, default: 1 }
+
+# FEAT-L7-13 · 同类任务复用时允许合并的参数键（原 MERGE_KEYS 常量声明化）
+mergeKeys: [item, count]

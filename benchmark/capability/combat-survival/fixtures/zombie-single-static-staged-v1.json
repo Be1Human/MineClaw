@@ -1,0 +1,35 @@
+{
+  "id": "zombie-single-static-staged-v1",
+  "expectedZombieCount": 1,
+  "description": "Create one frozen invulnerable zombie, then make it vulnerable without enabling AI after a new goal_exec PlanRun exists.",
+  "setupCommands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "gamerule keepInventory true",
+    "gamerule naturalRegeneration true",
+    "time set day",
+    "weather clear",
+    "kill @e[tag=mineclaw_test]",
+    "gamemode adventure {{bot}}",
+    "tp {{bot}} 48.5 -60 22.5",
+    "effect give {{bot}} minecraft:instant_health 1 10 true",
+    "effect give {{bot}} minecraft:saturation 1 10 true",
+    "give {{bot}} minecraft:stone_sword 1",
+    "give {{bot}} minecraft:bread 8",
+    "execute at {{bot}} run summon minecraft:zombie ~6 ~ ~ {Tags:[\"mineclaw_test\"],NoAI:1b,Invulnerable:1b,Silent:1b,PersistenceRequired:1b,CanPickUpLoot:0b,Health:20.0f}"
+  ],
+  "releaseCommands": [
+    "data merge entity @e[type=minecraft:zombie,tag=mineclaw_test,limit=1,sort=nearest] {Invulnerable:0b}"
+  ],
+  "sampleCommands": [
+    "data get entity {{bot}} Pos",
+    "data get entity {{bot}} Health",
+    "data get entity {{bot}} foodLevel",
+    "execute if entity @e[type=minecraft:zombie,tag=mineclaw_test] run data get entity @e[type=minecraft:zombie,tag=mineclaw_test,limit=1,sort=nearest] Pos",
+    "execute if entity @e[type=minecraft:zombie,tag=mineclaw_test] run data get entity @e[type=minecraft:zombie,tag=mineclaw_test,limit=1,sort=nearest] Health"
+  ],
+  "cleanupCommands": [
+    "kill @e[tag=mineclaw_test]"
+  ]
+}

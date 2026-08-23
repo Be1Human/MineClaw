@@ -1,0 +1,21 @@
+{
+  "id": "short-chest-left-iron-pickaxe",
+  "description": "Prepare TC-SC-06 with an iron pickaxe in chest A on the owner's left, an empty chest B on the right, and no iron pickaxe on either player or the ground.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:iron_pickaxe",
+    "fill 52 -61 31 64 -61 45 minecraft:stone",
+    "fill 52 -60 31 64 -57 45 minecraft:air",
+    "tp {{owner}} 60 -60 37 90 0",
+    "tp {{bot}} 55 -60 37 90 0",
+    "fill 59 -60 40 59 -60 40 minecraft:chest",
+    "fill 59 -60 34 59 -60 34 minecraft:chest",
+    "item replace block 59 -60 40 container.0 with minecraft:iron_pickaxe 1"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "short-delivery-torch",
+  "description": "Prepare TC-SC-02 with sixteen torches on the Bot and no torches on the owner; place the Bot four blocks from the owner without performing the delivery.",
+  "commands": [
+    "gamerule doMobSpawning false",
+    "gamerule doDaylightCycle false",
+    "gamerule doWeatherCycle false",
+    "time set day",
+    "weather clear",
+    "execute at {{owner}} run kill @e[type=item,distance=..16]",
+    "clear {{bot}}",
+    "clear {{owner}} minecraft:torch",
+    "give {{bot}} minecraft:torch 16",
+    "execute at {{owner}} run tp {{bot}} ~-4 ~ ~"
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "name": "minecraft-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.cjs",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "dev:watch": "tsx watch --clear-screen=false src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "node ../../test-case/cli.mjs run --domain backend",
+    "test:v2": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test ../../test-case/backend/bot/v2/**/*.test.ts",
+    "test:coverage": "node --experimental-test-coverage --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test ../../test-case/backend/bot/v2/**/*.test.ts",
+    "test:watch": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test --watch ../../test-case/backend/**/*.test.ts",
+    "eval": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/core/runner.ts --suite full",
+    "eval:quick": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/core/runner.ts --suite quick",
+    "eval:memory": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/runner.ts",
+    "eval:memory:external": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/externalRunner.ts",
+    "eval:memory:judge": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/longMemJudgeRunner.ts",
+    "eval:memory:mab-judge": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/memoryAgentBenchSummaryJudgeRunner.ts",
+    "eval:memory:mab-longmem-judge": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/memoryAgentBenchLongMemJudgeRunner.ts",
+    "eval:memory:mab-finalize": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/memoryAgentBenchFinalizeRunner.ts",
+    "eval:memory:mab-conflict-audit": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/memoryAgentBenchConflictAuditRunner.ts",
+    "eval:memory:recovery-acceptance": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/recoveryAcceptanceRunner.ts",
+    "eval:memory:judge-recovery-acceptance": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/longMemJudgeRecoveryAcceptanceRunner.ts",
+    "eval:memory:capture-blind-review": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/captureBlindReviewRunner.ts",
+    "eval:memory:summary-judge-blind-review": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/summaryJudgeBlindReviewRunner.ts",
+    "eval:memory:performance": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/performanceRunner.ts",
+    "eval:memory:soak": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/external/soakRunner.ts",
+    "benchmark:memory": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/offline/src/runner.ts --profile full",
+    "benchmark:memory:quick": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/memory/offline/src/runner.ts --profile quick",
+    "test:memory-benchmark": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test ../../test-case/benchmark-framework/memory/offline/*.test.ts",
+    "eval:planner-evolution-preview": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/plannerEvolutionPreview.ts",
+    "eval:matrix": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/core/runner.ts --suite matrix",
+    "eval:list": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/core/list.ts",
+    "eval:check": "tsc -p ../../benchmark/tsconfig.json",
+    "benchmark": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/runner.ts",
+    "benchmark:smoke": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/runner.ts --profile smoke",
+    "test:benchmark": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test ../../test-case/benchmark-framework/engineering/**/*.test.ts",
+    "electron:native:prepare": "node scripts/electronNative.mjs --prepare",
+    "electron:native:check": "node scripts/electronNative.mjs --check",
+    "test:electron-startup": "node --test ../../test-case/integration/scripts/electronStartupContract.test.mjs",
+    "electron:chat:smoke": "node scripts/electronChatSmoke.mjs",
+    "electron:dev": "node scripts/electronRun.mjs dev",
+    "electron:build": "node scripts/electronBuild.mjs",
+    "electron:preview": "node scripts/electronRun.mjs preview"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "mineflayer": "^4.37.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "socket.io": "^4.8.0",
+    "uuid": "^11.1.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.0",
+    "@types/node": "^25.6.0",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "electron": "^34.5.8",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.5"
+  },
+  "build": {
+    "appId": "com.mineclaw.app",
+    "productName": "MineClaw",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "out/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
