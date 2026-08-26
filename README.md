@@ -1,105 +1,117 @@
+<p align="right">
+  <strong>简体中文</strong> · <a href="./README_EN.md">English</a>
+</p>
+
 <p align="center">
-  <img src="apps/minefriend-site/public/brand/mineclaw-mark.svg" alt="MineClaw logo" width="128" height="128" />
+  <img src="apps/minefriend-site/public/brand/mineclaw-mark.svg" alt="MineClaw 标志" width="128" height="128" />
 </p>
 
 <h1 align="center">MineClaw</h1>
 
 <p align="center">
-  <strong>An embodied AI companion that lives, talks, acts, and grows with you inside Minecraft.</strong>
+  <strong>一个真正住进 Minecraft 世界、能聊天、能行动、能与你共同成长的具身 AI 伙伴。</strong>
 </p>
 
 <p align="center">
   <img alt="Node.js 22+" src="https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white" />
   <img alt="Minecraft Java Edition" src="https://img.shields.io/badge/Minecraft-Java%20Edition-62B47A" />
-  <img alt="Project status: active development" src="https://img.shields.io/badge/status-active%20development-F59E0B" />
+  <img alt="项目状态：持续开发" src="https://img.shields.io/badge/status-active%20development-F59E0B" />
 </p>
 
 <p align="center">
-  <a href="#why-mineclaw">Why MineClaw</a> ·
-  <a href="#what-it-can-do">Capabilities</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#development">Development</a> ·
-  <a href="#contributing">Contributing</a>
+  <a href="#why-mineclaw">为什么是 MineClaw</a> ·
+  <a href="#capabilities">核心能力</a> ·
+  <a href="#architecture">架构</a> ·
+  <a href="#quick-start">快速开始</a> ·
+  <a href="#development">开发与验证</a> ·
+  <a href="#contributing">参与贡献</a>
 </p>
 
 ---
 
-## Why MineClaw
+<a id="why-mineclaw"></a>
 
-MineClaw explores a simple idea: an AI companion should be more than a chat window. It should share the same world as the player, understand natural-language goals, take real actions, observe their effects, and speak honestly about what happened.
+## 为什么是 MineClaw
 
-The project combines a Mineflayer body, an LLM-driven companion and goal loop, a local observability console, and repeatable tests and benchmarks. The result is a companion that can chat casually, join the player in Minecraft, and work toward concrete changes in the world.
+MineClaw 想验证一个简单的想法：AI 伙伴不应该只存在于聊天框里。她应该和玩家共享同一个世界，理解自然语言目标，真正采取行动，观察行动结果，并诚实地说明发生了什么。
+
+项目把 Mineflayer 游戏身体、LLM 驱动的伙伴与目标循环、本地可观测控制台，以及可重复运行的测试和 Benchmark 组合在一起。最终得到的不是一次性命令工具，而是一个可以日常聊天、进入 Minecraft 陪伴玩家，并共同推动世界发生真实变化的伙伴。
 
 <p align="center">
-  <img src="apps/minefriend-site/public/media/images/live-perception.jpg" alt="MineClaw local console showing the companion's live Minecraft perception" width="900" />
+  <img src="apps/minefriend-site/public/media/images/live-perception.jpg" alt="MineClaw 本地控制台展示伙伴对 Minecraft 世界的实时感知" width="900" />
 </p>
 
-## What It Can Do
+<a id="capabilities"></a>
 
-MineClaw is built around a verifiable companion loop rather than one-shot command execution.
+## 核心能力
 
-| Capability | What it means |
+MineClaw 围绕可验证的伙伴循环构建，而不是只执行一次命令就结束。
+
+| 能力 | 含义 |
 |---|---|
-| Companion conversation | Maintains a distinct voice and separates everyday conversation from game-task execution. |
-| Embodied Minecraft control | Reads live position, health, inventory, nearby blocks and entities through a Mineflayer-controlled body. |
-| Goal-driven action | Interprets a player goal, plans steps, invokes reusable capabilities, and adjusts when the world does not match the plan. |
-| World-state verification | Uses inventory, block, container, distance, and other game evidence before reporting success. |
-| Memory and reusable skills | Records useful experience and retrieves relevant knowledge or strategies for later goals. |
-| Local observability | Exposes conversation, task progress, model calls, events, and completion evidence in a local console. |
-| Repeatable evaluation | Keeps product tests and capability benchmarks in versioned, runnable workspaces. |
+| 伙伴式对话 | 保持独立人格与表达方式，并区分日常聊天和游戏任务执行。 |
+| Minecraft 具身控制 | 通过 Mineflayer 身体读取实时位置、生命值、背包、附近方块与实体。 |
+| 目标驱动行动 | 理解玩家目标、规划步骤、调用可复用能力，并在世界状态不符合计划时调整。 |
+| 世界状态验真 | 在报告成功前，使用背包、方块、容器、距离等游戏事实核对结果。 |
+| 记忆与可复用技能 | 记录有价值的经历，为后续目标检索相关知识与策略。 |
+| 本地可观测性 | 在控制台中展示对话、任务进展、模型调用、事件和完成证据。 |
+| 可重复评测 | 用版本化的功能测试与能力 Benchmark 持续验证产品表现。 |
 
-> MineClaw is under active development. Capability coverage varies by Minecraft version, server configuration, available materials, and model provider.
+> MineClaw 仍在持续开发。实际能力覆盖会受到 Minecraft 版本、服务器配置、现场材料和模型提供商影响。
 
-## Architecture
+<a id="architecture"></a>
 
-The runtime keeps conversation, goal execution, game control, evidence, and observability connected without treating them as one monolithic agent.
+## 架构
+
+运行时把对话、目标执行、游戏控制、结果证据与可观测性连接在一起，同时避免把所有职责塞进一个巨型 Agent。
 
 ```text
-Player
+玩家
   │
-  ├── conversation ──> MainBrain ───────────────┐
+  ├── 日常对话 ──────> MainBrain ───────────────┐
   │                                              │
-  └── game goal ─────> GoalAgent loop            │
+  └── 游戏目标 ──────> GoalAgent 循环            │
                          │                        │
-                         ├── plan / recover       │
-                         ├── skills / strategies  │
-                         ├── capabilities         │
-                         └── world verification   │
+                         ├── 规划 / 恢复          │
+                         ├── 技能 / 策略          │
+                         ├── 原子能力             │
+                         └── 世界状态验真         │
                                   │               │
                                   v               v
-Minecraft server <──> Mineflayer adapter      Memory & traces
+Minecraft 服务器 <──> Mineflayer 适配器       记忆与轨迹
                                   │               │
-                                  └──────> Local web console
+                                  └──────> 本地 Web 控制台
 ```
 
-The main source areas are:
+仓库主要目录如下：
 
 ```text
 MineClaw/
 ├── apps/
-│   ├── minecraft-companion/      # Runtime, Electron shell and Vue console
-│   └── minefriend-site/          # Standalone product website
-├── test-case/                    # Functional and regression test workspace
-├── benchmark/                    # Capability and engineering evaluation suites
-├── scripts/                      # Release and workspace validation tools
-├── AGENTS.md                     # Public contribution rules for agents and people
-├── CONTRIBUTING.md               # Contribution workflow
-└── SECURITY.md                   # Security reporting policy
+│   ├── minecraft-companion/      # 运行时、Electron 外壳与 Vue 控制台
+│   └── minefriend-site/          # 独立产品宣传站
+├── test-case/                    # 功能测试与回归测试工作区
+├── benchmark/                    # 能力与工程质量评测套件
+├── scripts/                      # 发布和工作区验证工具
+├── AGENTS.md                     # 面向开发者和 Agent 的公开协作规则
+├── CONTRIBUTING.md               # 贡献流程
+└── SECURITY.md                   # 安全问题报告策略
 ```
 
-## Quick Start
+<a id="quick-start"></a>
 
-### Prerequisites
+## 快速开始
 
-- Node.js 22 or later
-- A reachable Minecraft Java Edition server
-- An OpenAI-compatible LLM endpoint and API key
+### 环境要求
 
-Minecraft worlds, server binaries, credentials, local databases, logs, and agent memory are intentionally not included in this repository.
+- Node.js 22 或更高版本
+- 可访问的 Minecraft Java Edition 服务器
+- OpenAI 兼容的 LLM 接口和 API Key
 
-### 1. Start the companion runtime
+仓库不会包含 Minecraft 世界、服务器程序、账号凭据、本地数据库、运行日志或 Agent 记忆。
+
+### 1. 启动伙伴运行时
 
 ```bash
 cd apps/minecraft-companion
@@ -108,17 +120,17 @@ cp .env.example .env
 npm run dev
 ```
 
-On Windows PowerShell, create the environment file with:
+Windows PowerShell 用户可使用以下命令创建环境文件：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Edit `.env` with your own Minecraft server and model-provider settings. Never commit this file.
+编辑 `.env`，填入你自己的 Minecraft 服务器与模型提供商配置。不要提交该文件。
 
-### 2. Start the local console
+### 2. 启动本地控制台
 
-In a second terminal:
+在第二个终端中运行：
 
 ```bash
 cd apps/minecraft-companion/web
@@ -126,11 +138,11 @@ npm ci
 npm run dev
 ```
 
-The runtime and console are separate development processes. Keep both running while using the browser-based control surface.
+伙伴运行时和控制台是两个独立的开发进程。使用浏览器控制界面时，请保持两者同时运行。
 
-### 3. Run the product website
+### 3. 启动产品宣传站
 
-The standalone MineClaw website can be developed without the bot or Minecraft server:
+MineClaw 宣传站不依赖 Bot 或 Minecraft 服务器，可以独立开发：
 
 ```bash
 cd apps/minefriend-site
@@ -138,11 +150,13 @@ npm ci
 npm run dev
 ```
 
-## Development
+<a id="development"></a>
 
-### Quality checks
+## 开发与验证
 
-Run the repository boundary check and the builds relevant to your change:
+### 质量检查
+
+先运行仓库边界检查，再执行与你的改动相关的构建：
 
 ```bash
 node scripts/check-release.mjs
@@ -153,31 +167,35 @@ cd web && npm run build
 cd ../../minefriend-site && npm run build
 ```
 
-Backend behavior changes should also run the focused `npm run test:v2` subset or the full applicable test suite. Benchmark commands and profiles live under [`benchmark/`](benchmark/), while functional and regression coverage lives under [`test-case/`](test-case/).
+修改后端行为时，还应运行对应的 `npm run test:v2` 子集或完整适用测试。能力与工程评测位于 [`benchmark/`](benchmark/)，功能和回归测试位于 [`test-case/`](test-case/)。
 
-### Repository boundaries
+### 仓库边界
 
-This repository contains publishable source code, tests, benchmarks, configuration templates, and website assets. Keep the following outside version control:
+本仓库只包含可公开发布的源码、测试、Benchmark、配置模板和网站资源。以下内容必须保留在版本控制之外：
 
-- `.env` files and credentials
-- Minecraft worlds, player data, server binaries, and RCON details
-- runtime databases, logs, caches, build output, and agent memory
-- private workspace metadata or private documentation
+- `.env` 文件与凭据
+- Minecraft 世界、玩家数据、服务器程序和 RCON 信息
+- 运行数据库、日志、缓存、构建产物和 Agent 记忆
+- 私有工作区元数据或内部文档
 
-The release boundary is enforced by [`scripts/check-release.mjs`](scripts/check-release.mjs).
+[`scripts/check-release.mjs`](scripts/check-release.mjs) 会自动检查公开发布边界。
 
-## Contributing
+<a id="contributing"></a>
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Keep each contribution focused, add or update relevant tests, and describe the user-visible result and validation performed.
+## 参与贡献
 
-For repository-specific coding and agent rules, see [AGENTS.md](AGENTS.md). To report a vulnerability or sensitive issue, follow [SECURITY.md](SECURITY.md) and do not publish secrets or private server details in an issue.
+开始修改前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。每次贡献应保持单一目标，增加或更新相关测试，并说明用户可见结果与已执行的验证。
 
-## License
+仓库专属的开发者与 Agent 规则位于 [AGENTS.md](AGENTS.md)。报告漏洞或敏感问题时，请遵循 [SECURITY.md](SECURITY.md)，不要在公开 Issue 中发布密钥或私有服务器信息。
 
-This repository does not currently include an open-source license grant. Unless and until the project owner adds one, the source may be viewed but must not be copied, redistributed, or reused as though it were open source.
+<a id="license"></a>
+
+## 许可证
+
+本仓库目前尚未提供开源许可证授权。在项目所有者正式添加许可证前，源码可以查看，但不得将其视为开源项目进行复制、分发或复用。
 
 ---
 
 <p align="center">
-  <strong>MineClaw — a companion who shares the world, not just the chat.</strong>
+  <strong>MineClaw——分享同一个世界，而不只是同一个聊天框。</strong>
 </p>
