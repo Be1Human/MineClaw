@@ -40,7 +40,7 @@ const requiredPaths = [
   'CLAUDE.md',
   '.agents/README.md',
   'SECURITY.md',
-  'RELEASE_PROVENANCE.md',
+  'RELEASE_PROVENANCE.md'
 ];
 const requiredSkillPaths = [
   'clawpm-project-workflow',

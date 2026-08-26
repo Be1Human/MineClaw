@@ -15,6 +15,7 @@ Minecraft server <-> Mineflayer adapter <-> MineClaw runtime <-> LLM provider
                                           +-> Tests and benchmarks
 ```
 
+The runtime is organized from game adapters through capabilities, atomic actions, behaviors, strategies, task execution, and the companion decision layer.
 
 ## Prerequisites
 
@@ -82,3 +83,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). This repository currently has no open-so
 
 ## Agent-Guided Development
 
+[AGENTS.md](AGENTS.md) defines the public repository rules for human and coding-agent contributors. The public skill catalog is available in [.agents/README.md](.agents/README.md).

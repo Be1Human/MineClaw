@@ -4,7 +4,7 @@ This file defines the public working rules for people and coding agents contribu
 
 ## Repository Boundary
 
-- This repository contains publishable source code, tests, public templates and benchmarks.
+- This repository contains publishable source code, tests, benchmarks, and public templates.
 - Keep local configuration, credentials, Minecraft worlds, player data, server binaries, runtime databases, logs, caches, and agent memory outside version control.
 - Do not add a private environment repository as a submodule or hard-code its location. Public source must remain cloneable by itself.
 
@@ -22,9 +22,6 @@ This file defines the public working rules for people and coding agents contribu
 3. Keep a change scoped to one behavior or one public contract.
 4. Run the relevant build and tests. Do not change tests merely to hide a product defect.
 5. Document user-visible configuration or startup changes in the public guides.
-
-## Task Workflow
-
 
 ## Local Development Safety
 
