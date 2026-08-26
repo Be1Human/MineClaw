@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="mineclaw-mark-title mineclaw-mark-desc">
+  <title id="mineclaw-mark-title">MineClaw</title>
+  <desc id="mineclaw-mark-desc">深绿色圆角底板、四个绿色小角标与斜边 M 形面部组成的极简伙伴头像</desc>
+  <rect x="4" y="4" width="56" height="56" rx="6" fill="#0B2F1D"/>
+  <path fill="#7DA84D" d="M12 14h11v5h-6v6h-5V14ZM41 14h11v11h-5v-6h-6V14ZM12 39h5v6h6v5H12V39ZM47 39h5v11H41v-5h6V39Z"/>
+  <path fill="#F9EFD7" d="M20 23h7l5 5 5-5h7v22H20V23Z"/>
+  <path fill="#0B2F1D" d="M25 31h3v8h-3v-8Zm11 0h3v8h-3v-8Z"/>
+</svg>

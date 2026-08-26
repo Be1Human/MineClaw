@@ -7,7 +7,7 @@ const app = document.querySelector('#app');
 app.innerHTML = `
   <header class="site-header" data-header>
     <a class="brand" href="#top" aria-label="MineClaw 首页">
-      <span class="brand-cube" aria-hidden="true"><i></i><i></i><i></i></span>
+      <img class="brand-mark" src="./brand/mineclaw-mark.svg" alt="" aria-hidden="true" />
       <span class="brand-copy"><strong>MineClaw</strong><small>A COMPANION WHO LIVES, PLAYS & GROWS WITH YOU</small></span>
     </a>
     <nav class="desktop-nav" aria-label="主导航">
@@ -37,31 +37,61 @@ app.innerHTML = `
       <div class="page-shell hero-content">
         <div class="hero-copy">
           <p class="eyebrow"><span class="eyebrow-dot"></span> A COMPANION WHO LIVES IN YOUR WORLD</p>
-          <h1 id="hero-title">让虚拟世界里，<br /><em>真正住进一个懂你的伙伴。</em></h1>
+          <h1 id="hero-title">让伙伴，<br /><em>真正住进你的世界。</em></h1>
           <p class="hero-lead">
-            她会陪你聊天，和你玩游戏，走进 Minecraft 站到你身边。你们一起建造、探洞，经历危险和惊喜；当你需要时，她还能真正动手，和你一起把事情完成。
+            陪你聊天、陪你玩，也真正走进 Minecraft，和你一起冒险、一起把事情做成。
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="#why">认识 MineClaw <span aria-hidden="true">↓</span></a>
-            <a class="button button-ghost" href="#life">看我们一起冒险 <span aria-hidden="true">↗</span></a>
+            <a class="button button-primary" href="#promo-video">观看宣传片 <span aria-hidden="true">→</span></a>
           </div>
         </div>
-        <aside class="hero-proof companion-card" aria-label="MineClaw 虚拟世界伙伴状态">
-          <p class="proof-kicker">MINECLAW · COMPANION IN YOUR WORLD</p>
-          <div class="companion-head">
-            <span class="companion-avatar" aria-hidden="true">L</span>
-            <div><strong>MineClaw</strong><span><i></i> 伙伴正在和你一起冒险</span></div>
+        <article class="hero-film media-slot" id="promo-video" data-media-key="overview" aria-label="MineClaw 主宣传片">
+          <div class="hero-film-meta"><span><i></i> MINECLAW · PROMO FILM</span><small>01:30</small></div>
+          <div class="media-placeholder hero-film-placeholder">
+            <span class="media-state"><i></i> 宣传片预览</span>
+            <div class="media-play hero-film-play" aria-hidden="true">▶</div>
+            <p>她走进世界，来到你身边。你们第一次面对面聊天，然后一起决定今天要去哪里。</p>
           </div>
-          <div class="proof-divider"></div>
-          <p class="companion-whisper">“今天想去哪？我会走到你身边，和你一起出发。”</p>
-          <div class="companion-tags"><span>聊天</span><span>陪玩</span><span>冒险</span><span>一起完成</span></div>
-        </aside>
+          <div class="hero-film-caption"><strong>一个伙伴，真正走进我的世界</strong><span>相遇 · 陪伴 · 一起冒险</span></div>
+        </article>
       </div>
       <div class="hero-scroll" aria-hidden="true"><span>SCROLL TO EXPLORE</span><i></i></div>
     </section>
 
+    <section class="demo-section early-demo page-shell" id="demo" aria-labelledby="demo-title">
+      <div class="section-index reveal">01 / WATCH THE STORY FIRST</div>
+      <div class="demo-heading reveal">
+        <div>
+          <p class="section-kicker">同一个世界，接着发生的两个故事</p>
+          <h2 id="demo-title">一起生活。<br />一起把事情做成。</h2>
+        </div>
+        <p>从晨光里的第一句话，到夜色中一起回家；从说出一个目标，到真实世界留下结果。</p>
+      </div>
+
+      <div class="media-grid supporting-media-grid">
+        <article class="media-slot reveal" data-media-key="recovery">
+          <div class="media-placeholder clay">
+            <span class="media-state"><i></i> 故事预览</span>
+            <strong class="media-duration">00:45</strong>
+            <div class="media-play" aria-hidden="true">▶</div>
+            <p>晨光里聊天 → 一起准备营地与物资 → 穿过森林 → 走进矿洞 → 夜色中并肩回到家</p>
+          </div>
+          <div class="media-copy"><span>FILM 02</span><h3>我们一起度过 Minecraft 的一天</h3></div>
+        </article>
+        <article class="media-slot reveal" data-media-key="memory">
+          <div class="media-placeholder amber">
+            <span class="media-state"><i></i> 故事预览</span>
+            <strong class="media-duration">00:45</strong>
+            <div class="media-play" aria-hidden="true">▶</div>
+            <p>玩家说出目标 → MineClaw 的伙伴理解并规划 → 采集、制作或整理 → 遇阻调整 → 世界结果与共同完成画面</p>
+          </div>
+          <div class="media-copy"><span>FILM 03</span><h3>她不只听懂我，还能和我一起把事做成</h3></div>
+        </article>
+      </div>
+    </section>
+
     <section class="belief page-shell" id="why" aria-labelledby="belief-title">
-      <div class="section-index reveal">01 / A COMPANION, NOT A CHAT WINDOW</div>
+      <div class="section-index reveal">02 / A COMPANION, NOT A CHAT WINDOW</div>
       <div class="belief-copy reveal">
         <p class="section-kicker">不是把 AI 放进聊天框，而是让伙伴真正来到你的世界</p>
         <h2 id="belief-title">她会听你说话，<br />也会走到你身边。</h2>
@@ -81,8 +111,52 @@ app.innerHTML = `
       </div>
     </section>
 
+    <section class="companion-motion" id="motion" aria-labelledby="motion-title">
+      <div class="page-shell">
+        <div class="motion-heading reveal">
+          <div>
+            <div class="section-index">02 / COMPANION IN MOTION</div>
+            <p class="section-kicker light">她不是站在原地等一句命令，而是会用行动进入你们的故事</p>
+            <h2 id="motion-title">打个招呼，带上工具，<br />然后一起出发。</h2>
+          </div>
+          <p>从第一次见面，到下矿探索，再到把工作台搬进新家——同一个伙伴会以不同姿态回应正在发生的事情。下面是基于当前角色外观制作的动作渲染，用来呈现她的性格与行动感。</p>
+        </div>
+
+        <div class="action-scenes" aria-label="MineClaw 伙伴的三种动作渲染">
+          <article class="action-scene scene-wave reveal">
+            <span class="pose-meta">CHARACTER POSE · ART RENDER</span>
+            <div class="pose-stage">
+              <span class="pose-orbit" aria-hidden="true"></span>
+              <figure class="pose-figure"><img src="./media/characters/companion-wave.png" alt="粉色服装的 MineClaw 伙伴抬起手向玩家挥手" loading="lazy" decoding="async" /></figure>
+            </div>
+            <div class="pose-copy"><span>01 / HELLO</span><h3>“你来啦。”</h3><p>先向你挥挥手，再走进同一个世界。</p></div>
+          </article>
+
+          <article class="action-scene scene-explore reveal">
+            <span class="pose-meta">CHARACTER POSE · ART RENDER</span>
+            <div class="pose-stage">
+              <span class="pose-orbit" aria-hidden="true"></span>
+              <figure class="pose-figure"><img src="./media/characters/companion-explore.png" alt="MineClaw 伙伴拿着铁镐迈步出发探索" loading="lazy" decoding="async" /></figure>
+            </div>
+            <div class="pose-copy"><span>02 / EXPLORE</span><h3>“矿洞那边，走吧。”</h3><p>带上铁镐，和你一起向未知的地方出发。</p></div>
+          </article>
+
+          <article class="action-scene scene-build reveal">
+            <span class="pose-meta">CHARACTER POSE · ART RENDER</span>
+            <div class="pose-stage">
+              <span class="pose-orbit" aria-hidden="true"></span>
+              <figure class="pose-figure"><img src="./media/characters/companion-build.png" alt="MineClaw 伙伴双手抱着工作台准备一起建设" loading="lazy" decoding="async" /></figure>
+            </div>
+            <div class="pose-copy"><span>03 / BUILD</span><h3>“工作台放这里吗？”</h3><p>不只陪你看，也真正参与共同生活的现场。</p></div>
+          </article>
+        </div>
+
+        <p class="motion-disclaimer reveal"><span></span>角色动作渲染用于页面叙事；真实运行能力与结果请继续查看下方实机证据。</p>
+      </div>
+    </section>
+
     <section class="companion-details page-shell" id="companion" aria-labelledby="companion-title">
-      <div class="section-index reveal">02 / WHO SHE IS</div>
+      <div class="section-index reveal">03 / WHO SHE IS</div>
       <div class="details-layout">
         <div class="details-copy reveal">
           <p class="section-kicker">她不是一个等你下命令的角色，而是有自己性格的游戏好友</p>
@@ -116,7 +190,7 @@ app.innerHTML = `
     </section>
 
     <section class="feature-stories page-shell" id="life" aria-labelledby="feature-title">
-      <div class="section-index reveal">03 / A DAY TOGETHER</div>
+      <div class="section-index reveal">04 / A DAY TOGETHER</div>
       <div class="section-heading reveal">
         <p class="section-kicker">陪伴不是一个功能，是一段持续发生的共同经历</p>
         <h2 id="feature-title">从第一句话，<br />到一起走进夜色。</h2>
@@ -290,47 +364,6 @@ app.innerHTML = `
       </div>
     </section>
 
-    <section class="demo-section page-shell" id="demo" aria-labelledby="demo-title">
-      <div class="section-index reveal">06 / VIDEO STORIES</div>
-      <div class="demo-heading reveal">
-        <div>
-          <p class="section-kicker">从相遇、相伴，到共同完成一件真正的事</p>
-          <h2 id="demo-title">三个故事，看看伙伴如何<br />真正走进一个世界。</h2>
-        </div>
-        <p>从第一次站在同一片方块上，到一起度过完整的一天，再到把一句话变成世界里的真实结果——每个故事都从正在发生的游戏现场开始。</p>
-      </div>
-
-      <div class="media-grid">
-        <article class="media-slot reveal" data-media-key="overview">
-          <div class="media-placeholder">
-            <span class="media-state"><i></i> 场景预览</span>
-            <strong class="media-duration">01:30</strong>
-            <div class="media-play" aria-hidden="true">▶</div>
-            <p>玩家上线 → MineClaw 的伙伴出现在世界中 → 自主走到玩家身边 → 第一次面对面聊天 → 一起决定今天去哪</p>
-          </div>
-          <div class="media-copy"><span>FILM 01</span><h3>一个伙伴，真正走进我的世界</h3></div>
-        </article>
-        <article class="media-slot reveal" data-media-key="recovery">
-          <div class="media-placeholder clay">
-            <span class="media-state"><i></i> 场景预览</span>
-            <strong class="media-duration">00:45</strong>
-            <div class="media-play" aria-hidden="true">▶</div>
-            <p>晨光里聊天 → 一起准备营地与物资 → 穿过森林 → 走进矿洞 → 夜色中并肩回到家</p>
-          </div>
-          <div class="media-copy"><span>FILM 02</span><h3>我们一起度过 Minecraft 的一天</h3></div>
-        </article>
-        <article class="media-slot reveal" data-media-key="memory">
-          <div class="media-placeholder amber">
-            <span class="media-state"><i></i> 场景预览</span>
-            <strong class="media-duration">00:45</strong>
-            <div class="media-play" aria-hidden="true">▶</div>
-            <p>玩家说出目标 → MineClaw 的伙伴理解并规划 → 采集、制作或整理 → 遇阻调整 → 世界结果与共同完成画面</p>
-          </div>
-          <div class="media-copy"><span>FILM 03</span><h3>她不只听懂我，还能和我一起把事做成</h3></div>
-        </article>
-      </div>
-    </section>
-
     <section class="finale" aria-labelledby="finale-title">
       <div class="finale-bg" style="background-image: url('./media/images/minefriend-hero-v2.png')" aria-hidden="true"></div>
       <div class="finale-veil" aria-hidden="true"></div>
@@ -347,7 +380,7 @@ app.innerHTML = `
   </main>
 
   <footer class="site-footer page-shell">
-    <a class="brand dark-brand" href="#top"><span class="brand-cube" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-copy"><strong>MineClaw</strong><small>VIRTUAL WORLD COMPANION</small></span></a>
+    <a class="brand dark-brand" href="#top" aria-label="返回 MineClaw 首页"><img class="brand-mark" src="./brand/mineclaw-mark.svg" alt="" aria-hidden="true" /><span class="brand-copy"><strong>MineClaw</strong><small>VIRTUAL WORLD COMPANION</small></span></a>
     <p>让虚拟世界里，真正住进一个懂你的伙伴。</p>
     <a class="footer-link" href="https://git.code.tencent.com/CloudBoy/MineClaw" target="_blank" rel="noreferrer">Git Repository ↗</a>
   </footer>
@@ -358,9 +391,16 @@ const mediaConfig = window.MINECLAW_SHOWCASE_MEDIA || {};
 function hydrateMediaSlot(slot) {
   const key = slot.dataset.mediaKey;
   const config = mediaConfig[key];
-  if (!config?.src) return;
-
   const placeholder = slot.querySelector('.media-placeholder');
+
+  if (!config?.src) {
+    if (placeholder && config?.poster) {
+      placeholder.classList.add('has-poster');
+      placeholder.style.backgroundImage = `linear-gradient(180deg, rgba(10, 14, 9, 0.2), rgba(10, 14, 9, 0.9)), url("${config.poster}")`;
+    }
+    return;
+  }
+
   const video = document.createElement('video');
   video.className = 'media-video';
   video.controls = true;
@@ -379,7 +419,7 @@ function hydrateMediaSlot(slot) {
   }, { once: true });
 
   placeholder.hidden = true;
-  slot.insertBefore(video, slot.querySelector('.media-copy'));
+  placeholder.after(video);
   slot.classList.add('has-video');
 }
 
