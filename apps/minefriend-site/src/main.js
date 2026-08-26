@@ -16,7 +16,7 @@ app.innerHTML = `
       <a href="#screens">真实世界</a>
       <a href="#demo">故事影像</a>
     </nav>
-    <a class="header-cta" href="https://git.code.tencent.com/CloudBoy/MineClaw" target="_blank" rel="noreferrer" aria-label="在新窗口打开 MineClaw Git 仓库">Git 仓库 <span aria-hidden="true">↗</span></a>
+    <a class="header-cta" href="https://github.com/Be1Human/MineClaw" target="_blank" rel="noreferrer" aria-label="在新窗口打开 MineClaw GitHub 仓库">GitHub 仓库 <span aria-hidden="true">↗</span></a>
     <button class="nav-toggle" type="button" aria-label="展开导航" aria-expanded="false" data-nav-toggle>
       <span></span><span></span>
     </button>
@@ -25,7 +25,7 @@ app.innerHTML = `
       <a href="#life">我们的一天</a>
       <a href="#screens">真实世界</a>
       <a href="#demo">故事影像</a>
-      <a href="https://git.code.tencent.com/CloudBoy/MineClaw" target="_blank" rel="noreferrer">Git 仓库 ↗</a>
+      <a href="https://github.com/Be1Human/MineClaw" target="_blank" rel="noreferrer">GitHub 仓库 ↗</a>
     </nav>
   </header>
 
@@ -373,7 +373,7 @@ app.innerHTML = `
         <p>她陪你聊天、陪你玩、和你一起冒险，也在你需要时真正动手。方块组成世界；一起经历的事情，才让它成为你们共同生活过的地方。</p>
         <div class="finale-actions">
           <a class="button button-light" href="#top">回到开头 <span aria-hidden="true">↑</span></a>
-          <a class="text-action" href="https://git.code.tencent.com/CloudBoy/MineClaw" target="_blank" rel="noreferrer">查看 MineClaw Git 仓库 <span aria-hidden="true">↗</span></a>
+          <a class="text-action" href="https://github.com/Be1Human/MineClaw" target="_blank" rel="noreferrer">查看 MineClaw GitHub 仓库 <span aria-hidden="true">↗</span></a>
         </div>
       </div>
     </section>
@@ -382,7 +382,7 @@ app.innerHTML = `
   <footer class="site-footer page-shell">
     <a class="brand dark-brand" href="#top" aria-label="返回 MineClaw 首页"><img class="brand-mark" src="./brand/mineclaw-mark.svg" alt="" aria-hidden="true" /><span class="brand-copy"><strong>MineClaw</strong><small>VIRTUAL WORLD COMPANION</small></span></a>
     <p>让虚拟世界里，真正住进一个懂你的伙伴。</p>
-    <a class="footer-link" href="https://git.code.tencent.com/CloudBoy/MineClaw" target="_blank" rel="noreferrer">Git Repository ↗</a>
+    <a class="footer-link" href="https://github.com/Be1Human/MineClaw" target="_blank" rel="noreferrer">GitHub Repository ↗</a>
   </footer>
 `;
 
