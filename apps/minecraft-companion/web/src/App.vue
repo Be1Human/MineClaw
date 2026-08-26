@@ -147,7 +147,11 @@
 
         <!-- 真实 3D 感知（默认关闭·按需开启，避免重 WebGL 拖慢界面 BUG-WEBUI-05） -->
         <div v-if="currentWorldState && show3D" style="position:absolute; inset:0; z-index:1;">
-          <PerceptionScene3D :worldState="currentWorldState" />
+          <PerceptionScene3D
+            :worldState="currentWorldState"
+            :skinTexture="selectedSkinTexture"
+            :skinModel="selectedSkinModel"
+          />
         </div>
         <!-- 3D 开关 -->
         <div style="position:absolute; top:18px; right:18px; z-index:4;">

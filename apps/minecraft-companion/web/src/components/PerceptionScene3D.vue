@@ -127,10 +127,14 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PlayerObject } from 'skinview3d';
 import { chunkKeyOf, blockKey as bkey, takeDirtyChunks, selectEvictions } from '../lib/chunkGrid.js';
+import defaultSkin from '../assets/skins/07-lanyi.png';
 
 const props = defineProps({
   worldState: { type: Object, default: null },
+  skinTexture: { type: String, default: '' },
+  skinModel: { type: String, default: 'slim' },
 });
 
 const containerRef = ref(null);
@@ -161,6 +165,9 @@ const _frameMinMs = 1000 / TARGET_FPS;
 
 let entityMeshes = new Map();
 let botMesh = null;
+let botPlayer = null;
+let botSkinTexture = null;
+let botSkinLoadVersion = 0;
 let botDirectionMesh = null;
 let threatRings = [];
 
@@ -392,50 +399,18 @@ function initScene() {
 }
 
 function createBotMarker() {
-  // ── Bot 自身：MC 方块人风格（白+深蓝 · 干净利落 · 科技感）──
+  // ── Bot 自身：Profile 真实 MC 皮肤；纹理失败时回退唯一内置蓝衣 ──
   botMesh = new THREE.Group();
 
-  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1e40af, emissive: 0x1e40af, emissiveIntensity: 0.25 });
-  const headMat = new THREE.MeshPhongMaterial({ color: 0xf8fafc, emissive: 0xf8fafc, emissiveIntensity: 0.3 });
-  const armMat = new THREE.MeshPhongMaterial({ color: 0x1d4ed8, emissive: 0x1d4ed8, emissiveIntensity: 0.2 });
-  const legMat = new THREE.MeshPhongMaterial({ color: 0x1e3a5f, emissive: 0x1e3a5f, emissiveIntensity: 0.1 });
-
-  // 头 (0.55×0.55×0.55) — 稍大一些突出 AI 身份
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), headMat);
-  head.position.y = 1.58;
-  botMesh.add(head);
-
-  // 眼睛（两个小发光方块）
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-  const lEye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.05), eyeMat);
-  lEye.position.set(-0.12, 1.6, 0.28);
-  botMesh.add(lEye);
-  const rEye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.05), eyeMat);
-  rEye.position.set(0.12, 1.6, 0.28);
-  botMesh.add(rEye);
-
-  // 身体 (0.5×0.8×0.3)
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.3), bodyMat);
-  body.position.y = 1.0;
-  botMesh.add(body);
-
-  // 左臂
-  const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.25), armMat);
-  lArm.position.set(-0.35, 1.0, 0);
-  botMesh.add(lArm);
-  // 右臂
-  const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.25), armMat);
-  rArm.position.set(0.35, 1.0, 0);
-  botMesh.add(rArm);
-
-  // 左腿
-  const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.7, 0.25), legMat);
-  lLeg.position.set(-0.13, 0.35, 0);
-  botMesh.add(lLeg);
-  // 右腿
-  const rLeg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.7, 0.25), legMat);
-  rLeg.position.set(0.13, 0.35, 0);
-  botMesh.add(rLeg);
+  botPlayer = new PlayerObject();
+  botPlayer.name = 'botSkinPlayer';
+  botPlayer.backEquipment = null;
+  botPlayer.skin.visible = false;
+  // skinview3d 使用像素单位且模型原点在身体中心附近；缩放并抬高到脚底 y=0。
+  botPlayer.scale.setScalar(0.05);
+  botPlayer.position.y = 0.8125;
+  botMesh.add(botPlayer);
+  loadBotSkin();
 
   // 脚底发光环（双层）
   const innerRing = new THREE.Mesh(
@@ -465,6 +440,43 @@ function createBotMarker() {
   });
   botDirectionMesh = new THREE.Mesh(dirGeom, dirMat);
   scene.add(botDirectionMesh);
+}
+
+function applyBotSkinModel() {
+  if (!botPlayer) return;
+  botPlayer.skin.modelType = props.skinModel === 'slim' ? 'slim' : 'default';
+}
+
+function loadBotSkinSource(source, loadVersion, allowFallback) {
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    if (!botPlayer || loadVersion !== botSkinLoadVersion) return;
+    const nextTexture = new THREE.CanvasTexture(image);
+    nextTexture.magFilter = THREE.NearestFilter;
+    nextTexture.minFilter = THREE.NearestFilter;
+    nextTexture.generateMipmaps = false;
+    nextTexture.colorSpace = THREE.SRGBColorSpace;
+    nextTexture.needsUpdate = true;
+
+    const previousTexture = botSkinTexture;
+    botSkinTexture = nextTexture;
+    botPlayer.skin.map = nextTexture;
+    applyBotSkinModel();
+    botPlayer.skin.visible = true;
+    previousTexture?.dispose();
+  };
+  image.onerror = () => {
+    if (!botPlayer || loadVersion !== botSkinLoadVersion) return;
+    if (allowFallback) loadBotSkinSource(defaultSkin, loadVersion, false);
+  };
+  image.src = source;
+}
+
+function loadBotSkin() {
+  if (!botPlayer) return;
+  const loadVersion = ++botSkinLoadVersion;
+  loadBotSkinSource(props.skinTexture || defaultSkin, loadVersion, Boolean(props.skinTexture));
 }
 
 function updateScene(ws) {
@@ -1256,6 +1268,25 @@ function fmtTime(ts) {
 
 function cleanup() {
   if (animFrameId) cancelAnimationFrame(animFrameId);
+  botSkinLoadVersion++;
+  botSkinTexture?.dispose();
+  botSkinTexture = null;
+  if (botMesh) {
+    scene?.remove(botMesh);
+    botMesh.traverse(c => {
+      c.geometry?.dispose();
+      if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+      else c.material?.dispose();
+    });
+    botMesh = null;
+    botPlayer = null;
+  }
+  if (botDirectionMesh) {
+    scene?.remove(botDirectionMesh);
+    botDirectionMesh.geometry.dispose();
+    botDirectionMesh.material.dispose();
+    botDirectionMesh = null;
+  }
   for (const [, meshes] of chunkMeshes) {
     for (const m of meshes) { blockMeshGroup?.remove(m); m.dispose(); }
   }
@@ -1299,6 +1330,8 @@ watch(() => props.worldState, (ws) => {
   _lastSceneUpdateMs = now;
   updateScene(ws);
 }, { deep: false });
+watch(() => props.skinTexture, loadBotSkin);
+watch(() => props.skinModel, applyBotSkinModel);
 
 function handleBeforeUnload() { flushSave(); }
 
