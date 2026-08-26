@@ -166,12 +166,6 @@
           <div style="font-size:12.5px;">3D 感知较耗资源，已默认关闭 · 需要时点右上角开启</div>
         </div>
 
-        <!-- top buttons -->
-        <div style="position:absolute; top:18px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:3;">
-          <div style="display:flex; align-items:center; gap:7px; padding:9px 16px; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35); color:#7e836e; font-weight:700; font-size:13px; opacity:0.75; white-space:nowrap;"><span style="width:7px; height:7px; background:currentColor;"></span>跟随中</div>
-          <div style="padding:9px 16px; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35); color:#7e836e; font-weight:700; font-size:13px; opacity:0.75; white-space:nowrap;">重置视角</div>
-        </div>
-
         <!-- empty state -->
         <div v-if="!currentWorldState" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
           <div style="position:relative; width:140px; height:140px; display:flex; align-items:center; justify-content:center;">
@@ -186,20 +180,6 @@
           <div style="margin-top:16px; display:flex; align-items:center; gap:8px; padding:6px 13px; background:#15170f; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(0,0,0,0.4);">
             <span style="width:8px; height:8px; background:#e0a52f; box-shadow:1px 1px 0 rgba(0,0,0,0.4);"></span>
             <span style="font-family:var(--mc-font-mono); font-size:15px; color:#c9a25a; letter-spacing:0.05em;">SENSOR · STANDBY</span>
-          </div>
-        </div>
-
-        <!-- legend -->
-        <div style="position:absolute; right:20px; bottom:20px; width:256px; padding:13px; background:#22271a; border:2px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.4), 0 6px 0 rgba(0,0,0,0.4); z-index:3;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;">
-            <span style="width:13px; height:13px; background:#5d9c3c; border:2px solid #0c0e08;"></span>
-            <span style="font-family:var(--mc-font-pixel); font-size:9px; color:#cdd2c0; text-shadow:1px 1px 0 #0c0e08;">LEGEND · 图例</span>
-          </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 10px;">
-            <div v-for="(lg, i) in legend" :key="i" style="display:flex; align-items:center; gap:8px; min-width:0;">
-              <span :style="{ flex:'none', width:'14px', height:'14px', background: lg.c, border:'2px solid #0c0e08', boxShadow:'inset -2px -2px 0 rgba(0,0,0,0.25)' }"></span>
-              <span style="font-size:11px; color:#bcc0ab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ lg.t }}</span>
-            </div>
           </div>
         </div>
       </main>
@@ -457,13 +437,6 @@ const tabs = [
   { id: 'chat', name: '聊天' },
   { id: 'logs', name: '日志' },
 ];
-const legend = [
-  { c: '#5b8cff', t: 'Bot 自身' }, { c: '#ef4444', t: '敌对生物' }, { c: '#22c55e', t: '友好生物' },
-  { c: '#3b82f6', t: '玩家' }, { c: '#f59e0b', t: '掉落物' }, { c: '#8a8a8a', t: '固体方块(挡)' },
-  { c: '#c9cdbf', t: '可穿过方块' }, { c: '#dc2626', t: '危险方块' }, { c: '#16a34a', t: '资源方块' },
-  { c: '#14b8a6', t: '导航路径' },
-];
-
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
 
 function partnerStyle(p) {
