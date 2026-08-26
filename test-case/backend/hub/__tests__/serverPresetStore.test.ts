@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ServerPresetStore } from '../../../../apps/minecraft-companion/src/hub/serverPresetStore.js';
+import { ServerPresetStore, isSkinSyncEnabled, resolveSkinSyncMode } from '../../../../apps/minecraft-companion/src/hub/serverPresetStore.js';
 
 describe('ServerPresetStore', () => {
   let dir: string;
@@ -21,6 +21,7 @@ describe('ServerPresetStore', () => {
     assert.equal(list[0].host, '127.0.0.1');
     assert.equal(list[0].port, 25565);
     assert.equal(list[0].name, '本地训练服');
+    assert.equal(list[0].skinSync?.mode, 'skinsrestorer');
     assert.ok(existsSync(join(dir, 'server-presets.json')));
   });
 
@@ -55,20 +56,48 @@ describe('ServerPresetStore', () => {
     assert.equal(store.list().length, 0);
   });
 
-  test('旧服务器配置迁移为默认关闭皮肤同步', () => {
+  test('旧服务器配置缺 skinSync 时视为启用 SkinsRestorer', () => {
     writeFileSync(join(dir, 'server-presets.json'), JSON.stringify([{
       id: 'legacy', name: '旧服', host: 'example.test', port: 25565, createdAt: 1,
     }]), 'utf-8');
     const store = new ServerPresetStore(dir);
-    assert.deepEqual(store.get('legacy')?.skinSync, { mode: 'disabled' });
+    assert.deepEqual(store.get('legacy')?.skinSync, { mode: 'skinsrestorer' });
   });
 
-  test('update 持久化 SkinsRestorer 同步模式', () => {
+  test('磁盘上显式 disabled 的预设保持关闭', () => {
+    writeFileSync(join(dir, 'server-presets.json'), JSON.stringify([{
+      id: 'off', name: '关皮肤', host: 'example.test', port: 25565,
+      skinSync: { mode: 'disabled' }, createdAt: 1,
+    }]), 'utf-8');
+    const store = new ServerPresetStore(dir);
+    assert.deepEqual(store.get('off')?.skinSync, { mode: 'disabled' });
+  });
+
+  test('add 未传 skinSync 时默认启用', () => {
+    const store = new ServerPresetStore(dir);
+    const p = store.add({ name: '远程服', host: '1.2.3.4', port: 25565 });
+    assert.equal(p.skinSync?.mode, 'skinsrestorer');
+  });
+
+  test('update 持久化关闭皮肤同步', () => {
     const store = new ServerPresetStore(dir);
     const preset = store.list()[0]!;
-    const updated = store.update(preset.id, { skinSync: { mode: 'skinsrestorer' } });
-    assert.equal(updated?.skinSync?.mode, 'skinsrestorer');
+    const updated = store.update(preset.id, { skinSync: { mode: 'disabled' } });
+    assert.equal(updated?.skinSync?.mode, 'disabled');
     const reloaded = new ServerPresetStore(dir);
-    assert.equal(reloaded.get(preset.id)?.skinSync?.mode, 'skinsrestorer');
+    assert.equal(reloaded.get(preset.id)?.skinSync?.mode, 'disabled');
+  });
+});
+
+describe('resolveSkinSyncMode', () => {
+  test('只有显式 disabled 才关闭', () => {
+    assert.equal(resolveSkinSyncMode('disabled'), 'disabled');
+    assert.equal(resolveSkinSyncMode('skinsrestorer'), 'skinsrestorer');
+    assert.equal(resolveSkinSyncMode(undefined), 'skinsrestorer');
+    assert.equal(resolveSkinSyncMode('unknown'), 'skinsrestorer');
+    assert.equal(isSkinSyncEnabled(undefined), true);
+    assert.equal(isSkinSyncEnabled(null), true);
+    assert.equal(isSkinSyncEnabled({ skinSync: { mode: 'disabled' } }), false);
+    assert.equal(isSkinSyncEnabled({}), true);
   });
 });

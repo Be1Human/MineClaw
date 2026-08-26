@@ -18,6 +18,17 @@ export interface ServerPreset {
 
 export type ServerPresetInput = Omit<ServerPreset, 'id' | 'createdAt'>;
 
+export type SkinSyncMode = NonNullable<ServerPreset['skinSync']>['mode'];
+
+/** 缺省或未知值视为启用；只有显式 disabled 才关闭。 */
+export function resolveSkinSyncMode(mode: unknown): SkinSyncMode {
+  return mode === 'disabled' ? 'disabled' : 'skinsrestorer';
+}
+
+export function isSkinSyncEnabled(preset?: Pick<ServerPreset, 'skinSync'> | null): boolean {
+  return resolveSkinSyncMode(preset?.skinSync?.mode) !== 'disabled';
+}
+
 /** 内置默认预设：首次启动种入，本地训练服 */
 const DEFAULT_PRESET: Omit<ServerPreset, 'id' | 'createdAt'> = {
   name: '本地训练服',
@@ -25,7 +36,7 @@ const DEFAULT_PRESET: Omit<ServerPreset, 'id' | 'createdAt'> = {
   port: 25565,
   version: '1.21',
   auth: 'offline',
-  skinSync: { mode: 'disabled' },
+  skinSync: { mode: 'skinsrestorer' },
 };
 
 export class ServerPresetStore {
@@ -83,7 +94,7 @@ export class ServerPresetStore {
     return {
       ...data,
       skinSync: {
-        mode: data.skinSync?.mode === 'skinsrestorer' ? 'skinsrestorer' : 'disabled',
+        mode: resolveSkinSyncMode(data.skinSync?.mode),
       },
     };
   }

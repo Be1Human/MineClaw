@@ -83,4 +83,38 @@ describe('SkinSyncService', () => {
     if (result.state === 'ready') assert.equal(result.model, 'slim');
     assert.equal(calls, 0);
   });
+
+  test('无预设时仍准备签名纹理', async () => {
+    let calls = 0;
+    const textureUrl = 'https://textures.minecraft.net/texture/abcdef123456';
+    const request: typeof fetch = async () => {
+      calls++;
+      return new Response(JSON.stringify({ skin: { texture: { url: { skin: textureUrl } } } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const result = await new SkinSyncService(dir, request).prepare(profile());
+    assert.equal(result.state, 'ready');
+    if (result.state === 'ready') assert.equal(result.textureUrl, textureUrl);
+    assert.equal(calls, 1);
+  });
+
+  test('预设缺 skinSync 字段时仍准备签名纹理', async () => {
+    let calls = 0;
+    const textureUrl = 'https://textures.minecraft.net/texture/abcdef123456';
+    const request: typeof fetch = async () => {
+      calls++;
+      return new Response(JSON.stringify({ skin: { texture: { url: { skin: textureUrl } } } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const loosePreset: ServerPreset = {
+      id: 'server-1', name: '测试服', host: '127.0.0.1', port: 25565, auth: 'offline', createdAt: 1,
+    };
+    const result = await new SkinSyncService(dir, request).prepare(profile(), loosePreset);
+    assert.equal(result.state, 'ready');
+    assert.equal(calls, 1);
+  });
 });

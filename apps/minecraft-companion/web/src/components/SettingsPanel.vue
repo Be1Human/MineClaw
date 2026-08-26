@@ -185,7 +185,7 @@
         <div v-if="selectedServerPreset" class="provider-box">
           <div class="provider-title">{{ selectedServerPreset.name }}</div>
           <div>{{ selectedServerPreset.host }}:{{ selectedServerPreset.port }} · {{ selectedServerPreset.version || '自动版本' }} · {{ selectedServerPreset.auth === 'microsoft' ? '微软登录' : '离线模式' }}</div>
-          <div>游戏内皮肤：{{ selectedServerPreset.skinSync?.mode === 'skinsrestorer' ? 'SkinsRestorer 同步' : '未启用' }}</div>
+          <div>游戏内皮肤：{{ selectedServerPreset.skinSync?.mode === 'disabled' ? '未启用' : 'SkinsRestorer 同步' }}</div>
         </div>
         <div class="skin-sync-status" :class="skinSyncState">
           <div class="provider-title">游戏内皮肤</div>
@@ -213,7 +213,7 @@
               <button class="qa-btn danger" @click="deleteServerPreset(preset)">删除</button>
             </div>
           </div>
-          <div>{{ preset.version || '自动版本' }} · {{ preset.auth === 'microsoft' ? '微软登录' : '离线模式' }} · {{ preset.skinSync?.mode === 'skinsrestorer' ? '皮肤同步已启用' : '皮肤同步关闭' }}</div>
+          <div>{{ preset.version || '自动版本' }} · {{ preset.auth === 'microsoft' ? '微软登录' : '离线模式' }} · {{ preset.skinSync?.mode === 'disabled' ? '皮肤同步关闭' : '皮肤同步已启用' }}</div>
         </div>
         <div class="separator"></div>
         <div class="provider-title">{{ serverPresetForm.id ? '编辑服务器配置' : '新建服务器配置' }}</div>
@@ -228,7 +228,7 @@
           </div>
           <div class="form-field">
             <label>游戏内皮肤同步</label>
-            <select v-model="serverPresetForm.skinSyncMode"><option value="disabled">关闭</option><option value="skinsrestorer">SkinsRestorer</option></select>
+            <select v-model="serverPresetForm.skinSyncMode"><option value="skinsrestorer">SkinsRestorer</option><option value="disabled">关闭</option></select>
           </div>
         </div>
         <div v-if="serverPresetForm.skinSyncMode === 'skinsrestorer'" class="warn-box" style="margin-top:12px;">服务器必须安装 SkinsRestorer。同步时会把伙伴皮肤提交给 MineSkin，生成 Minecraft 客户端可验证的签名纹理。</div>
@@ -474,7 +474,7 @@ const desktopPet = reactive({ enabled: false, profileId: '', mode: 'fixed' });
 // FEAT-WEBUI-12 · 全局共享服务器预设
 const serverPresets = ref([]);
 const selectedPresetId = ref('');
-const serverPresetForm = reactive({ id: '', name: '', host: '', port: 25565, version: '1.21', auth: 'offline', skinSyncMode: 'disabled' });
+const serverPresetForm = reactive({ id: '', name: '', host: '', port: 25565, version: '1.21', auth: 'offline', skinSyncMode: 'skinsrestorer' });
 
 const profileNavItems = [
   { id: 'bot', icon: '🤖', label: '伙伴配置' },
@@ -916,7 +916,7 @@ function applyServerPreset(id) {
 }
 
 function startNewServerPreset() {
-  Object.assign(serverPresetForm, { id: '', name: '', host: '', port: 25565, version: '1.21', auth: 'offline', skinSyncMode: 'disabled' });
+  Object.assign(serverPresetForm, { id: '', name: '', host: '', port: 25565, version: '1.21', auth: 'offline', skinSyncMode: 'skinsrestorer' });
 }
 
 function editServerPreset(preset) {
@@ -927,7 +927,7 @@ function editServerPreset(preset) {
     port: preset.port,
     version: preset.version || '',
     auth: preset.auth || 'offline',
-    skinSyncMode: preset.skinSync?.mode || 'disabled',
+    skinSyncMode: preset.skinSync?.mode === 'disabled' ? 'disabled' : 'skinsrestorer',
   });
 }
 

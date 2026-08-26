@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotProfile } from './profileStore.js';
-import type { ServerPreset } from './serverPresetStore.js';
+import { isSkinSyncEnabled, type ServerPreset } from './serverPresetStore.js';
 
 export type SkinModel = 'classic' | 'slim';
 
@@ -53,11 +53,11 @@ export class SkinSyncService {
   }
 
   async prepare(profile: BotProfile, preset?: ServerPreset): Promise<PrepareSkinResult> {
-    if (!preset || preset.skinSync?.mode !== 'skinsrestorer') {
+    if (!isSkinSyncEnabled(preset)) {
       return {
         state: 'unsupported',
-        reasonCode: preset ? 'skin_sync_disabled' : 'server_preset_missing',
-        message: preset ? '该服务器没有启用游戏内皮肤同步' : '伙伴没有选择可管理的全局服务器配置',
+        reasonCode: 'skin_sync_disabled',
+        message: '该服务器没有启用游戏内皮肤同步',
       };
     }
     if (!profile.skinTexture) {

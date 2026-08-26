@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ProfileStore, toPublicBotProfile, type BotProfile } from './profileStore.js';
 import { LlmAgentConfigStore, type LlmAgentConfigInput, type LlmAgentConfigPatch } from './llmAgentConfigStore.js';
-import { ServerPresetStore } from './serverPresetStore.js';
+import { ServerPresetStore, resolveSkinSyncMode } from './serverPresetStore.js';
 import { DesktopPetConfigStore, type DesktopPetConfigInput } from './desktopPetConfigStore.js';
 import { BotManager } from './botManager.js';
 import { listCharacterTemplates, createCharacterTemplate } from '../character/templates.js';
@@ -365,7 +365,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       res.status(400).json({ error: 'name/host/port 必填，port 须为数字' });
       return;
     }
-    const mode = skinSync?.mode === 'skinsrestorer' ? 'skinsrestorer' : 'disabled';
+    const mode = resolveSkinSyncMode(skinSync?.mode);
     const preset = serverPresetStore.add({ name, host, port, version, auth, skinSync: { mode } });
     res.status(201).json(preset);
   });
@@ -376,7 +376,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       res.status(400).json({ error: 'name/host/port 必填，port 须为数字' });
       return;
     }
-    const mode = skinSync?.mode === 'skinsrestorer' ? 'skinsrestorer' : 'disabled';
+    const mode = resolveSkinSyncMode(skinSync?.mode);
     const preset = serverPresetStore.update(req.params.id, { name, host, port, version, auth, skinSync: { mode } });
     if (!preset) { res.status(404).json({ error: 'server preset not found' }); return; }
     const affected = profileStore.list().filter(profile => profile.server.presetId === preset.id);
