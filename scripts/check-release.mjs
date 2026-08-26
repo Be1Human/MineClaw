@@ -11,6 +11,7 @@ const allowedFixtureDatabase = 'test-case/fixtures/memory/chat-memory-testOwner.
 const blockedDirectoryNames = new Set([
   '.agentmem',
   '.claude',
+  '.clawpm',
   '.codex',
   '.cursor',
   '.run-logs',
@@ -22,6 +23,14 @@ const blockedDirectoryNames = new Set([
   'mc-server',
   'node_modules',
   'opensource'
+]);
+
+const blockedRootSegments = new Set([
+  '.clawpm',
+  'docs',
+  'local',
+  'private',
+  'runtime'
 ]);
 
 const blockedPathPrefixes = [
@@ -72,6 +81,7 @@ function toPosix(relativePath) {
 
 function forbiddenPath(relativePath) {
   const parts = relativePath.split('/');
+  if (blockedRootSegments.has(parts[0])) return true;
   if (parts.some((part) => blockedDirectoryNames.has(part))) return true;
   if (blockedPathPrefixes.some((prefix) => relativePath.startsWith(prefix))) return true;
 

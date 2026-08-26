@@ -9,5 +9,6 @@ Include a minimal reproduction, affected version or commit, impact, and any safe
 ## Repository Rules
 
 - API keys and server credentials belong only in untracked local environment files.
+- Internal task vaults and requirement/design documents are not part of this repository.
 - Minecraft worlds, player profiles, runtime databases, and operational logs are not accepted in pull requests.
 - Security-sensitive dependency or configuration changes require a maintainer review.

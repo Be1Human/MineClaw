@@ -1,3 +1,10 @@
+# Private workspace artifacts — never commit these to the public tree
+.clawpm/
+docs/
+private/
+local/
+runtime/
+
 # Dependencies
 node_modules/
 

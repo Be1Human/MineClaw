@@ -4,9 +4,24 @@ This file defines the public working rules for people and coding agents contribu
 
 ## Repository Boundary
 
-- This repository contains publishable source code, tests, benchmarks, and public templates.
-- Keep local configuration, credentials, Minecraft worlds, player data, server binaries, runtime databases, logs, caches, and agent memory outside version control.
-- Do not add a private environment repository as a submodule or hard-code its location. Public source must remain cloneable by itself.
+This repository is the public MineClaw source tree. It contains product code, tests, benchmarks, and public contributor guides only.
+
+**Allowed**
+
+- Application source under `apps/`
+- `test-case/` and `benchmark/`
+- Public templates such as `.env.example`
+- Public guides: `README.md`, this file, `CONTRIBUTING.md`, `SECURITY.md`, `.agents/`, and CI
+
+**Not allowed**
+
+- Task vaults (`.clawpm/`)
+- Internal requirement or design docs (`docs/` belongs in the private workspace, not here)
+- Real `.env` files, API keys, RCON passwords
+- Local Minecraft servers, worlds, `local/`, `runtime/`, or a private overlay repo
+- Runtime `data/`, logs, databases, agent memory, and caches
+
+Do not add a private environment repository as a submodule or hard-code its location. Public source must remain cloneable by itself. Never force-add ignored private paths.
 
 ## Architecture Rules
 
