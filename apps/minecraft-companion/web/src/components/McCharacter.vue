@@ -10,7 +10,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, FlyingAnimation } from 'skinview3d';
-import defaultSkin from '../assets/default-skin.png';
+import defaultSkin from '../assets/skins/07-lanyi.png';
 
 const props = defineProps({
   texture: { type: String, default: '' },

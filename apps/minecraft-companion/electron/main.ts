@@ -1,8 +1,8 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, Tray, Menu, ipcMain, shell, type NativeImage } from 'electron'
 import { join } from 'node:path'
-import { deflateSync } from 'node:zlib'
 import dotenv from 'dotenv'
 import { DesktopPetController } from './desktopPetController.js'
+import { loadAppIcon } from './appIcon.js'
 
 // ── dotenv ────────────────────────────────────────────────────────────────────
 dotenv.config({
@@ -10,42 +10,6 @@ dotenv.config({
     ? join(app.getPath('userData'), '.env')
     : join(process.cwd(), '.env'),
 })
-
-// ── 生成托盘图标 PNG（Node.js 内置 zlib，无额外依赖）────────────────────────
-function makeIconPng(r: number, g: number, b: number, size = 32): Buffer {
-  const raw = Buffer.alloc(size * (1 + size * 3))
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const o = y * (1 + size * 3) + 1 + x * 3
-      raw[o] = r; raw[o + 1] = g; raw[o + 2] = b
-    }
-  }
-  const compressed = deflateSync(raw)
-  const crc32 = (buf: Buffer): number => {
-    let c = 0xFFFFFFFF
-    for (const byte of buf) {
-      let n = ((c ^ byte) & 0xFF) >>> 0
-      for (let k = 0; k < 8; k++) n = (n & 1) ? 0xEDB88320 ^ (n >>> 1) : n >>> 1
-      c = (n ^ (c >>> 8)) >>> 0
-    }
-    return (c ^ 0xFFFFFFFF) >>> 0
-  }
-  const chunk = (name: string, data: Buffer): Buffer => {
-    const nb = Buffer.from(name, 'ascii')
-    const lb = Buffer.allocUnsafe(4); lb.writeUInt32BE(data.length)
-    const cb = Buffer.allocUnsafe(4); cb.writeUInt32BE(crc32(Buffer.concat([nb, data])))
-    return Buffer.concat([lb, nb, data, cb])
-  }
-  const ihdr = Buffer.allocUnsafe(13)
-  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4)
-  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0
-  return Buffer.concat([
-    Buffer.from('\x89PNG\r\n\x1a\n', 'binary'),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', compressed),
-    chunk('IEND', Buffer.alloc(0)),
-  ])
-}
 
 // ── 全局错误兜底（与 src/index.ts 保持一致）──────────────────────────────────
 let lastFatalAt = 0, fatalCount = 0
@@ -94,13 +58,14 @@ let mainWindow: BrowserWindow | null = null
 let desktopPetController: DesktopPetController | null = null
 let isQuitting = false
 
-function createWindow(): void {
+function createWindow(icon: NativeImage | null): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     title: 'MineClaw',
+    ...(icon ? { icon } : {}),
     frame: false, // 无边框：去系统标题栏/边框，顶栏由前端自定义可拖拽标题栏接管
     backgroundColor: '#15170f',
     webPreferences: {
@@ -144,10 +109,13 @@ function createWindow(): void {
 }
 
 // ── 托盘 ──────────────────────────────────────────────────────────────────────
-function createTray(): void {
+function createTray(icon: NativeImage | null): void {
   try {
-    const icon = nativeImage.createFromBuffer(makeIconPng(76, 175, 80))
-    const tray = new Tray(icon)
+    if (!icon) {
+      console.warn('[Electron] 无可用应用图标，跳过系统托盘创建（主窗口仍可运行）')
+      return
+    }
+    const tray = new Tray(icon.resize({ width: 32, height: 32, quality: 'best' }))
     tray.setToolTip('MineClaw')
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: '显示界面', click: () => mainWindow?.show() },
@@ -188,7 +156,8 @@ ipcMain.on('shell:openExternal', (_e, url: string) => {
 
 app.whenReady().then(async () => {
   await startBackend()
-  createWindow()
+  const icon = await loadAppIcon()
+  createWindow(icon)
   const hubUrl = 'http://127.0.0.1:' + (process.env['HUB_PORT'] ?? '3000')
   desktopPetController = new DesktopPetController(
     hubUrl,
@@ -196,7 +165,7 @@ app.whenReady().then(async () => {
     process.env['ELECTRON_RENDERER_URL'],
   )
   desktopPetController.start()
-  createTray()
+  createTray(icon)
 })
 
 app.on('window-all-closed', () => { /* 托盘保活，不退出 */ })

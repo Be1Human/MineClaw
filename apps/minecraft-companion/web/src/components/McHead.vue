@@ -10,7 +10,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue';
-import defaultSkin from '../assets/default-skin.png';
+import defaultSkin from '../assets/skins/07-lanyi.png';
 
 const props = defineProps({
   texture: { type: String, default: '' },

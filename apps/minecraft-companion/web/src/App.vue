@@ -7,12 +7,7 @@
       <div class="app-topbar" style="display:flex; align-items:center; gap:26px; height:60px; padding:0 22px; background:linear-gradient(180deg,#2c3422,#222a1a); border-bottom:3px solid #4f7d2e; -webkit-app-region:drag;">
         <!-- brand -->
         <div class="app-brand" style="display:flex; align-items:center; gap:12px;">
-          <div style="position:relative; width:30px; height:30px; border:2px solid #0c0e08; box-shadow:inset -3px -3px 0 rgba(0,0,0,0.3);">
-            <div style="position:absolute; inset:0; background:#7b5a3a;"></div>
-            <div style="position:absolute; top:0; left:0; right:0; height:13px; background:#5d9c3c; box-shadow:inset 0 -3px 0 rgba(0,0,0,0.18);"></div>
-            <div style="position:absolute; top:11px; left:3px; width:4px; height:4px; background:#7cc24e;"></div>
-            <div style="position:absolute; top:13px; right:5px; width:4px; height:4px; background:#7cc24e;"></div>
-          </div>
+          <img class="app-brand-logo" src="/brand/mineclaw-mark.svg" alt="" aria-hidden="true" />
           <span class="app-brand-name" style="font-family:var(--mc-font-pixel); font-size:14px; color:#f4f1e4; text-shadow:2px 2px 0 #1c2113; letter-spacing:0.02em;">MineClaw</span>
         </div>
 
@@ -603,7 +598,7 @@ const currentFullStatus = computed(() => {
 
 // FEAT-WEBUI-11 · 当前伙伴皮肤（空串→组件内走默认皮肤）
 const selectedSkinTexture = computed(() => selectedProfile.value?.skinTexture || '');
-const selectedSkinModel = computed(() => selectedProfile.value?.skinModel || 'classic');
+const selectedSkinModel = computed(() => selectedProfile.value?.skinModel || 'slim');
 
 async function saveSkin({ skinTexture, skinModel }) {
   if (!selectedProfile.value) return;
@@ -935,6 +930,7 @@ onMounted(() => { loadProfiles(); });
 </script>
 
 <style>
+.app-brand-logo { flex:none; width:38px; height:38px; object-fit:contain; }
 .global-settings-button { width:38px; height:34px; display:grid; place-items:center; border:2px solid #0d0f0a; background:#272d1d; color:#cdd2c0; box-shadow:inset 1px 1px 0 rgba(255,255,255,.06),inset -2px -2px 0 rgba(0,0,0,.35); cursor:pointer; font-size:18px; -webkit-app-region:no-drag; }
 .global-settings-button:hover,.global-settings-button.active { color:#fff; background:#4c7a2a; }
 .global-settings-layer { position:absolute; z-index:20; inset:66px 0 0; display:flex; min-width:0; min-height:0; background:#0c0e08; }
@@ -1066,6 +1062,7 @@ onMounted(() => { loadProfiles(); });
     overflow: hidden;
   }
   .app-brand { flex: 0 0 auto; gap: 8px !important; }
+  .app-brand-logo { width: 34px; height: 34px; }
   .app-brand-name { font-size: 12px !important; white-space: nowrap; }
   .app-header-spacer, .app-hub-status { display: none !important; }
 }

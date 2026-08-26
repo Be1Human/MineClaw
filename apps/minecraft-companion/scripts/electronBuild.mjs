@@ -36,6 +36,7 @@ function run(command, args) {
 
 async function main() {
   await probeNode();
+  await run(process.execPath, [join(appDir, 'scripts', 'brandAssets.mjs'), '--sync']);
   const tempRoot = await mkdtemp(join(tmpdir(), 'mineclaw-electron-build-'));
   const backupBinding = join(tempRoot, 'better_sqlite3.node');
   await copyFile(defaultBindingPath, backupBinding);

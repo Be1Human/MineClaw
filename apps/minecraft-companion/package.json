@@ -38,6 +38,8 @@
     "benchmark": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/runner.ts",
     "benchmark:smoke": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs ../../benchmark/engineering/runner.ts --profile smoke",
     "test:benchmark": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test ../../test-case/benchmark-framework/engineering/**/*.test.ts",
+    "brand:sync": "node scripts/brandAssets.mjs --sync",
+    "brand:check": "node scripts/brandAssets.mjs --check",
     "electron:native:prepare": "node scripts/electronNative.mjs --prepare",
     "electron:native:check": "node scripts/electronNative.mjs --check",
     "test:electron-startup": "node --test ../../test-case/integration/scripts/electronStartupContract.test.mjs",
@@ -82,10 +84,17 @@
       "node_modules/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "brand/mineclaw-mark.png"
+      }
+    ],
     "asarUnpack": [
       "node_modules/better-sqlite3/**"
     ],
     "win": {
+      "icon": "build/icon.png",
       "target": [
         {
           "target": "nsis",

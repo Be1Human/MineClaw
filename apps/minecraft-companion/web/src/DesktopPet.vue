@@ -4,7 +4,7 @@
       <DesktopPet3D
         v-if="profile"
         :texture="profile.skinTexture || ''"
-        :model="profile.skinModel || 'classic'"
+        :model="profile.skinModel || 'slim'"
         :animation="state.animation"
         :facing="state.facing"
       />

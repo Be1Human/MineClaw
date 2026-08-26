@@ -75,11 +75,12 @@
 import { ref, onMounted, watch } from 'vue';
 import { loadSkinToCanvas, inferModelType } from 'skinview-utils';
 import McCharacter from './McCharacter.vue';
-import defaultSkin from '../assets/default-skin.png';
+import McHead from './McHead.vue';
+import defaultSkin from '../assets/skins/07-lanyi.png';
 
 const props = defineProps({
   texture: { type: String, default: '' },
-  initModel: { type: String, default: 'classic' },
+  initModel: { type: String, default: 'slim' },
 });
 const emit = defineEmits(['save']);
 
@@ -103,7 +104,7 @@ const palette = ['#e2b48c','#4a3426','#5c9c3c','#3c4870','#3a322e','#d8503c','#e
 
 // 原创预设皮肤（自带·可直接套用）
 const presetMods = import.meta.glob('../assets/skins/*.png', { eager: true, query: '?url', import: 'default' });
-const presetNames = { '01-forest': '森林冒险', '02-ocean': '海蓝旅者', '03-ember': '烈焰战士', '04-ninja': '暗夜忍者', '05-knight': '黄金骑士', '06-sakura': '粉樱少女' };
+const presetNames = { '07-lanyi': '蓝衣' };
 const presets = Object.entries(presetMods)
   .sort((a, b) => a[0].localeCompare(b[0]))
   .map(([path, url]) => {
@@ -112,7 +113,7 @@ const presets = Object.entries(presetMods)
   });
 
 function usePreset(p) {
-  model.value = 'classic';
+  model.value = 'slim';
   hint.value = '已载入预设：' + p.name + '（记得保存）';
   loadInto(p.url);
 }

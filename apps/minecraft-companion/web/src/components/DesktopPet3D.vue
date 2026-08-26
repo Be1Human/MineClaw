@@ -3,8 +3,8 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AmbientLight, CanvasTexture, Clock, ColorManagement, NearestFilter, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { IdleAnimation, PlayerObject, WalkingAnimation } from 'skinview3d';
-import defaultSkin from '../assets/default-skin.png';
-const props = defineProps({ texture:{type:String,default:''}, model:{type:String,default:'classic'}, animation:{type:String,default:'idle'}, facing:{type:String,default:'right'} });
+import defaultSkin from '../assets/skins/07-lanyi.png';
+const props = defineProps({ texture:{type:String,default:''}, model:{type:String,default:'slim'}, animation:{type:String,default:'idle'}, facing:{type:String,default:'right'} });
 const canvas=ref(null); let renderer,player,texture,frame,activeAnimation; const clock=new Clock();
 function setAnimation(){
   player?.resetJoints();
