@@ -91,29 +91,6 @@
       </div>
     </div>
 
-    <!-- HUD: 右下角 - 图例 -->
-    <div class="hud hud-bottom-right">
-      <div class="hud-title">图例</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#5d9c3c"></span>Bot 自身</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#d8503c"></span>敌对生物</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#5d9c3c"></span>友好生物</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#3b82f6"></span>玩家</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#e0a52f"></span>掉落物</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#6b6f5e"></span>固体方块（挡）</div>
-      <div class="legend-item"><span class="legend-swatch legend-swatch-passable" style="background:#7e836e"></span>可穿过方块（门/地毯/植被等）</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#b33b2a"></span>危险方块</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#4c7a2a"></span>资源方块</div>
-      <div class="legend-item"><span class="legend-swatch" style="background:#00e5ff"></span>导航路径</div>
-    </div>
-
-    <!-- HUD: 顶部中央 - 控制栏 -->
-    <div class="hud hud-top-center">
-      <button class="ctrl-btn" :class="{ active: followBot }" @click="followBot = !followBot">
-        {{ followBot ? '跟随中' : '自由视角' }}
-      </button>
-      <button class="ctrl-btn" @click="resetCamera">重置视角</button>
-    </div>
-
     <!-- 无数据状态 -->
     <div class="no-data-overlay" v-if="!worldState">
       <div class="no-data-icon">&#128065;</div>
@@ -135,11 +112,12 @@ const props = defineProps({
   worldState: { type: Object, default: null },
   skinTexture: { type: String, default: '' },
   skinModel: { type: String, default: 'slim' },
+  followBot: { type: Boolean, default: true },
 });
+const emit = defineEmits(['update:followBot']);
 
 const containerRef = ref(null);
 const canvasRef = ref(null);
-const followBot = ref(true);
 const totalBlocks = ref(0);
 
 const isGlobalPlan = computed(() => {
@@ -504,7 +482,7 @@ function updateScene(ws) {
   updateThreats(ws.threats, ws.entities);
   updateNavigation(ws.navigation);
 
-  if (followBot.value) {
+  if (props.followBot) {
     const botCenter = new THREE.Vector3(bp.x, bp.y + 1, bp.z);
     if (firstUpdate) {
       camera.position.set(bp.x + 18, bp.y + 22, bp.z + 18);
@@ -1224,8 +1202,10 @@ function resetCamera() {
   camera.position.set(botWorldPos.x + 18, botWorldPos.y + 22, botWorldPos.z + 18);
   controls.target.set(botWorldPos.x, botWorldPos.y + 1, botWorldPos.z);
   controls.update();
-  followBot.value = true;
+  emit('update:followBot', true);
 }
+
+defineExpose({ resetCamera });
 
 function fmtPos(pos) {
   if (!pos) return '---';
@@ -1429,8 +1409,6 @@ onUnmounted(() => {
 .hud-top-left { top: 12px; left: 12px; min-width: 200px; }
 .hud-top-right { top: 12px; right: 12px; min-width: 140px; }
 .hud-bottom-left { bottom: 12px; left: 12px; max-width: 300px; }
-.hud-bottom-right { bottom: 12px; right: 12px; }
-.hud-top-center { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px 10px; }
 
 .threat-title { color: #d8503c !important; border-bottom-color: rgba(248, 81, 73, 0.3) !important; }
 .threat-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
@@ -1440,17 +1418,6 @@ onUnmounted(() => {
 .severity-medium .threat-severity { background: #e0a52f; color: #0c0e08; }
 .severity-low .threat-severity { background: #6b6f5e; color: #e7e3d4; }
 .threat-desc { color: #cdd2c0; }
-
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #7e836e; margin-bottom: 2px; }
-.legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-.legend-swatch-passable { opacity: 0.4; outline: 1px dashed #7e836e; outline-offset: 1px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2); }
-
-.ctrl-btn {
-  padding: 4px 12px; border-radius: 6px; border: 1px solid #3a4030;
-  background: rgba(33, 38, 45, 0.9); color: #cdd2c0; font-size: 12px; cursor: pointer; transition: all 0.15s;
-}
-.ctrl-btn:hover { background: #3a4030; color: #e7e3d4; }
-.ctrl-btn.active { background: rgba(31, 111, 235, 0.2); border-color: #5d9c3c; color: #7cc24e; }
 
 .no-data-overlay {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;

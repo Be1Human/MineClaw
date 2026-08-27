@@ -148,9 +148,11 @@
         <!-- 真实 3D 感知（默认关闭·按需开启，避免重 WebGL 拖慢界面 BUG-WEBUI-05） -->
         <div v-if="currentWorldState && show3D" style="position:absolute; inset:0; z-index:1;">
           <PerceptionScene3D
+            ref="scene3dRef"
             :worldState="currentWorldState"
             :skinTexture="selectedSkinTexture"
             :skinModel="selectedSkinModel"
+            v-model:followBot="followBot"
           />
         </div>
         <!-- 3D 开关 -->
@@ -164,6 +166,14 @@
           <div style="width:54px; height:54px; background:#2c3422; border:2px solid #0c0e08; box-shadow:inset -5px -5px 0 rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center; font-size:24px;">🧭</div>
           <div style="font-weight:700; font-size:14px; color:#cdd2c0;">{{ selectedProfile?.name }} 在线中</div>
           <div style="font-size:12.5px;">3D 感知较耗资源，已默认关闭 · 需要时点右上角开启</div>
+        </div>
+
+        <!-- 外层视角控件：接到 3D 场景 -->
+        <div v-if="currentWorldState && show3D" style="position:absolute; top:18px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:3;">
+          <button @click="followBot = !followBot" :style="followBtnStyle">
+            <span style="width:7px; height:7px; background:currentColor;"></span>{{ followBot ? '跟随中' : '自由视角' }}
+          </button>
+          <button @click="resetSceneCamera" :style="resetBtnStyle">重置视角</button>
         </div>
 
         <!-- empty state -->
@@ -180,6 +190,20 @@
           <div style="margin-top:16px; display:flex; align-items:center; gap:8px; padding:6px 13px; background:#15170f; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(0,0,0,0.4);">
             <span style="width:8px; height:8px; background:#e0a52f; box-shadow:1px 1px 0 rgba(0,0,0,0.4);"></span>
             <span style="font-family:var(--mc-font-mono); font-size:15px; color:#c9a25a; letter-spacing:0.05em;">SENSOR · STANDBY</span>
+          </div>
+        </div>
+
+        <!-- 外层图例 -->
+        <div style="position:absolute; right:20px; bottom:20px; width:256px; padding:13px; background:#22271a; border:2px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.4), 0 6px 0 rgba(0,0,0,0.4); z-index:3;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;">
+            <span style="width:13px; height:13px; background:#5d9c3c; border:2px solid #0c0e08;"></span>
+            <span style="font-family:var(--mc-font-pixel); font-size:9px; color:#cdd2c0; text-shadow:1px 1px 0 #0c0e08;">LEGEND · 图例</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 10px;">
+            <div v-for="(lg, i) in legend" :key="i" style="display:flex; align-items:center; gap:8px; min-width:0;">
+              <span :style="{ flex:'none', width:'14px', height:'14px', background: lg.c, border:'2px solid #0c0e08', boxShadow:'inset -2px -2px 0 rgba(0,0,0,0.25)' }"></span>
+              <span style="font-size:11px; color:#bcc0ab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ lg.t }}</span>
+            </div>
           </div>
         </div>
       </main>
@@ -437,6 +461,24 @@ const tabs = [
   { id: 'chat', name: '聊天' },
   { id: 'logs', name: '日志' },
 ];
+const legend = [
+  { c: '#5b8cff', t: 'Bot 自身' }, { c: '#ef4444', t: '敌对生物' }, { c: '#22c55e', t: '友好生物' },
+  { c: '#3b82f6', t: '玩家' }, { c: '#f59e0b', t: '掉落物' }, { c: '#8a8a8a', t: '固体方块(挡)' },
+  { c: '#c9cdbf', t: '可穿过方块' }, { c: '#dc2626', t: '危险方块' }, { c: '#16a34a', t: '资源方块' },
+  { c: '#14b8a6', t: '导航路径' },
+];
+const cameraChrome = {
+  display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px',
+  border: '2px solid #0d0f0a', fontWeight: 700, fontSize: '13px', whiteSpace: 'nowrap', cursor: 'pointer',
+  fontFamily: 'inherit', boxShadow: 'inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35)',
+};
+const followBtnStyle = computed(() => ({
+  ...cameraChrome,
+  background: followBot.value ? '#4c7a2a' : '#272d1d',
+  color: followBot.value ? '#fff' : '#cdd2c0',
+}));
+const resetBtnStyle = { ...cameraChrome, background: '#272d1d', color: '#cdd2c0' };
+
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
 
 function partnerStyle(p) {
@@ -529,9 +571,15 @@ const chatHistoryLoading = ref(false);
 const logs = ref([]);
 // BUG-WEBUI-05 · 3D 感知默认关闭（重 WebGL），按需开启，状态持久化
 const show3D = ref(false);
+const followBot = ref(true);
+const scene3dRef = ref(null);
 function toggle3D() {
   show3D.value = !show3D.value;
   try { localStorage.setItem('mc.show3D', show3D.value ? '1' : '0'); } catch {}
+}
+function resetSceneCamera() {
+  scene3dRef.value?.resetCamera();
+  followBot.value = true;
 }
 const messagesEl = ref(null);
 const logsEl = ref(null);
