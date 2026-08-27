@@ -357,7 +357,14 @@
 
         <!-- 未选中伙伴 -->
         <div v-else class="inspector-empty">
-          <div class="inspector-empty-mark"></div>
+          <img
+            class="inspector-empty-illustration"
+            src="/assets/formal-console/partner-empty-illustration.webp"
+            width="132"
+            height="132"
+            alt=""
+            aria-hidden="true"
+          />
           <strong>选择一个伙伴</strong>
           <span>在左侧挑一个伙伴，或点 + 创建</span>
         </div>
@@ -956,7 +963,7 @@ onMounted(() => { loadProfiles(); });
 </script>
 
 <style>
-.mineclaw-app { position:relative; display:flex; height:100vh; min-height:100vh; flex-direction:column; overflow:hidden; background:radial-gradient(circle at 30% -20%,rgba(105,201,74,.07),transparent 34%),var(--mc-bg); color:var(--mc-text); font-family:var(--mc-font-body); }
+.mineclaw-app { position:relative; display:flex; height:100vh; min-height:100vh; flex-direction:column; overflow:hidden; background-color:var(--mc-bg); background-image:radial-gradient(circle at 30% -20%,rgba(105,201,74,.08),transparent 34%),linear-gradient(rgba(9,13,11,.78),rgba(9,13,11,.78)),url('/assets/formal-console/console-ambient-bg.webp'); background-position:center; background-size:cover; color:var(--mc-text); font-family:var(--mc-font-body); }
 .app-ambient { position:absolute; z-index:0; inset:0; pointer-events:none; background:radial-gradient(ellipse 80% 70% at 50% 48%,transparent 45%,rgba(0,0,0,.28)); }
 .app-header { position:relative; z-index:5; flex:none; }
 .app-topbar { display:flex; align-items:center; gap:12px; height:60px; padding:0 18px; background:rgba(13,19,15,.96); border-bottom:1px solid var(--mc-border-strong); box-shadow:0 8px 32px rgba(0,0,0,.12); -webkit-app-region:drag; }
@@ -1011,7 +1018,7 @@ onMounted(() => { loadProfiles(); });
 .partner-workspace-panel { grid-column:2 / 4; grid-row:2; min-width:0; min-height:0; overflow:hidden; }
 .play-stage { grid-column:2; grid-row:2; }
 .play-control { grid-column:3; grid-row:2; }
-.perception-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background:#080c09; border-right:1px solid var(--mc-border); }
+.perception-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background-color:#080c09; background-image:linear-gradient(rgba(5,9,6,.34),rgba(5,9,6,.5)),url('/assets/formal-console/perception-field-bg.webp'); background-position:center; background-size:cover; border-right:1px solid var(--mc-border); }
 .perception-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(151,184,151,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(151,184,151,.035) 1px,transparent 1px); background-size:32px 32px; }
 .perception-grid::before { position:absolute; inset:0; background-image:linear-gradient(rgba(105,201,74,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(105,201,74,.04) 1px,transparent 1px); background-size:160px 160px; content:''; }
 .perception-vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 62% 66% at 50% 48%,rgba(25,45,29,.14),transparent 65%),linear-gradient(180deg,rgba(4,8,5,.08),rgba(4,8,5,.3)); }
@@ -1092,7 +1099,7 @@ onMounted(() => { loadProfiles(); });
 .inspector-content { display:flex; min-height:0; flex:1; flex-direction:column; gap:12px; padding-top:12px; }
 .interaction-panel { display:flex; min-height:0; flex:1; flex-direction:column; gap:10px; }
 .interaction-summary { display:grid; grid-template-columns:130px minmax(0,1fr); flex:0 0 auto; gap:12px; padding:8px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
-.interaction-avatar { position:relative; min-height:126px; overflow:hidden; background:linear-gradient(135deg,rgba(105,201,74,.035),transparent),repeating-conic-gradient(#101611 0% 25%,#141b16 0% 50%) 0 0 / 18px 18px; border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
+.interaction-avatar { position:relative; min-height:126px; overflow:hidden; background-color:#101611; background-image:linear-gradient(rgba(7,12,8,.18),rgba(7,12,8,.26)),url('/assets/formal-console/character-display-bg.webp'); background-position:center 58%; background-size:cover; border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
 .interaction-status-badge { position:absolute; z-index:2; top:7px; right:7px; display:flex; align-items:center; gap:5px; padding:4px 6px; background:rgba(7,11,8,.84); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font:10px var(--mc-font-mono); letter-spacing:.06em; }
 .interaction-status-badge > span:first-child { border-radius:50%; }
 .interaction-character { height:126px; }
@@ -1133,7 +1140,7 @@ onMounted(() => { loadProfiles(); });
 .inspector-log-row .level-warn { color:var(--mc-warning); }
 .inspector-log-row p { margin:0; color:var(--mc-text-secondary); word-break:break-word; }
 .inspector-empty { display:flex; min-height:0; flex:1; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:var(--mc-text-muted); text-align:center; }
-.inspector-empty-mark { width:42px; height:42px; background:radial-gradient(circle,var(--mc-accent) 0 16%,transparent 17%),radial-gradient(circle,transparent 0 48%,rgba(105,201,74,.28) 49% 51%,transparent 52%); border-radius:50%; }
+.inspector-empty-illustration { width:132px; height:132px; object-fit:contain; filter:drop-shadow(0 12px 28px rgba(39,104,30,.24)); }
 .inspector-empty strong { color:var(--mc-text-secondary); font-size:14px; }
 .inspector-empty span { font-size:11px; }
 

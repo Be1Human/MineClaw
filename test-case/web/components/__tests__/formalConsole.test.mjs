@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 
 const appSource = readFileSync(
   new URL('../../../../apps/minecraft-companion/web/src/App.vue', import.meta.url),
@@ -10,6 +10,38 @@ const themeSource = readFileSync(
   new URL('../../../../apps/minecraft-companion/web/src/theme-mc.css', import.meta.url),
   'utf8',
 );
+
+const formalAssetPaths = {
+  ambient: '../../../../apps/minecraft-companion/web/public/assets/formal-console/console-ambient-bg.webp',
+  perception: '../../../../apps/minecraft-companion/web/public/assets/formal-console/perception-field-bg.webp',
+  character: '../../../../apps/minecraft-companion/web/public/assets/formal-console/character-display-bg.webp',
+  empty: '../../../../apps/minecraft-companion/web/public/assets/formal-console/partner-empty-illustration.webp',
+};
+
+function readWebpMeta(relativePath) {
+  const url = new URL(relativePath, import.meta.url);
+  const bytes = readFileSync(url);
+  assert.equal(bytes.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(bytes.subarray(8, 12).toString('ascii'), 'WEBP');
+
+  const chunk = bytes.subarray(12, 16).toString('ascii');
+  if (chunk === 'VP8X') {
+    return {
+      width: 1 + bytes.readUIntLE(24, 3),
+      height: 1 + bytes.readUIntLE(27, 3),
+      alpha: Boolean(bytes[20] & 0x10),
+      size: statSync(url).size,
+    };
+  }
+  assert.equal(chunk, 'VP8 ');
+  assert.equal(bytes.subarray(23, 26).toString('hex'), '9d012a');
+  return {
+    width: bytes.readUInt16LE(26) & 0x3fff,
+    height: bytes.readUInt16LE(28) & 0x3fff,
+    alpha: false,
+    size: statSync(url).size,
+  };
+}
 
 test('正式版控制台使用语义设计变量与三栏应用骨架', () => {
   assert.match(themeSource, /--mc-bg:\s*#090d0b/);
@@ -61,4 +93,28 @@ test('窄屏折叠感知舞台并为伙伴交流保留完整主列', () => {
   assert.match(appSource, /@media \(max-width:640px\)/);
   assert.match(appSource, /grid-template-columns:64px minmax\(0,1fr\)/);
   assert.match(appSource, /\.workspace-partner \{ display:none; \}/);
+});
+
+test('正式版位图素材全部接入真实消费点', () => {
+  assert.match(appSource, /url\('\/assets\/formal-console\/console-ambient-bg\.webp'\)/);
+  assert.match(appSource, /url\('\/assets\/formal-console\/perception-field-bg\.webp'\)/);
+  assert.match(appSource, /url\('\/assets\/formal-console\/character-display-bg\.webp'\)/);
+  assert.match(appSource, /src="\/assets\/formal-console\/partner-empty-illustration\.webp"/);
+  assert.doesNotMatch(appSource, /inspector-empty-mark/);
+});
+
+test('正式版位图尺寸、透明通道和体积符合运行时预算', () => {
+  const ambient = readWebpMeta(formalAssetPaths.ambient);
+  const perception = readWebpMeta(formalAssetPaths.perception);
+  const character = readWebpMeta(formalAssetPaths.character);
+  const empty = readWebpMeta(formalAssetPaths.empty);
+
+  assert.deepEqual([ambient.width, ambient.height, ambient.alpha], [1600, 900, false]);
+  assert.deepEqual([perception.width, perception.height, perception.alpha], [1600, 900, false]);
+  assert.deepEqual([character.width, character.height, character.alpha], [768, 768, false]);
+  assert.deepEqual([empty.width, empty.height, empty.alpha], [640, 640, true]);
+  assert.ok(
+    ambient.size + perception.size + character.size + empty.size <= 1.5 * 1024 * 1024,
+    '正式版位图总大小必须不超过 1.5 MB',
+  );
 });
