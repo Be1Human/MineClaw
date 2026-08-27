@@ -65,12 +65,16 @@ test('正常态展示汇总、根任务、阶段、进度和子步骤', async ()
   assert.doesNotMatch(ready, />旧任务</);
 });
 
-test('控制标签收敛调试入口并保持唯一任务入口', () => {
+test('控制标签合并状态与聊天并保持唯一任务入口', () => {
   const appSource = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/App.vue', import.meta.url), 'utf8');
-  const statusIndex = appSource.indexOf("{ id: 'status', name: '状态' }");
+  const statusIndex = appSource.indexOf("{ id: 'status', name: '互动' }");
   const tasksIndex = appSource.indexOf("{ id: 'tasks', name: '任务栏' }");
   const inventoryIndex = appSource.indexOf("{ id: 'inventory', name: '背包' }");
   assert.ok(statusIndex < tasksIndex && tasksIndex < inventoryIndex);
+  assert.doesNotMatch(appSource, /\{ id: 'chat', name: '聊天' \}/);
+  assert.doesNotMatch(appSource, /ctrlTab === 'chat'/);
+  assert.match(appSource, /class="interaction-panel"/);
+  assert.match(appSource, /<ChatBox :disabled="!brainReady" @send="sendChat"/);
   assert.doesNotMatch(appSource, /\{ id: 'runtime', name: '运行时' \}/);
   assert.match(appSource, /\{ id: 'trace', name: '轨迹' \}/);
   assert.doesNotMatch(appSource, /\{ id: 'agent', name: '轨迹' \}/);

@@ -268,29 +268,63 @@
         <!-- content -->
         <div style="margin-top:16px; display:flex; flex-direction:column; gap:16px; flex:1; min-height:0;">
 
-          <!-- 状态 -->
-          <template v-if="ctrlTab === 'status'">
+          <!-- 互动：状态与聊天合并 -->
+          <div v-if="ctrlTab === 'status'" class="interaction-panel">
             <AlertBanner :alerts="v2Alerts" />
-            <div>
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <span style="width:12px; height:16px; background:#5d9c3c; border:2px solid #0c0e08;"></span>
-                  <span style="font-weight:900; font-size:14px; color:#e7e3d4;">角色形象</span>
-                </div>
-                <button @click="showSkinEditor = true" style="padding:6px 12px; cursor:pointer; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06); color:#cdd2c0; font-weight:700; font-size:12px;">编辑皮肤</button>
-              </div>
-              <div style="position:relative; background:repeating-conic-gradient(#16190f 0% 25%, #1c2013 0% 50%) 0 0 / 28px 28px, #1a1d12; border:2px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); padding:28px 0 24px; overflow:hidden;">
-                <div style="position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:6px; padding:4px 9px; background:#11140c; border:2px solid #0c0e08;">
+            <div class="interaction-summary">
+              <div class="interaction-avatar">
+                <div class="interaction-status-badge">
                   <span :style="{ width:'7px', height:'7px', background: statusDot(selectedProfile.id) }"></span>
-                  <span style="font-family:var(--mc-font-pixel); font-size:7px; color:#7e836e;">{{ (currentFullStatus?.status || 'offline').toUpperCase() }}</span>
+                  <span>{{ (currentFullStatus?.status || 'offline').toUpperCase() }}</span>
                 </div>
-                <div style="height:300px;">
+                <div class="interaction-character">
                   <McCharacter :texture="selectedSkinTexture" :model="selectedSkinModel" animation="idle" :autoRotate="false" />
                 </div>
               </div>
+              <div class="interaction-summary-copy">
+                <div>
+                  <div class="interaction-summary-title">当前互动</div>
+                  <div class="interaction-summary-state">{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</div>
+                </div>
+                <div class="interaction-summary-detail">
+                  <span>动作</span>
+                  <strong>{{ currentFullStatus?.currentBehavior || '空闲' }}</strong>
+                </div>
+                <div class="interaction-summary-detail">
+                  <span>活动</span>
+                  <strong>{{ currentFullStatus?.lastActivity || '暂无最近活动' }}</strong>
+                </div>
+                <button class="interaction-skin-button" @click="showSkinEditor = true">编辑皮肤</button>
+              </div>
             </div>
 
-          </template>
+            <div class="chat-panel interaction-chat">
+              <div ref="messagesEl" class="interaction-messages">
+                <div v-if="chatHistoryLoading" style="text-align:center; color:#7e836e; font-size:12.5px; padding:24px 0;">正在加载最近聊天记录…</div>
+                <div v-else-if="messages.length === 0" style="text-align:center; color:#7e836e; font-size:12.5px; padding:24px 0;">还没有聊天记录，直接和伙伴说句话吧</div>
+                <div v-for="(msg, i) in messages" :key="i" :style="{ display:'flex', flexDirection:'column', alignItems: msg.self ? 'flex-end' : 'flex-start' }">
+                  <div v-if="msg.thinking" @click="msg.thinkExpanded = !msg.thinkExpanded"
+                    style="max-width:88%; margin-bottom:3px; padding:5px 10px; background:#171a26; border:2px dashed #4a4060; opacity:0.7; cursor:pointer; font-style:italic;">
+                    <McIcon name="thinking" :size="10" style="color:#a78bd0; margin-right:6px;" />
+                    <span style="font-size:9px; color:#6e7681;">{{ msg.thinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
+                    <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: msg.thinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: msg.thinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: msg.thinkExpanded ? 'visible':'hidden' }">{{ msg.thinking }}</div>
+                  </div>
+                  <div :style="{ maxWidth:'88%', padding:'7px 12px', background: msg.self ? '#243016' : '#20241a', border:'2px solid #0c0e08', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.05)' }">
+                    <div :style="{ fontSize:'10px', marginBottom:'2px', color: msg.self ? '#9fe27a' : '#8aa86a', fontWeight:700 }">{{ msg.sender }}</div>
+                    <div style="font-size:13px; color:#e7e3d4; line-height:1.5; white-space:pre-wrap; word-break:break-word;">{{ msg.message }}</div>
+                  </div>
+                  <div style="font-size:10px; color:#6b6f5e; margin-top:2px;">{{ formatTime(msg.timestamp) }}</div>
+                </div>
+              </div>
+              <div v-if="liveThinking" @click="liveThinkExpanded = !liveThinkExpanded"
+                style="margin:6px 0; padding:5px 10px; background:#14160f; border:2px solid #2f2a40; opacity:0.65; cursor:pointer; font-style:italic;">
+                <span style="display:inline-flex; align-items:center; gap:5px; font-size:10px; color:#a78bd0; margin-right:6px;"><McIcon name="thinking" :size="10" />正在想</span>
+                <span style="font-size:9px; color:#6e7681;">{{ liveThinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
+                <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: liveThinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: liveThinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: liveThinkExpanded ? 'visible':'hidden' }">{{ liveThinking }}</div>
+              </div>
+              <ChatBox :disabled="!brainReady" @send="sendChat" />
+            </div>
+          </div>
 
           <!-- 任务栏 -->
           <TaskBarPanel
@@ -305,34 +339,6 @@
           <!-- 背包 -->
           <div v-else-if="ctrlTab === 'inventory'">
             <InventoryPanel :worldState="currentWorldState" />
-          </div>
-
-          <!-- 聊天 -->
-          <div v-else-if="ctrlTab === 'chat'" class="chat-panel" style="display:flex; flex-direction:column; flex:1; min-height:340px;">
-            <div ref="messagesEl" style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:4px;">
-              <div v-if="chatHistoryLoading" style="text-align:center; color:#7e836e; font-size:12.5px; padding:24px 0;">正在加载最近聊天记录…</div>
-              <div v-else-if="messages.length === 0" style="text-align:center; color:#7e836e; font-size:12.5px; padding:24px 0;">还没有聊天记录，直接和伙伴说句话吧</div>
-              <div v-for="(msg, i) in messages" :key="i" :style="{ display:'flex', flexDirection:'column', alignItems: msg.self ? 'flex-end' : 'flex-start' }">
-                <div v-if="msg.thinking" @click="msg.thinkExpanded = !msg.thinkExpanded"
-                  style="max-width:88%; margin-bottom:3px; padding:5px 10px; background:#171a26; border:2px dashed #4a4060; opacity:0.7; cursor:pointer; font-style:italic;">
-                  <McIcon name="thinking" :size="10" style="color:#a78bd0; margin-right:6px;" />
-                  <span style="font-size:9px; color:#6e7681;">{{ msg.thinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
-                  <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: msg.thinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: msg.thinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: msg.thinkExpanded ? 'visible':'hidden' }">{{ msg.thinking }}</div>
-                </div>
-                <div :style="{ maxWidth:'88%', padding:'7px 12px', background: msg.self ? '#243016' : '#20241a', border:'2px solid #0c0e08', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.05)' }">
-                  <div :style="{ fontSize:'10px', marginBottom:'2px', color: msg.self ? '#9fe27a' : '#8aa86a', fontWeight:700 }">{{ msg.sender }}</div>
-                  <div style="font-size:13px; color:#e7e3d4; line-height:1.5; white-space:pre-wrap; word-break:break-word;">{{ msg.message }}</div>
-                </div>
-                <div style="font-size:10px; color:#6b6f5e; margin-top:2px;">{{ formatTime(msg.timestamp) }}</div>
-              </div>
-            </div>
-            <div v-if="liveThinking" @click="liveThinkExpanded = !liveThinkExpanded"
-              style="margin:6px 0; padding:5px 10px; background:#14160f; border:2px solid #2f2a40; opacity:0.65; cursor:pointer; font-style:italic;">
-              <span style="display:inline-flex; align-items:center; gap:5px; font-size:10px; color:#a78bd0; margin-right:6px;"><McIcon name="thinking" :size="10" />正在想</span>
-              <span style="font-size:9px; color:#6e7681;">{{ liveThinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
-              <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: liveThinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: liveThinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: liveThinkExpanded ? 'visible':'hidden' }">{{ liveThinking }}</div>
-            </div>
-            <ChatBox :disabled="!brainReady" @send="sendChat" />
           </div>
 
           <!-- 日志 -->
@@ -407,6 +413,7 @@ import McHead from './components/McHead.vue';
 import McIcon from './components/icons/McIcon.vue';
 import SkinEditor from './components/SkinEditor.vue';
 import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation.js';
+import { CONTROL_TAB_IDS, migrateControlTabs, normalizeControlTab } from './lib/controlNavigation.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 
 // 无边框窗口控制（仅 Electron 下显示自定义标题栏按钮）
@@ -428,10 +435,9 @@ const workspaceTabs = [
   { id: 'settings', name: '设置' },
 ];
 const tabs = [
-  { id: 'status', name: '状态' },
+  { id: 'status', name: '互动' },
   { id: 'tasks', name: '任务栏' },
   { id: 'inventory', name: '背包' },
-  { id: 'chat', name: '聊天' },
   { id: 'logs', name: '日志' },
 ];
 const legend = [
@@ -491,7 +497,7 @@ const noProfileWorkspaceView = ref('play');
 const validWorkspaceViews = new Set(workspaceTabs.map((tab) => tab.id));
 const legacyWorkspaceViews = new Set([...validWorkspaceViews, 'memory']);
 const validBrainTabs = new Set(BRAIN_TAB_IDS);
-const validControlTabs = new Set(tabs.map((tab) => tab.id));
+const validControlTabs = new Set(CONTROL_TAB_IDS);
 
 function persistTabMap(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
@@ -574,7 +580,6 @@ function resetSceneCamera() {
 }
 const messagesEl = ref(null);
 const logsEl = ref(null);
-const unreadChat = ref(0);
 const activeBots = reactive(new Set());
 const botStatuses = reactive(new Map());
 const worldStates = reactive(new Map());
@@ -679,7 +684,6 @@ socket.on('bot:chat', (data) => {
       self: data.sender === (profile.characterCard?.character?.identity?.name || profile.name),
       thinking: data.thinking || '', turnId: data.turnId || '', thinkExpanded: false,
     });
-    if (ctrlTab.value !== 'chat') unreadChat.value++;
     scrollBottom(messagesEl);
   }
 });
@@ -744,8 +748,7 @@ watch(
 
 watch([workspaceView, ctrlTab], ([view, tab]) => {
   if (view === 'play' && tab === 'status') void refreshV2Alerts();
-  if (view !== 'play' || tab !== 'chat') return;
-  unreadChat.value = 0;
+  if (view !== 'play' || tab !== 'status') return;
   void scrollBottom(messagesEl);
 });
 
@@ -756,7 +759,6 @@ function selectProfile(p) {
   logs.value = [];
   liveThinking.value = '';
   agentLoopSteps.value = [];
-  unreadChat.value = 0;
   try { localStorage.setItem('mc.selectedProfileId', p?.id ?? ''); } catch {}
   void ensureBrainStarted(p?.id).then(() => loadChatHistory(p));
 }
@@ -829,7 +831,10 @@ async function loadProfiles() {
   try {
     workspaceViewsByProfile.value = readTabMap('mc.workspaceTabs.v1', legacyWorkspaceViews);
     brainTabsByProfile.value = readTabMap('mc.brainTabs.v1', validBrainTabs);
-    controlTabsByProfile.value = readTabMap('mc.controlTabs.v1', validControlTabs);
+    const storedControlTabs = JSON.parse(localStorage.getItem('mc.controlTabs.v1') || '{}');
+    const controlMigration = migrateControlTabs(storedControlTabs);
+    controlTabsByProfile.value = controlMigration.controlTabs;
+    if (controlMigration.changed) persistTabMap('mc.controlTabs.v1', controlTabsByProfile.value);
     // FEAT-WEBUI-16：旧顶层“记忆”迁入当前伙伴“大脑 -> 记忆”。
     const memoryMigration = migrateMemoryWorkspaceTabs(workspaceViewsByProfile.value, brainTabsByProfile.value);
     workspaceViewsByProfile.value = memoryMigration.workspaceTabs;
@@ -839,7 +844,7 @@ async function loadProfiles() {
       persistTabMap('mc.brainTabs.v1', brainTabsByProfile.value);
     }
     // FEAT-WEBUI-19：旧右侧“轨迹(agent)”迁移为伙伴一级工作区，避免保存值失效。
-    const legacyControlMap = JSON.parse(localStorage.getItem('mc.controlTabs.v1') || '{}');
+    const legacyControlMap = storedControlTabs;
     if (legacyControlMap && typeof legacyControlMap === 'object' && !Array.isArray(legacyControlMap)) {
       const migratedProfiles = Object.entries(legacyControlMap)
         .filter(([, value]) => value === 'agent')
@@ -865,8 +870,8 @@ async function loadProfiles() {
     if (selectedId && legacyTab === 'agent') {
       workspaceViewsByProfile.value = { ...workspaceViewsByProfile.value, [selectedId]: 'trace' };
       persistTabMap('mc.workspaceTabs.v1', workspaceViewsByProfile.value);
-    } else if (selectedId && validControlTabs.has(legacyTab) && !controlTabsByProfile.value[selectedId]) {
-      controlTabsByProfile.value = { ...controlTabsByProfile.value, [selectedId]: legacyTab };
+    } else if (selectedId && normalizeControlTab(legacyTab) && !controlTabsByProfile.value[selectedId]) {
+      controlTabsByProfile.value = { ...controlTabsByProfile.value, [selectedId]: normalizeControlTab(legacyTab) };
       persistTabMap('mc.controlTabs.v1', controlTabsByProfile.value);
     }
     localStorage.removeItem('mc.ctrlTab');
@@ -1052,6 +1057,68 @@ onMounted(() => { loadProfiles(); });
 }
 .play-stage { grid-column: 2; grid-row: 2; }
 .play-control { grid-column: 3; grid-row: 2; }
+.interaction-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+.interaction-summary {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 8px;
+  background: #15180f;
+  border: 2px solid #0c0e08;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.05);
+}
+.interaction-avatar {
+  position: relative;
+  min-height: 104px;
+  overflow: hidden;
+  background: repeating-conic-gradient(#16190f 0% 25%, #1c2013 0% 50%) 0 0 / 20px 20px, #1a1d12;
+  border: 2px solid #0c0e08;
+}
+.interaction-status-badge {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  background: #11140c;
+  border: 2px solid #0c0e08;
+  color: #7e836e;
+  font-family: var(--mc-font-pixel);
+  font-size: 6px;
+}
+.interaction-character { height: 104px; }
+.interaction-summary-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+.interaction-summary-title { color: #e7e3d4; font-size: 13px; font-weight: 900; }
+.interaction-summary-state { margin-top: 2px; color: #8ee06a; font-size: 11px; }
+.interaction-summary-detail { display: flex; min-width: 0; gap: 8px; font-size: 11px; }
+.interaction-summary-detail span { flex: 0 0 auto; color: #7e836e; }
+.interaction-summary-detail strong { overflow: hidden; color: #c4c8b6; text-overflow: ellipsis; white-space: nowrap; }
+.interaction-skin-button {
+  align-self: flex-start;
+  padding: 4px 9px;
+  cursor: pointer;
+  background: #272d1d;
+  border: 2px solid #0d0f0a;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.06);
+  color: #cdd2c0;
+  font: 700 11px var(--mc-font-body);
+}
 .chat-panel {
   overflow: hidden;
   padding: 8px;
@@ -1060,6 +1127,16 @@ onMounted(() => { loadProfiles(); });
   box-shadow:
     inset 2px 2px 0 rgba(255,255,255,0.05),
     inset -2px -2px 0 rgba(0,0,0,0.45);
+}
+.interaction-chat { display: flex; flex: 1; min-height: 280px; flex-direction: column; }
+.interaction-messages {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 4px;
 }
 
 @media (max-width: 1000px) {
@@ -1097,5 +1174,8 @@ onMounted(() => { loadProfiles(); });
   .app-brand-logo { width: 34px; height: 34px; }
   .app-brand-name { font-size: 12px !important; white-space: nowrap; }
   .app-header-spacer, .app-hub-status { display: none !important; }
+  .interaction-summary { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
+  .interaction-avatar, .interaction-character { min-height: 88px; height: 88px; }
+  .interaction-chat { min-height: 260px; }
 }
 </style>
