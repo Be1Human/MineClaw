@@ -1,17 +1,18 @@
 <template>
-  <div style="position:relative; min-height:100vh; height:100vh; display:flex; flex-direction:column; background-color:#15170f; background-image:radial-gradient(120% 90% at 50% 0%, rgba(60,80,40,0.18), transparent 55%), repeating-linear-gradient(0deg, rgba(0,0,0,0.10) 0 2px, transparent 2px 4px), repeating-linear-gradient(90deg, rgba(0,0,0,0.07) 0 2px, transparent 2px 4px); color:#e7e3d4; font-family:var(--mc-font-body); overflow:hidden;">
-    <div style="position:absolute; inset:0; pointer-events:none; background:radial-gradient(130% 110% at 50% 40%, transparent 55%, rgba(0,0,0,0.55)); z-index:0;"></div>
+  <div class="mineclaw-app">
+    <div class="app-ambient" aria-hidden="true"></div>
 
-    <!-- ===================== TOP BAR (grass block) ===================== -->
-    <header style="position:relative; z-index:5; flex:none;">
-      <div class="app-topbar" style="display:flex; align-items:center; gap:26px; height:60px; padding:0 22px; background:linear-gradient(180deg,#2c3422,#222a1a); border-bottom:3px solid #4f7d2e; -webkit-app-region:drag;">
+    <!-- ===================== TOP BAR ===================== -->
+    <header class="app-header">
+      <div class="app-topbar">
         <!-- brand -->
-        <div class="app-brand" style="display:flex; align-items:center; gap:12px;">
+        <div class="app-brand">
           <img class="app-brand-logo" src="/brand/mineclaw-mark.svg" alt="" aria-hidden="true" />
-          <span class="app-brand-name" style="font-family:var(--mc-font-pixel); font-size:14px; color:#f4f1e4; text-shadow:2px 2px 0 #1c2113; letter-spacing:0.02em;">MineClaw</span>
+          <span class="app-brand-name">MineClaw</span>
+          <span class="app-brand-edition">AI COMPANION CONSOLE</span>
         </div>
 
-        <div class="app-header-spacer" style="flex:1;"></div>
+        <div class="app-header-spacer"></div>
 
         <button
           class="global-settings-button"
@@ -22,19 +23,17 @@
         ><McIcon name="settings" :size="16" /></button>
 
         <!-- hub status -->
-        <div class="app-hub-status" style="display:flex; align-items:center; gap:9px; padding:8px 14px; background:#1c2414; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35); -webkit-app-region:no-drag;">
-          <span :style="{ width:'9px', height:'9px', background: wsConnected ? '#5fd13a' : '#d8503c', boxShadow:'0 0 0 2px rgba(95,209,58,0.25), 1px 1px 0 rgba(0,0,0,0.4)' }"></span>
-          <span :style="{ fontWeight:700, fontSize:'12.5px', color: wsConnected ? '#9fe27a' : '#ff8a8a' }">{{ wsConnected ? 'Hub 已连接' : 'Hub 断开' }}</span>
+        <div class="app-hub-status" :class="{ offline: !wsConnected }">
+          <span class="status-indicator"></span>
+          <span>{{ wsConnected ? 'Hub 已连接' : 'Hub 断开' }}</span>
         </div>
 
         <!-- 无边框窗口控制（自定义标题栏）-->
-        <div v-if="isElectron" style="display:flex; align-items:center; gap:6px; -webkit-app-region:no-drag;">
-          <button @click="winMin" title="最小化" aria-label="最小化" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.35); color:#cdd2c0; font-family:var(--mc-font-pixel); font-size:11px; line-height:1;"><McIcon name="minus" :size="12" /></button>
-          <button @click="winClose" title="关闭到托盘" aria-label="关闭到托盘" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#3a2420; border:2px solid #1a0f0d; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.35); color:#f0b4b4; font-family:var(--mc-font-pixel); font-size:11px; line-height:1;"><McIcon name="close" :size="12" /></button>
+        <div v-if="isElectron" class="window-controls">
+          <button class="window-control" @click="winMin" title="最小化" aria-label="最小化"><McIcon name="minus" :size="12" /></button>
+          <button class="window-control danger" @click="winClose" title="关闭到托盘" aria-label="关闭到托盘"><McIcon name="close" :size="12" /></button>
         </div>
       </div>
-      <!-- grass teeth -->
-      <div style="height:6px; background:#4f7d2e; -webkit-mask-image:repeating-linear-gradient(90deg,#000 0 7px, transparent 7px 14px); mask-image:repeating-linear-gradient(90deg,#000 0 7px, transparent 7px 14px);"></div>
     </header>
 
     <section v-if="globalSettingsOpen" class="global-settings-layer">
@@ -50,30 +49,29 @@
     <div class="partner-workspace-shell">
 
       <!-- ---------- LEFT · PARTNERS ---------- -->
-      <aside class="partner-sidebar" style="display:flex; flex-direction:column; min-height:0; padding:16px; border-right:3px solid #0c0e08; background:#1b1e14;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-          <span style="font-family:var(--mc-font-pixel); font-size:10px; color:#8aa86a; text-shadow:1px 1px 0 #0c0e08;">PARTNERS</span>
-          <button @click="showCreateForm = true" title="创建伙伴" aria-label="创建伙伴" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#4c7a2a; border:2px solid #2b5e16; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3); color:#fff; font-family:var(--mc-font-pixel); font-size:12px; line-height:1;"><McIcon name="plus" :size="13" /></button>
+      <aside class="partner-sidebar">
+        <div class="partner-sidebar-header">
+          <span class="section-eyebrow">PARTNERS</span>
+          <button class="icon-button primary" @click="showCreateForm = true" title="创建伙伴" aria-label="创建伙伴"><McIcon name="plus" :size="13" /></button>
         </div>
-        <div style="font-weight:700; font-size:13px; color:#cdd2c0; margin:0 2px 10px;">我的伙伴</div>
+        <div class="partner-sidebar-title">我的伙伴</div>
 
-        <div style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; min-height:0; padding-right:2px;">
-          <div v-for="p in profiles" :key="p.id" class="partner-list-item" @click="selectProfile(p)"
-            :style="partnerStyle(p)">
-            <div style="position:relative; flex:none; width:40px; height:40px; background:#0f110a; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
+        <div class="partner-list">
+          <button v-for="p in profiles" :key="p.id" class="partner-list-item" :class="{ active: selectedProfile?.id === p.id }" @click="selectProfile(p)">
+            <span class="partner-avatar">
               <McHead :texture="p.skinTexture || ''" :size="36" />
-              <span :style="{ position:'absolute', right:'-3px', bottom:'-3px', width:'10px', height:'10px', background: statusDot(p.id), border:'2px solid #1b1e14' }"></span>
-            </div>
-            <div class="partner-list-summary" style="display:flex; flex-direction:column; gap:3px; min-width:0;">
-              <span style="font-weight:700; font-size:14px; color:#eceadb; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</span>
-              <span style="font-size:11.5px; color:#7e836e;">{{ getPresenceText(p.id) }}</span>
-            </div>
-          </div>
-          <div v-if="profiles.length === 0" style="font-size:12.5px; color:#7e836e; padding:8px 4px;">还没有伙伴，点 + 创建一个</div>
+              <span class="partner-presence-dot" :style="{ background: statusDot(p.id) }"></span>
+            </span>
+            <span class="partner-list-summary">
+              <strong>{{ p.name }}</strong>
+              <small>{{ getPresenceText(p.id) }}</small>
+            </span>
+          </button>
+          <div v-if="profiles.length === 0" class="partner-list-empty">还没有伙伴，点 + 创建一个</div>
         </div>
 
-        <div style="flex:1;"></div>
-        <div class="partner-count" style="margin-top:12px; padding-top:12px; border-top:2px solid #0c0e08; font-family:var(--mc-font-mono); font-size:15px; color:#7e836e; letter-spacing:0.04em;">{{ profiles.length }} PARTNERS · {{ onlineCount }} ONLINE</div>
+        <div class="partner-sidebar-fill"></div>
+        <div class="partner-count">{{ profiles.length }} PARTNERS · {{ onlineCount }} ONLINE</div>
       </aside>
 
       <section class="partner-workspace-bar">
@@ -460,18 +458,6 @@ const resetBtnStyle = { ...cameraChrome, background: '#272d1d', color: '#cdd2c0'
 
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
 
-function partnerStyle(p) {
-  const sel = selectedProfile.value?.id === p.id;
-  return {
-    display: 'flex', alignItems: 'center', gap: '11px', padding: '9px 10px',
-    cursor: 'pointer', position: 'relative',
-    background: sel ? '#243016' : '#191c12',
-    border: '2px solid ' + (sel ? '#cdd2c0' : '#0c0e08'),
-    boxShadow: sel
-      ? 'inset 2px 2px 0 rgba(93,156,60,0.4), inset -2px -2px 0 rgba(0,0,0,0.3)'
-      : 'inset 2px 2px 0 rgba(0,0,0,0.4), inset -1px -1px 0 rgba(255,255,255,0.04)',
-  };
-}
 function tabStyle(id) {
   const active = ctrlTab.value === id;
   return {
@@ -994,96 +980,61 @@ onMounted(() => { loadProfiles(); });
 </script>
 
 <style>
-.app-brand-logo { flex:none; width:38px; height:38px; object-fit:contain; }
-.global-settings-button { width:38px; height:34px; display:grid; place-items:center; border:2px solid #0d0f0a; background:#272d1d; color:#cdd2c0; box-shadow:inset 1px 1px 0 rgba(255,255,255,.06),inset -2px -2px 0 rgba(0,0,0,.35); cursor:pointer; font-size:18px; -webkit-app-region:no-drag; }
-.global-settings-button:hover,.global-settings-button.active { color:#fff; background:#4c7a2a; }
-.global-settings-layer { position:absolute; z-index:20; inset:66px 0 0; display:flex; min-width:0; min-height:0; background:#0c0e08; }
-.partner-workspace-shell {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 272px minmax(0, 1fr) 422px;
-  grid-template-rows: auto minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
-.partner-sidebar { grid-column: 1; grid-row: 1 / 3; }
-.partner-workspace-bar {
-  grid-column: 2 / 4;
-  grid-row: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 10px 16px;
-  background: #1b1e14;
-  border-bottom: 3px solid #0c0e08;
-}
-.workspace-partner {
-  flex: 0 0 auto;
-  min-width: 150px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.workspace-partner-head {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0f110a;
-  border: 2px solid #000;
-}
-.workspace-partner-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.workspace-partner-copy strong {
-  max-width: 180px;
-  overflow: hidden;
-  color: #f0eddd;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.workspace-partner-copy span { color: #7e836e; font-size: 11px; white-space: nowrap; }
-.partner-workspace-tabs {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.partner-workspace-tabs::-webkit-scrollbar { display: none; }
-.partner-workspace-tab {
-  flex: 0 0 auto;
-  min-height: 34px;
-  padding: 7px 14px;
-  cursor: pointer;
-  background: #272d1d;
-  border: 2px solid #0d0f0a;
-  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.35);
-  color: #b9bda8;
-  font-family: var(--mc-font-body);
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.partner-workspace-tab.active {
-  background: #4c7a2a;
-  border-color: #2b5e16;
-  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3);
-  color: #fff;
-  text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
-}
-.partner-workspace-panel {
-  grid-column: 2 / 4;
-  grid-row: 2;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.play-stage { grid-column: 2; grid-row: 2; }
-.play-control { grid-column: 3; grid-row: 2; }
+.mineclaw-app { position:relative; display:flex; height:100vh; min-height:100vh; flex-direction:column; overflow:hidden; background:radial-gradient(circle at 30% -20%,rgba(105,201,74,.07),transparent 34%),var(--mc-bg); color:var(--mc-text); font-family:var(--mc-font-body); }
+.app-ambient { position:absolute; z-index:0; inset:0; pointer-events:none; background:radial-gradient(ellipse 80% 70% at 50% 48%,transparent 45%,rgba(0,0,0,.28)); }
+.app-header { position:relative; z-index:5; flex:none; }
+.app-topbar { display:flex; align-items:center; gap:12px; height:60px; padding:0 18px; background:rgba(13,19,15,.96); border-bottom:1px solid var(--mc-border-strong); box-shadow:0 8px 32px rgba(0,0,0,.12); -webkit-app-region:drag; }
+.app-brand { display:flex; min-width:0; align-items:center; gap:10px; }
+.app-brand-logo { width:34px; height:34px; flex:none; object-fit:contain; }
+.app-brand-name { color:var(--mc-text); font-family:var(--mc-font-pixel); font-size:13px; letter-spacing:.02em; white-space:nowrap; }
+.app-brand-edition { margin-left:4px; color:var(--mc-text-muted); font:13px/1 var(--mc-font-mono); letter-spacing:.08em; white-space:nowrap; }
+.app-header-spacer { flex:1; }
+.global-settings-button,.window-control,.icon-button { display:grid; place-items:center; cursor:pointer; background:transparent; border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); transition:color var(--mc-duration-fast),background var(--mc-duration-fast),border-color var(--mc-duration-fast); -webkit-app-region:no-drag; }
+.global-settings-button { width:36px; height:34px; }
+.global-settings-button:hover,.global-settings-button.active,.window-control:hover,.icon-button:hover { background:var(--mc-surface-hover); border-color:var(--mc-border-strong); color:var(--mc-text); }
+.app-hub-status { display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; background:var(--mc-accent-soft); border:1px solid rgba(105,201,74,.24); border-radius:var(--mc-radius-sm); color:var(--mc-accent-strong); font-size:12px; font-weight:700; -webkit-app-region:no-drag; }
+.app-hub-status .status-indicator { width:7px; height:7px; background:currentColor; border-radius:50%; box-shadow:0 0 10px currentColor; }
+.app-hub-status.offline { background:rgba(228,111,101,.1); border-color:rgba(228,111,101,.22); color:var(--mc-danger); }
+.window-controls { display:flex; align-items:center; gap:4px; -webkit-app-region:no-drag; }
+.window-control { width:30px; height:30px; }
+.window-control.danger:hover { background:rgba(228,111,101,.12); border-color:rgba(228,111,101,.3); color:var(--mc-danger); }
+.global-settings-layer { position:absolute; z-index:20; inset:60px 0 0; display:flex; min-width:0; min-height:0; background:var(--mc-bg); }
+.partner-workspace-shell { position:relative; z-index:2; display:grid; grid-template-columns:240px minmax(0,1fr) 400px; grid-template-rows:auto minmax(0,1fr); flex:1; min-height:0; }
+.partner-sidebar { display:flex; grid-column:1; grid-row:1 / 3; min-height:0; flex-direction:column; padding:18px 14px; background:rgba(13,19,15,.98); border-right:1px solid var(--mc-border); }
+.partner-sidebar-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:0 4px; }
+.section-eyebrow { color:var(--mc-text-muted); font:10px/1 var(--mc-font-pixel); letter-spacing:.04em; }
+.icon-button { width:30px; height:30px; }
+.icon-button.primary { background:var(--mc-accent); border-color:transparent; color:#081007; }
+.icon-button.primary:hover { background:var(--mc-accent-strong); color:#081007; }
+.partner-sidebar-title { margin:0 5px 10px; color:var(--mc-text-secondary); font-size:12px; font-weight:700; }
+.partner-list { display:flex; min-height:0; flex-direction:column; gap:6px; overflow-y:auto; padding-right:2px; }
+.partner-list-item { position:relative; display:flex; width:100%; align-items:center; gap:11px; padding:9px; cursor:pointer; text-align:left; background:transparent; border:1px solid transparent; border-radius:var(--mc-radius-sm); transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast); }
+.partner-list-item:hover { background:rgba(255,255,255,.025); border-color:var(--mc-border); }
+.partner-list-item.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.26); }
+.partner-avatar { position:relative; display:flex; width:42px; height:42px; flex:none; align-items:center; justify-content:center; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); }
+.partner-presence-dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--mc-surface); border-radius:50%; }
+.partner-list-summary { display:flex; min-width:0; flex-direction:column; gap:3px; }
+.partner-list-summary strong { overflow:hidden; color:var(--mc-text); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.partner-list-summary small { color:var(--mc-text-muted); font-size:11px; }
+.partner-list-item.active .partner-list-summary small { color:#91b986; }
+.partner-list-empty { padding:10px 5px; color:var(--mc-text-muted); font-size:12px; line-height:1.6; }
+.partner-sidebar-fill { flex:1; }
+.partner-count { margin-top:14px; padding:14px 5px 0; border-top:1px solid var(--mc-border); color:var(--mc-text-muted); font:13px var(--mc-font-mono); letter-spacing:.04em; }
+.partner-workspace-bar { display:flex; grid-column:2 / 4; grid-row:1; min-width:0; min-height:62px; align-items:center; gap:20px; padding:10px 16px; background:var(--mc-bg-elevated); border-bottom:1px solid var(--mc-border); }
+.workspace-partner { display:flex; min-width:150px; flex:0 0 auto; align-items:center; gap:9px; }
+.workspace-partner-head { display:flex; width:36px; height:36px; align-items:center; justify-content:center; overflow:hidden; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); }
+.workspace-partner-copy { display:flex; min-width:0; flex-direction:column; gap:2px; }
+.workspace-partner-copy strong { max-width:180px; overflow:hidden; color:var(--mc-text); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.workspace-partner-copy span { color:var(--mc-text-muted); font-size:11px; white-space:nowrap; }
+.partner-workspace-tabs { display:flex; min-width:0; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
+.partner-workspace-tabs::-webkit-scrollbar { display:none; }
+.partner-workspace-tab { position:relative; min-height:36px; flex:0 0 auto; padding:7px 14px; cursor:pointer; background:transparent; border:1px solid transparent; border-radius:var(--mc-radius-sm); color:var(--mc-text-muted); font-family:var(--mc-font-body); font-size:13px; font-weight:700; white-space:nowrap; transition:color var(--mc-duration-fast),background var(--mc-duration-fast); }
+.partner-workspace-tab:hover { background:rgba(255,255,255,.025); color:var(--mc-text-secondary); }
+.partner-workspace-tab.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.2); color:var(--mc-accent-strong); }
+.partner-workspace-tab.active::after { position:absolute; right:12px; bottom:-11px; left:12px; height:2px; background:var(--mc-accent); content:''; }
+.partner-workspace-panel { grid-column:2 / 4; grid-row:2; min-width:0; min-height:0; overflow:hidden; }
+.play-stage { grid-column:2; grid-row:2; }
+.play-control { grid-column:3; grid-row:2; }
 .interaction-panel {
   display: flex;
   flex: 1;
