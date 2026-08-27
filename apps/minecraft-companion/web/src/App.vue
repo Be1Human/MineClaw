@@ -278,7 +278,7 @@
                   <span>{{ (currentFullStatus?.status || 'offline').toUpperCase() }}</span>
                 </div>
                 <div class="interaction-character">
-                  <McCharacter :texture="selectedSkinTexture" :model="selectedSkinModel" animation="idle" :autoRotate="false" />
+                  <McCharacter :texture="selectedSkinTexture" :model="selectedSkinModel" animation="idle" :autoRotate="false" :zoom="1.12" />
                 </div>
               </div>
               <div class="interaction-summary-copy">
@@ -1066,7 +1066,7 @@ onMounted(() => { loadProfiles(); });
 }
 .interaction-summary {
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
+  grid-template-columns: 140px minmax(0, 1fr);
   flex: 0 0 auto;
   gap: 12px;
   padding: 8px;
@@ -1076,7 +1076,7 @@ onMounted(() => { loadProfiles(); });
 }
 .interaction-avatar {
   position: relative;
-  min-height: 104px;
+  min-height: 130px;
   overflow: hidden;
   background: repeating-conic-gradient(#16190f 0% 25%, #1c2013 0% 50%) 0 0 / 20px 20px, #1a1d12;
   border: 2px solid #0c0e08;
@@ -1096,7 +1096,7 @@ onMounted(() => { loadProfiles(); });
   font-family: var(--mc-font-pixel);
   font-size: 6px;
 }
-.interaction-character { height: 104px; }
+.interaction-character { height: 130px; }
 .interaction-summary-copy {
   min-width: 0;
   display: flex;
@@ -1174,8 +1174,8 @@ onMounted(() => { loadProfiles(); });
   .app-brand-logo { width: 34px; height: 34px; }
   .app-brand-name { font-size: 12px !important; white-space: nowrap; }
   .app-header-spacer, .app-hub-status { display: none !important; }
-  .interaction-summary { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
-  .interaction-avatar, .interaction-character { min-height: 88px; height: 88px; }
+  .interaction-summary { grid-template-columns: 96px minmax(0, 1fr); gap: 8px; }
+  .interaction-avatar, .interaction-character { min-height: 102px; height: 102px; }
   .interaction-chat { min-height: 260px; }
 }
 </style>

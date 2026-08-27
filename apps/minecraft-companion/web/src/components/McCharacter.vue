@@ -1,7 +1,7 @@
 <!--
   McCharacter · FEAT-WEBUI-11
   skinview3d 渲染真实 3D MC 形象（复用顶层 three ^0.184）。
-  props: texture(URL/dataURL·空走默认皮肤) · model(classic|slim|auto-detect) · animation(idle|walk|run|fly|none) · autoRotate
+  props: texture(URL/dataURL·空走默认皮肤) · model(classic|slim|auto-detect) · animation(idle|walk|run|fly|none) · autoRotate · zoom
 -->
 <template>
   <canvas ref="cv" style="display:block; width:100%; height:100%;"></canvas>
@@ -17,6 +17,7 @@ const props = defineProps({
   model: { type: String, default: 'auto-detect' },
   animation: { type: String, default: 'idle' },
   autoRotate: { type: Boolean, default: false },
+  zoom: { type: Number, default: 0.95 },
 });
 
 const cv = ref(null);
@@ -70,7 +71,7 @@ onMounted(() => {
   // 收窄视场角 → 消除默认 ~70° 的广角畸变（更接近正交/长焦观感）
   viewer.fov = 28;
   // 拉近 → 角色充满画面（FOV 变小已放大，zoom 配合微调）
-  viewer.zoom = 0.95;
+  viewer.zoom = props.zoom;
   applyAnim();
   loadSkin();
 
@@ -103,6 +104,7 @@ watch(() => props.texture, loadSkin);
 watch(() => props.model, loadSkin);
 watch(() => props.animation, applyAnim);
 watch(() => props.autoRotate, (v) => { if (viewer) viewer.autoRotate = v; });
+watch(() => props.zoom, (v) => { if (viewer && Number.isFinite(v) && v > 0) viewer.zoom = v; });
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibility);
