@@ -240,62 +240,6 @@
         <div v-if="errorMsg" class="save-error">{{ errorMsg }}</div>
       </div>
 
-      <!-- Hermes AI -->
-      <div v-if="activeSection === 'hermes'" class="settings-section">
-        <h3 class="icon-heading"><McIcon name="brain" :size="16" />Hermes AI 配置</h3>
-        <p class="desc">AI 大脑的运行参数与记忆设置</p>
-
-        <div class="hermes-status-bar">
-          <span class="hstatus-dot" :class="{ alive: hermesStatus.alive }"></span>
-          <span class="hstatus-text">Hermes Bridge {{ hermesStatus.alive ? '运行中' : '未运行' }}</span>
-          <span class="hstatus-model">{{ hermesStatus.model || '-' }}</span>
-        </div>
-
-        <div class="form-grid">
-          <div class="form-field">
-            <label>最大思考轮数</label>
-            <input v-model.number="form.maxRounds" type="number" min="1" max="20" />
-            <span class="hint">每次 turn 最多工具调用几轮（默认 8）</span>
-          </div>
-          <div class="form-field">
-            <label>思考超时（秒）</label>
-            <input v-model.number="form.hermesTimeout" type="number" />
-          </div>
-        </div>
-
-        <div class="separator"></div>
-
-        <div class="toggle-row">
-          <div>
-            <div class="toggle-label">启用 Hermes 模式</div>
-            <div class="toggle-desc">优先用 Hermes 作为 AI 大脑，否则走 DeepSeek 直连</div>
-          </div>
-          <button class="toggle" :class="{ off: !form.hermesEnabled }" @click="form.hermesEnabled = !form.hermesEnabled"></button>
-        </div>
-        <div class="toggle-row">
-          <div>
-            <div class="toggle-label">持久记忆</div>
-            <div class="toggle-desc">跨会话记住玩家偏好和世界知识</div>
-          </div>
-          <button class="toggle" :class="{ off: !form.hermesMemory }" @click="form.hermesMemory = !form.hermesMemory"></button>
-        </div>
-        <div class="toggle-row">
-          <div>
-            <div class="toggle-label">IDLE 主动探索</div>
-            <div class="toggle-desc">Bot 空闲时主动分析局势</div>
-          </div>
-          <button class="toggle" :class="{ off: !form.idleEnabled }" @click="form.idleEnabled = !form.idleEnabled"></button>
-        </div>
-
-        <div class="separator"></div>
-        <p class="desc">快速操作</p>
-        <div class="quick-actions">
-          <button class="qa-btn icon-button-label"><McIcon name="refresh" :size="14" />重启 Bridge</button>
-          <button class="qa-btn icon-button-label" @click="clearMemoryConfirm"><McIcon name="trash" :size="14" />清除记忆</button>
-          <button class="qa-btn icon-button-label"><McIcon name="package" :size="14" />导出技能包</button>
-        </div>
-      </div>
-
       <!-- Global LLM Agent configurations -->
       <div v-if="activeSection === 'llm-configs'" class="settings-section">
         <h3 class="icon-heading"><McIcon name="key" :size="16" />LLM Agent 配置</h3>
@@ -463,7 +407,6 @@ const savingLlm = ref(false);
 const testingLlm = ref(false);
 const llmTestMsg = ref('');
 const llmTestOk = ref(false);
-const hermesStatus = ref({ alive: false, model: '' });
 const llmConfigs = ref([]);
 const clearLlmConfigApiKey = ref(false);
 const llmConfigForm = reactive({ id: '', name: '', apiKey: '', baseUrl: '', model: '' });
@@ -485,7 +428,6 @@ const profileNavItems = [
 const globalNavItems = [
   { id: 'llm-configs', iconName: 'key', label: 'LLM Agent 配置' },
   { id: 'servers', iconName: 'server', label: '服务器配置' },
-  { id: 'hermes', iconName: 'brain', label: 'Hermes AI' },
   { id: 'desktop-pet', iconName: 'character', label: '桌面角色' },
   { id: 'advanced', iconName: 'tool', label: '高级 / 调试' },
 ];
@@ -554,9 +496,7 @@ const form = reactive({
   name: '', skinName: '', personality: '', ownerName: '',
   host: '', port: 25565, auth: 'offline', version: '1.21', autoReconnect: true,
   llmConfigId: '',
-  hermesEnabled: true, hermesMemory: true, idleEnabled: true,
   semanticSearch: true,
-  maxRounds: 8, hermesTimeout: 120,
 });
 
 const selectedServerPreset = computed(() => serverPresets.value.find(preset => preset.id === selectedPresetId.value) || null);
@@ -872,19 +812,6 @@ function applyPreset(p) {
   llmConfigForm.model = p.model;
 }
 
-function clearMemoryConfirm() {
-  if (confirm('确认清除所有 Hermes 记忆？此操作不可撤销。')) {
-    alert('功能开发中，暂未接入');
-  }
-}
-
-async function loadHermesStatus() {
-  try {
-    const r = await fetch('/api/hermes/status');
-    if (r.ok) hermesStatus.value = await r.json();
-  } catch {}
-}
-
 // FEAT-WEBUI-12 · 服务器预设
 async function loadPresets() {
   try {
@@ -973,7 +900,6 @@ async function deleteServerPreset(preset) {
 
 onMounted(() => {
   loadForm();
-  loadHermesStatus();
   loadPresets();
   loadLlmConfigs();
   loadDesktopPet();
@@ -1071,16 +997,6 @@ watch(() => props.initialSection, section => {
 }
 .toggle.off { background: #3a4030; }
 .toggle.off::after { right: 14px; }
-
-.hermes-status-bar {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; border-radius: 8px;
-  background: #15170f; border: 1px solid #20241a; margin-bottom: 14px;
-}
-.hstatus-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b6f5e; flex-shrink: 0; }
-.hstatus-dot.alive { background: #5d9c3c; box-shadow: 0 0 6px #5d9c3c66; }
-.hstatus-text { font-size: 12px; color: #e7e3d4; }
-.hstatus-model { font-size: 11px; color: #7cc24e; margin-left: auto; }
 
 .quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .qa-btn {

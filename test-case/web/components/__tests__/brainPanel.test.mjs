@@ -8,6 +8,7 @@ import { migrateMemoryWorkspaceTabs } from '../../../../apps/minecraft-companion
 
 let vite;
 let BrainPanel;
+let SettingsPanel;
 
 before(async () => {
   vite = await createServer({
@@ -17,6 +18,7 @@ before(async () => {
     logLevel: 'error',
   });
   BrainPanel = (await vite.ssrLoadModule('/src/components/BrainPanel.vue')).default;
+  SettingsPanel = (await vite.ssrLoadModule('/src/components/SettingsPanel.vue')).default;
 });
 
 after(async () => { await vite?.close(); });
@@ -90,4 +92,22 @@ test('App 移除顶层记忆并按伙伴持久化大脑子页', () => {
   assert.match(source, /v-model:active-tab="brainTab"/);
   assert.match(source, /mc\.brainTabs\.v1/);
   assert.match(source, /migrateMemoryWorkspaceTabs/);
+});
+
+test('全局设置移除无效 Hermes 配置空壳', async () => {
+  const html = await renderToString(createSSRApp({
+    render: () => h(SettingsPanel, {
+      scope: 'global',
+      initialSection: 'llm-configs',
+    }),
+  }));
+
+  for (const label of ['LLM Agent 配置', '服务器配置', '桌面角色', '高级 / 调试']) {
+    assert.match(html, new RegExp(label.replace('/', '\\/')));
+  }
+  assert.doesNotMatch(html, /Hermes|Bridge/i);
+
+  const source = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/components/SettingsPanel.vue', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /activeSection === 'hermes'|loadHermesStatus|\/api\/hermes\/status/);
+  assert.doesNotMatch(source, /hermesEnabled|hermesMemory|hermesTimeout|重启 Bridge|导出技能包/);
 });
