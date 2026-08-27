@@ -253,7 +253,8 @@ export interface BotRuntimeConfig {
   /** Hub 作用域的数据目录；所有持久化产物必须从这里派生。 */
   dataDir?: string;
   connection: ConnectionConfig;
-  llm: {
+  /** 可选能力；未配置时仍启动 rule-only 纯聊天 Runtime。 */
+  llm?: {
     apiKey: string;
     baseUrl: string;
     model: string;

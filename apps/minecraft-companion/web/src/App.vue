@@ -309,9 +309,9 @@
                     <span style="font-size:9px; color:#6e7681;">{{ msg.thinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
                     <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: msg.thinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: msg.thinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: msg.thinkExpanded ? 'visible':'hidden' }">{{ msg.thinking }}</div>
                   </div>
-                  <div :style="{ maxWidth:'88%', padding:'7px 12px', background: msg.self ? '#243016' : '#20241a', border:'2px solid #0c0e08', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.05)' }">
-                    <div :style="{ fontSize:'10px', marginBottom:'2px', color: msg.self ? '#9fe27a' : '#8aa86a', fontWeight:700 }">{{ msg.sender }}</div>
-                    <div style="font-size:13px; color:#e7e3d4; line-height:1.5; white-space:pre-wrap; word-break:break-word;">{{ msg.message }}</div>
+                  <div :style="{ maxWidth:'88%', padding:'7px 12px', background: msg.error ? '#34201d' : (msg.self ? '#243016' : '#20241a'), border: msg.error ? '2px solid #713a31' : '2px solid #0c0e08', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.05)' }">
+                    <div :style="{ fontSize:'10px', marginBottom:'2px', color: msg.error ? '#e68b7c' : (msg.self ? '#9fe27a' : '#8aa86a'), fontWeight:700 }">{{ msg.sender }}</div>
+                    <div :style="{ fontSize:'13px', color: msg.error ? '#f0b0a5' : '#e7e3d4', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }">{{ msg.message }}</div>
                   </div>
                   <div style="font-size:10px; color:#6b6f5e; margin-top:2px;">{{ formatTime(msg.timestamp) }}</div>
                 </div>
@@ -322,7 +322,7 @@
                 <span style="font-size:9px; color:#6e7681;">{{ liveThinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
                 <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: liveThinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: liveThinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: liveThinkExpanded ? 'visible':'hidden' }">{{ liveThinking }}</div>
               </div>
-              <ChatBox :disabled="!brainReady" @send="sendChat" />
+              <ChatBox @send="sendChat" />
             </div>
           </div>
 
@@ -664,8 +664,13 @@ function statusDot(id) {
 }
 
 const socket = io({ autoConnect: true });
+let pendingChatSettle = null;
 socket.on('connect', () => { wsConnected.value = true; });
-socket.on('disconnect', () => { wsConnected.value = false; });
+socket.on('disconnect', () => {
+  wsConnected.value = false;
+  pendingChatSettle?.({ accepted: false });
+  pendingChatSettle = null;
+});
 
 socket.on('bot:status', (data) => {
   if (['awake', 'online', 'busy', 'connecting', 'reconnecting', 'offline'].includes(data.status)) {
@@ -948,10 +953,32 @@ async function leaveGame() {
   if (res.ok) botStatuses.set(selectedProfile.value.id, await res.json());
 }
 
-function sendChat(text) {
+function appendChatSubmitError(message, botId) {
+  if (!selectedProfile.value || selectedProfile.value.id !== botId) return;
+  messages.value.push({
+    sender: '发送失败', message, timestamp: Date.now(), self: false, error: true,
+    thinking: '', turnId: '', thinkExpanded: false,
+  });
+  scrollBottom(messagesEl);
+}
+
+function sendChat(text, settle = () => {}) {
   const msg = (text ?? '').trim();
-  if (!msg || !selectedProfile.value) return;
-  socket.emit('bot:chat', { botId: selectedProfile.value.id, message: msg });
+  if (!msg || !selectedProfile.value) { settle({ accepted: false }); return; }
+  const botId = selectedProfile.value.id;
+  if (!socket.connected) {
+    appendChatSubmitError('Hub 未连接，消息尚未发送；草稿已保留，请恢复连接后重试。', botId);
+    settle({ accepted: false });
+    return;
+  }
+  pendingChatSettle = settle;
+  socket.emit('bot:chat', { botId, message: msg }, (result) => {
+    if (pendingChatSettle === settle) pendingChatSettle = null;
+    if (result?.accepted !== true) {
+      appendChatSubmitError(result?.error?.message || '消息未被接收，请稍后重试。', botId);
+    }
+    settle(result || { accepted: false });
+  });
 }
 
 function formatTime(ts) {

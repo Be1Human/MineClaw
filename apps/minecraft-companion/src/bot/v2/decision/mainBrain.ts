@@ -985,7 +985,10 @@ export class MainBrain {
         recordTurn(result);
         return { pendingAskMaster: result.pendingAskMaster };
       }
-      const result = { pendingAskMaster: false, botReply: '我的对话大脑暂时不可用，所以现在不能可靠地理解或执行这个请求。' };
+      const result = {
+        pendingAskMaster: false,
+        botReply: '这条消息已收到，但伙伴尚未配置 AI Agent，暂时无法生成回答。请到“全局设置 → LLM Agent 配置”添加 API，再到伙伴设置中选择它。',
+      };
       this.speechGateway.commit(result.botReply, 'say');
       recordTurn(result);
       return { pendingAskMaster: result.pendingAskMaster };

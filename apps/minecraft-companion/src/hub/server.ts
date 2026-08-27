@@ -13,6 +13,7 @@ import { listCharacterTemplates, createCharacterTemplate } from '../character/te
 import { validateCharacterCard } from '../character/validateCharacterCard.js';
 import { registerPlannerEvolutionRoutes } from './plannerEvolutionRoutes.js';
 import { LlmTraceQueryError, type LlmTraceAgent } from '../bot/v2/infra/llmTrace/index.js';
+import { acceptChatSubmit, rejectChatSubmit, type ChatSubmitAck } from './chatSubmit.js';
 
 export interface HubConfig {
   port: number;
@@ -1024,9 +1025,30 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   // --- WebSocket ---
 
   io.on('connection', (socket) => {
-    socket.on('bot:chat', async (data: { botId: string; message: string; sender?: string }) => {
-      const sender = data.sender || resolveDefaultSender(data.botId);
-      await botManager.chat(data.botId, sender, data.message);
+    socket.on('bot:chat', async (
+      data: { botId?: unknown; message?: unknown; sender?: unknown } | null,
+      acknowledge?: (result: ChatSubmitAck) => void,
+    ) => {
+      const reply = (result: ChatSubmitAck): void => { acknowledge?.(result); };
+      const botId = typeof data?.botId === 'string' ? data.botId.trim() : '';
+      const message = typeof data?.message === 'string' ? data.message.trim() : '';
+      if (!message) { reply(rejectChatSubmit('INVALID_MESSAGE')); return; }
+
+      const profile = botId ? profileStore.get(botId) : undefined;
+      if (!profile) { reply(rejectChatSubmit('PROFILE_NOT_FOUND')); return; }
+
+      try {
+        if (!botManager.getStatus(botId)) await botManager.start(profile);
+        const accepted = await botManager.chat(
+          botId,
+          typeof data?.sender === 'string' && data.sender.trim() ? data.sender.trim() : resolveDefaultSender(botId),
+          message,
+        );
+        reply(accepted === null ? rejectChatSubmit('RUNTIME_UNAVAILABLE') : acceptChatSubmit());
+      } catch {
+        writeLogLine(botId, 'error', '聊天提交失败：RUNTIME_UNAVAILABLE');
+        reply(rejectChatSubmit('RUNTIME_UNAVAILABLE'));
+      }
     });
   });
 

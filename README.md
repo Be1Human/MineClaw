@@ -128,6 +128,8 @@ Copy-Item .env.example .env
 
 编辑 `.env`，填入你自己的 Minecraft 服务器与模型提供商配置。不要提交该文件。
 
+暂未配置 LLM 或 API Key 时，伙伴仍会以日常陪聊 Runtime 启动并接收消息；互动页会明确说明无法生成 AI 回答，并引导到“全局设置 → LLM Agent 配置”完成配置。
+
 ### 2. 启动本地控制台
 
 在第二个终端中运行：

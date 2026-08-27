@@ -22,8 +22,9 @@ test('FEAT-WEBUI-19 · trace routes validate scope/query and expose summary, cal
 
     const missing = await fetch(`${origin}/api/bots/missing/v2/llm-traces/sessions`);
     assert.equal(missing.status, 404);
-    const inactive = await fetch(`${origin}/api/bots/${profile.id}/v2/llm-traces/sessions`);
-    assert.equal(inactive.status, 503);
+    const keyless = await fetch(`${origin}/api/bots/${profile.id}/v2/llm-traces/sessions`);
+    assert.equal(keyless.status, 200);
+    assert.deepEqual((await keyless.json() as { sessions: unknown[] }).sessions, []);
 
     hub.botManager.getV2Snapshot = () => ({ running: true });
     hub.botManager.getLlmTraceSessions = (_botId, input) => ({

@@ -12,7 +12,7 @@ const profileInput = (name: string) => ({
   server: { host: '127.0.0.1', port: 25565, auth: 'offline' as const },
 });
 
-test('FEAT-WEBUI-18 · Bot 作用域任务路由区分 404/503 并隔离 A/B 数据', async () => {
+test('FEAT-WEBUI-18 · Bot 作用域任务路由区分 404/503、支持 keyless Runtime 并隔离 A/B 数据', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mineclaw-profile-tasks-'));
   const hub = createHubServer({ port: 0, host: '127.0.0.1', dataDir: join(dir, 'data') });
   try {
@@ -53,7 +53,8 @@ test('FEAT-WEBUI-18 · Bot 作用域任务路由区分 404/503 并隔离 A/B 数
     assert.match((await missing.json() as { error: string }).error, /not found/i);
 
     const legacy = await fetch(`${origin}/api/v2/tasks`);
-    assert.equal(legacy.status, 503);
+    assert.equal(legacy.status, 200);
+    assert.deepEqual(await legacy.json(), { tasks: [] });
   } finally {
     await hub.botManager.stopAll();
     if (hub.httpServer.listening) {

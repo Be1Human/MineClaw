@@ -74,7 +74,8 @@ test('控制标签合并状态与聊天并保持唯一任务入口', () => {
   assert.doesNotMatch(appSource, /\{ id: 'chat', name: '聊天' \}/);
   assert.doesNotMatch(appSource, /ctrlTab === 'chat'/);
   assert.match(appSource, /class="interaction-panel"/);
-  assert.match(appSource, /<ChatBox :disabled="!brainReady" @send="sendChat"/);
+  assert.match(appSource, /<ChatBox @send="sendChat"/);
+  assert.doesNotMatch(appSource, /<ChatBox[^>]+:disabled="!brainReady"/);
   assert.match(appSource, /<McCharacter[^>]+:zoom="1\.12"/);
   assert.doesNotMatch(appSource, /\{ id: 'runtime', name: '运行时' \}/);
   assert.match(appSource, /\{ id: 'trace', name: '轨迹' \}/);

@@ -178,7 +178,7 @@ export class BotManager {
       return resolveProfileLlmConfig(config, this.defaultLlm);
     }
     if (profile.llm) return resolveProfileLlmConfig(profile.llm, this.defaultLlm);
-    throw new Error('No LLM Agent configuration selected');
+    return undefined;
   }
 
   /**
