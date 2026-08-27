@@ -211,6 +211,35 @@ export interface TuningConfig {
     /** WorldMapCollector Y 方向采集范围 ± */
     mapYRange: number;
   };
+  /** FEAT-WEBUI-27 · 真实世界预览的数据流、渲染预算与资源包安全边界。 */
+  worldVisual: {
+    /** 总开关；关闭后仅保留现有简略感知。 */
+    enabled: boolean;
+    /** 以 Bot 所在区块为中心订阅的水平半径（区块）。 */
+    viewDistanceChunks: number;
+    /** 单帧允许用于构建真实方块网格的时间预算。 */
+    sectionBuildBudgetMs: number;
+    /** 单帧最多构建的区段数。 */
+    maxSectionBuildsPerFrame: number;
+    /** 浏览器最多常驻的区段数，超出后按距离淘汰。 */
+    maxResidentSections: number;
+    /** 真实实体的最远渲染距离（格）。 */
+    entityRenderDistance: number;
+    /** 方块增量在服务端合并后发送的窗口。 */
+    deltaBatchMs: number;
+    /** 单个资源包压缩包最大字节数。 */
+    maxPackBytes: number;
+    /** 单个资源包最大 ZIP 条目数。 */
+    maxPackEntries: number;
+    /** 解压后单文件最大字节数。 */
+    maxPackFileBytes: number;
+    /** 资源包解压后的总字节数上限。 */
+    maxExpandedPackBytes: number;
+    /** 单条目最大压缩比，防止 ZIP 炸弹。 */
+    maxCompressionRatio: number;
+    /** PNG 最大宽高。 */
+    maxImageDimension: number;
+  };
 }
 
 const DEFAULTS: TuningConfig = {
@@ -331,6 +360,21 @@ const DEFAULTS: TuningConfig = {
     mineralScanCount: 24,
     mapScanRadius: 16,
     mapYRange: 8,
+  },
+  worldVisual: {
+    enabled: true,
+    viewDistanceChunks: 2,
+    sectionBuildBudgetMs: 6,
+    maxSectionBuildsPerFrame: 2,
+    maxResidentSections: 512,
+    entityRenderDistance: 96,
+    deltaBatchMs: 100,
+    maxPackBytes: 64 * 1024 * 1024,
+    maxPackEntries: 20_000,
+    maxPackFileBytes: 16 * 1024 * 1024,
+    maxExpandedPackBytes: 256 * 1024 * 1024,
+    maxCompressionRatio: 100,
+    maxImageDimension: 8192,
   },
 };
 

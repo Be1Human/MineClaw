@@ -84,11 +84,14 @@ function forbiddenPath(relativePath) {
   if (blockedRootSegments.has(parts[0])) return true;
   if (parts.some((part) => blockedDirectoryNames.has(part))) return true;
   if (blockedPathPrefixes.some((prefix) => relativePath.startsWith(prefix))) return true;
+  if (parts.some((part) => part.toLowerCase() === 'resource-packs')) return true;
+  if (relativePath.toLowerCase().includes('/assets/minecraft/textures/')) return true;
 
   const baseName = parts.at(-1);
   if (baseName === '.env.example') return false;
   if (baseName === '.env' || baseName.startsWith('.env.')) return true;
   if (baseName.endsWith('.log') || baseName.endsWith('.pem') || baseName.endsWith('.key')) return true;
+  if (baseName.toLowerCase().endsWith('.jar')) return true;
   if (baseName.includes('.db') && relativePath !== allowedFixtureDatabase) return true;
   return false;
 }

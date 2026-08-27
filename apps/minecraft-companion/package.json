@@ -53,6 +53,7 @@
     "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.2",
     "express": "^5.1.0",
+    "fflate": "^0.8.3",
     "mineflayer": "^4.37.0",
     "mineflayer-pathfinder": "^2.4.5",
     "socket.io": "^4.8.0",

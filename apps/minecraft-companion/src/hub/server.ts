@@ -14,6 +14,8 @@ import { validateCharacterCard } from '../character/validateCharacterCard.js';
 import { registerPlannerEvolutionRoutes } from './plannerEvolutionRoutes.js';
 import { LlmTraceQueryError, type LlmTraceAgent } from '../bot/v2/infra/llmTrace/index.js';
 import { acceptChatSubmit, rejectChatSubmit, type ChatSubmitAck } from './chatSubmit.js';
+import { ResourcePackStore, registerResourcePackRoutes } from './resourcePacks/index.js';
+import { tuning } from '../bot/v2/infra/tuning.js';
 
 export interface HubConfig {
   port: number;
@@ -39,6 +41,8 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   llmAgentConfigStore.migrateLegacyProfiles(profileStore, defaultLlm);
   const serverPresetStore = new ServerPresetStore(config.dataDir);
   const desktopPetConfigStore = new DesktopPetConfigStore(config.dataDir);
+  const resourcePackStore = new ResourcePackStore(config.dataDir, () => tuning().worldVisual);
+  registerResourcePackRoutes(app, resourcePackStore, () => tuning().worldVisual);
   const botManager = new BotManager(config.dataDir, llmAgentConfigStore, serverPresetStore);
   botManager.defaultLlm = defaultLlm ?? null;
 
@@ -1078,5 +1082,5 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     void botManager.stopAll();
   });
 
-  return { app, httpServer, io, profileStore, llmAgentConfigStore, botManager, listen };
+  return { app, httpServer, io, profileStore, llmAgentConfigStore, resourcePackStore, botManager, listen };
 }
