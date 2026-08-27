@@ -67,10 +67,10 @@ test('正常态展示汇总、根任务、阶段、进度和子步骤', async ()
 
 test('双层导航使用互动和角色交流并保持技术 ID', () => {
   const appSource = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/App.vue', import.meta.url), 'utf8');
-  const playIndex = appSource.indexOf("{ id: 'play', name: '互动' }");
-  const statusIndex = appSource.indexOf("{ id: 'status', name: '角色交流' }");
-  const tasksIndex = appSource.indexOf("{ id: 'tasks', name: '任务栏' }");
-  const inventoryIndex = appSource.indexOf("{ id: 'inventory', name: '背包' }");
+  const playIndex = appSource.indexOf("{ id: 'play', name: '互动', icon: 'chat' }");
+  const statusIndex = appSource.indexOf("{ id: 'status', name: '角色交流', icon: 'chat' }");
+  const tasksIndex = appSource.indexOf("{ id: 'tasks', name: '任务栏', icon: 'task' }");
+  const inventoryIndex = appSource.indexOf("{ id: 'inventory', name: '背包', icon: 'backpack' }");
   assert.ok(playIndex >= 0);
   assert.ok(statusIndex < tasksIndex && tasksIndex < inventoryIndex);
   assert.doesNotMatch(appSource, /\{ id: 'play', name: '游玩' \}/);
@@ -78,12 +78,12 @@ test('双层导航使用互动和角色交流并保持技术 ID', () => {
   assert.doesNotMatch(appSource, /\{ id: 'chat', name: '聊天' \}/);
   assert.doesNotMatch(appSource, /ctrlTab === 'chat'/);
   assert.match(appSource, /class="interaction-panel"/);
-  assert.match(appSource, />当前角色交流<\/div>/);
+  assert.match(appSource, /class="interaction-summary-title">\{\{ selectedProfile\.name \}\}<\/div>/);
   assert.match(appSource, /<ChatBox @send="sendChat"/);
   assert.doesNotMatch(appSource, /<ChatBox[^>]+:disabled="!brainReady"/);
   assert.match(appSource, /<McCharacter[^>]+:zoom="1\.12"/);
   assert.doesNotMatch(appSource, /\{ id: 'runtime', name: '运行时' \}/);
-  assert.match(appSource, /\{ id: 'trace', name: '轨迹' \}/);
+  assert.match(appSource, /\{ id: 'trace', name: '轨迹', icon: 'route' \}/);
   assert.doesNotMatch(appSource, /\{ id: 'agent', name: '轨迹' \}/);
   assert.match(appSource, /legacyTab === 'agent'/);
   assert.doesNotMatch(appSource, /name:\s*'Agent'/);

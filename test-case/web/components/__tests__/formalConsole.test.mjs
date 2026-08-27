@@ -10,6 +10,18 @@ const themeSource = readFileSync(
   new URL('../../../../apps/minecraft-companion/web/src/theme-mc.css', import.meta.url),
   'utf8',
 );
+const chatBoxSource = readFileSync(
+  new URL('../../../../apps/minecraft-companion/web/src/components/ChatBox.vue', import.meta.url),
+  'utf8',
+);
+const electronMainSource = readFileSync(
+  new URL('../../../../apps/minecraft-companion/electron/main.ts', import.meta.url),
+  'utf8',
+);
+const electronPreloadSource = readFileSync(
+  new URL('../../../../apps/minecraft-companion/electron/preload.ts', import.meta.url),
+  'utf8',
+);
 
 const formalAssetPaths = {
   ambient: '../../../../apps/minecraft-companion/web/public/assets/formal-console/console-ambient-bg.webp',
@@ -51,13 +63,16 @@ test('正式版控制台使用语义设计变量与三栏应用骨架', () => {
   assert.match(appSource, /class="mineclaw-app"/);
   assert.match(appSource, /class="app-header"/);
   assert.match(appSource, /class="partner-sidebar"/);
-  assert.match(appSource, /grid-template-columns:240px minmax\(0,1fr\) 400px/);
+  assert.match(appSource, /grid-template-columns:clamp\(220px,16\.63vw,278px\) minmax\(0,1fr\) clamp\(340px,24\.88vw,416px\)/);
+  assert.match(appSource, /\.partner-workspace-bar \{[^}]*grid-column:2;/);
+  assert.match(appSource, /\.play-control \{ grid-column:3; grid-row:1 \/ 3; \}/);
 });
 
 test('正式外壳保留产品导航与 Hub 状态并移除草方块齿边', () => {
   assert.match(appSource, />MineClaw<\/span>/);
-  assert.match(appSource, />AI COMPANION CONSOLE<\/span>/);
+  assert.doesNotMatch(appSource, /AI COMPANION CONSOLE/);
   assert.match(appSource, /Hub 已连接/);
+  assert.match(appSource, /class="hub-popover"/);
   assert.match(appSource, /aria-label="伙伴工作区"/);
   assert.match(appSource, /class="partner-list-item"/);
   assert.doesNotMatch(appSource, /grass teeth|TOP BAR \(grass block\)/);
@@ -66,9 +81,12 @@ test('正式外壳保留产品导航与 Hub 状态并移除草方块齿边', () 
 
 test('感知空态使用四层局部扫描环且不伪造世界数据', () => {
   assert.equal((appSource.match(/class="scan-ring /g) || []).length, 4);
-  assert.match(appSource, /@keyframes perceptionScan/);
-  assert.match(appSource, /animation:perceptionScan 4s linear infinite/);
-  assert.match(appSource, /will-change:transform,opacity/);
+  assert.match(appSource, /@keyframes radarPulse/);
+  assert.match(appSource, /@keyframes radarSweep/);
+  assert.match(appSource, /class="perception-stage-heading"/);
+  assert.match(appSource, /class="perception-primary-action"/);
+  assert.match(appSource, /const perceptionTelemetry = computed/);
+  assert.match(appSource, /entities: Array\.isArray\(state\?\.entities\) \? state\.entities\.length : '—'/);
   assert.match(appSource, /v-if="!currentWorldState" class="perception-empty"/);
   assert.match(appSource, /v-if="currentWorldState && !show3D" class="perception-online-state"/);
   assert.match(appSource, /v-if="currentWorldState && show3D" class="perception-scene"/);
@@ -77,22 +95,35 @@ test('感知空态使用四层局部扫描环且不伪造世界数据', () => {
 
 test('伙伴检查器使用正式信息层级并保留交流功能入口', () => {
   assert.match(appSource, /class="play-control partner-inspector"/);
+  assert.match(appSource, /class="partner-hero-card"/);
   assert.match(appSource, /class="inspector-header"/);
-  assert.match(appSource, /class="inspector-chips"/);
+  assert.match(appSource, /class="partner-current-state"/);
+  assert.doesNotMatch(appSource, /class="inspector-chips"/);
   assert.match(appSource, /<nav class="control-tabs" aria-label="伙伴详情">/);
   assert.match(appSource, /class="interaction-summary"/);
+  assert.match(appSource, /class="chat-panel-header"/);
+  assert.match(appSource, /v-for="\(msg, i\) in filteredMessages"/);
   assert.match(appSource, /class="chat-panel interaction-chat"/);
   assert.match(appSource, /<ChatBox @send="sendChat"/);
+  assert.match(chatBoxSource, /<McIcon name="send"/);
   assert.doesNotMatch(appSource, /:style="tabStyle\(t\.id\)"/);
+});
+
+test('桌面标题栏提供最小化、最大化与关闭的完整窗口行为', () => {
+  assert.match(appSource, /@click="winMax"/);
+  assert.match(appSource, /name="maximize"/);
+  assert.match(electronPreloadSource, /toggleMaximize:\s*\(\) => ipcRenderer\.invoke\('window:toggle-maximize'\)/);
+  assert.match(electronMainSource, /ipcMain\.handle\('window:toggle-maximize'/);
+  assert.match(electronMainSource, /isMaximized\(\)/);
 });
 
 test('窄屏折叠感知舞台并为伙伴交流保留完整主列', () => {
   assert.match(appSource, /@media \(max-width:860px\)/);
   assert.match(appSource, /\.play-stage \{ display:none; \}/);
-  assert.match(appSource, /\.play-control \{ grid-column:2; \}/);
+  assert.match(appSource, /\.play-control \{ grid-column:2; grid-row:2; padding:12px; \}/);
   assert.match(appSource, /@media \(max-width:640px\)/);
   assert.match(appSource, /grid-template-columns:64px minmax\(0,1fr\)/);
-  assert.match(appSource, /\.workspace-partner \{ display:none; \}/);
+  assert.match(appSource, /\.partner-workspace-shell:not\(\.is-play-workspace\) \.play-control \{ display:none; \}/);
 });
 
 test('正式版位图素材全部接入真实消费点', () => {

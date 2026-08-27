@@ -35,6 +35,27 @@ const originalDefinitions = {
   minus: defineIcon(
     primary('M2 7h12v2H2V7Z'),
   ),
+  maximize: defineIcon(
+    primary('M2 2h12v12H2V2Zm2 2v8h8V4H4Z', { fillRule: 'evenodd' }),
+  ),
+  chat: defineIcon(
+    primary('M2 1h12v2h2v8h-2v2H8l-4 3v-3H2v-2H0V3h2V1Zm2 3H2v7h4v2l2-2h6V3H4v1Zm1 2h2v2H5V6Zm4 0h2v2H9V6Z', { fillRule: 'evenodd' }),
+  ),
+  more: defineIcon(
+    primary('M7 1h2v3H7V1Zm0 5h2v4H7V6Zm0 6h2v3H7v-3Z'),
+  ),
+  'chevron-down': defineIcon(
+    primary('M2 5h3v2h2v2h2V7h2V5h3v3h-2v2h-2v2H6v-2H4V8H2V5Z'),
+  ),
+  collapse: defineIcon(
+    primary('M1 1h2v14H1V1Zm7 2h3v2h-2v2h6v2H9v2h2v2H8L3 8l5-5Z'),
+  ),
+  focus: defineIcon(
+    primary('M1 1h6v2H3v4H1V1Zm8 0h6v6h-2V3H9V1ZM1 9h2v4h4v2H1V9Zm12 0h2v6H9v-2h4V9Z'),
+  ),
+  send: defineIcon(
+    primary('M0 1l16 7-16 7V9l10-1L0 7V1Zm3 3v2l7 2-7 2v2l9-4-9-4Z', { fillRule: 'evenodd' }),
+  ),
   undo: defineIcon(
     primary('M5 0h2v3h5v2h2v2h2v7h-3V8h-2V6H7v4H5L0 5l5-5Z'),
   ),

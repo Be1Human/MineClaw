@@ -9,12 +9,18 @@
   <div class="chat-composer">
     <input v-model="text" @keydown.enter="emitSend" placeholder="跟伙伴说点什么…"
       aria-label="聊天消息" />
-    <button @click="emitSend" :disabled="!text.trim() || sending">{{ sending ? '发送中' : '发送' }}</button>
+    <button
+      @click="emitSend"
+      :disabled="!text.trim() || sending"
+      :aria-label="sending ? '发送中' : '发送消息'"
+      :title="sending ? '发送中' : '发送消息'"
+    ><McIcon name="send" :size="16" /></button>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const emit = defineEmits(['send']);
 
@@ -37,11 +43,11 @@ function emitSend() {
 .chat-composer input { min-width:0; min-height:40px; flex:1; padding:9px 12px; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text); font-size:12px; transition:border-color var(--mc-duration-fast),box-shadow var(--mc-duration-fast); }
 .chat-composer input::placeholder { color:var(--mc-text-muted); }
 .chat-composer input:focus { border-color:rgba(105,201,74,.55); outline:0; box-shadow:0 0 0 3px rgba(105,201,74,.09); }
-.chat-composer button { min-width:64px; min-height:40px; padding:8px 14px; cursor:pointer; background:var(--mc-accent); border:1px solid transparent; border-radius:var(--mc-radius-sm); color:#081007; font-size:12px; font-weight:800; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }
+.chat-composer button { display:grid; width:44px; min-width:44px; min-height:40px; place-items:center; padding:0; cursor:pointer; background:linear-gradient(180deg,#397a3a,#2a5c30); border:1px solid rgba(105,201,74,.5); border-radius:var(--mc-radius-sm); color:#effdeb; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }
 .chat-composer button:hover:not(:disabled) { background:var(--mc-accent-strong); }
 .chat-composer button:disabled { cursor:not-allowed; opacity:.38; }
 @media (max-width:420px) {
   .chat-composer { gap:6px; }
-  .chat-composer button { min-width:58px; padding:8px 10px; }
+  .chat-composer button { width:40px; min-width:40px; }
 }
 </style>

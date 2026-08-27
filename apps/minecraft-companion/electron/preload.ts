@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   minimize: () => ipcRenderer.send('window:minimize'),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
   close: () => ipcRenderer.send('window:close'),
   openExternal: (url) => ipcRenderer.send('shell:openExternal', url),
   onDesktopPetState: (callback) => {

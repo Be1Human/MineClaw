@@ -10,7 +10,8 @@ import {
 } from '../../../../apps/minecraft-companion/web/src/icons/iconDefinitions.js';
 
 const requiredIcons = [
-  'unknown', 'settings', 'close', 'plus', 'minus', 'undo', 'play', 'stop', 'compass', 'health',
+  'unknown', 'settings', 'close', 'plus', 'minus', 'maximize', 'chat', 'more', 'chevron-down',
+  'collapse', 'focus', 'send', 'undo', 'play', 'stop', 'compass', 'health',
   'thinking', 'brain', 'tool', 'success', 'error', 'finish', 'gather',
   'craft', 'task', 'door', 'stuck', 'critic', 'memory', 'skill', 'activity',
   'history', 'backpack', 'route', 'pen', 'fill', 'eyedropper', 'erase', 'bot',

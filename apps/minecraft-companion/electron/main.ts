@@ -148,6 +148,12 @@ if (!gotLock) {
 // ── 生命周期 ──────────────────────────────────────────────────────────────────
 // ── 无边框窗口控制 IPC（前端自定义标题栏调用）─────────────────────────────────
 ipcMain.on('window:minimize', () => mainWindow?.minimize())
+ipcMain.handle('window:toggle-maximize', () => {
+  if (!mainWindow) return false
+  if (mainWindow.isMaximized()) mainWindow.unmaximize()
+  else mainWindow.maximize()
+  return mainWindow.isMaximized()
+})
 ipcMain.on('window:close', () => mainWindow?.hide()) // 关闭=缩托盘，与原关窗行为一致
 // 用系统浏览器打开外链（仅放行 http/https，防协议注入）
 ipcMain.on('shell:openExternal', (_e, url: string) => {

@@ -9,28 +9,35 @@
         <div class="app-brand">
           <img class="app-brand-logo" src="/brand/mineclaw-mark.svg" alt="" aria-hidden="true" />
           <span class="app-brand-name">MineClaw</span>
-          <span class="app-brand-edition">AI COMPANION CONSOLE</span>
         </div>
 
         <div class="app-header-spacer"></div>
 
-        <button
-          class="global-settings-button"
-          :class="{ active: globalSettingsOpen }"
-          title="全局设置"
-          aria-label="全局设置"
-          @click="globalSettingsOpen = !globalSettingsOpen"
-        ><McIcon name="settings" :size="16" /></button>
-
         <!-- hub status -->
-        <div class="app-hub-status" :class="{ offline: !wsConnected }">
-          <span class="status-indicator"></span>
-          <span>{{ wsConnected ? 'Hub 已连接' : 'Hub 断开' }}</span>
+        <div class="app-hub-menu">
+          <button
+            class="app-hub-status"
+            :class="{ offline: !wsConnected, active: hubMenuOpen }"
+            :aria-expanded="hubMenuOpen"
+            @click="hubMenuOpen = !hubMenuOpen"
+          >
+            <span class="status-indicator"></span>
+            <span>{{ wsConnected ? 'Hub 已连接' : 'Hub 断开' }}</span>
+            <McIcon name="chevron-down" :size="12" />
+          </button>
+          <div v-if="hubMenuOpen" class="hub-popover">
+            <div class="hub-popover-status">
+              <span :class="{ offline: !wsConnected }"></span>
+              <div><small>Hub 连接状态</small><strong>{{ wsConnected ? '已连接' : '已断开' }}</strong></div>
+            </div>
+            <button @click="openGlobalSettings('servers'); hubMenuOpen = false"><McIcon name="server" :size="13" />服务器配置</button>
+          </div>
         </div>
 
         <!-- 无边框窗口控制（自定义标题栏）-->
         <div v-if="isElectron" class="window-controls">
           <button class="window-control" @click="winMin" title="最小化" aria-label="最小化"><McIcon name="minus" :size="12" /></button>
+          <button class="window-control" @click="winMax" title="最大化或还原" aria-label="最大化或还原"><McIcon name="maximize" :size="12" /></button>
           <button class="window-control danger" @click="winClose" title="关闭到托盘" aria-label="关闭到托盘"><McIcon name="close" :size="12" /></button>
         </div>
       </div>
@@ -46,15 +53,17 @@
     </section>
 
     <!-- ===================== PARTNER WORKSPACE ===================== -->
-    <div class="partner-workspace-shell">
+    <div
+      class="partner-workspace-shell"
+      :class="{ 'sidebar-collapsed': sidebarCollapsed, 'is-play-workspace': workspaceView === 'play' }"
+    >
 
       <!-- ---------- LEFT · PARTNERS ---------- -->
       <aside class="partner-sidebar">
         <div class="partner-sidebar-header">
-          <span class="section-eyebrow">PARTNERS</span>
+          <span class="partner-sidebar-heading">伙伴</span>
           <button class="icon-button primary" @click="showCreateForm = true" title="创建伙伴" aria-label="创建伙伴"><McIcon name="plus" :size="13" /></button>
         </div>
-        <div class="partner-sidebar-title">我的伙伴</div>
 
         <div class="partner-list">
           <button v-for="p in profiles" :key="p.id" class="partner-list-item" :class="{ active: selectedProfile?.id === p.id }" @click="selectProfile(p)">
@@ -71,19 +80,17 @@
         </div>
 
         <div class="partner-sidebar-fill"></div>
-        <div class="partner-count">{{ profiles.length }} PARTNERS · {{ onlineCount }} ONLINE</div>
+        <div class="partner-sidebar-footer">
+          <button class="sidebar-tool primary-tool" :class="{ active: globalSettingsOpen }" @click="openGlobalSettings()" title="全局设置">
+            <McIcon name="settings" :size="15" /><span>全局设置</span>
+          </button>
+          <button class="sidebar-tool collapse-tool" @click="sidebarCollapsed = !sidebarCollapsed" :aria-label="sidebarCollapsed ? '展开伙伴栏' : '折叠伙伴栏'" :title="sidebarCollapsed ? '展开伙伴栏' : '折叠伙伴栏'">
+            <McIcon name="collapse" :size="14" />
+          </button>
+        </div>
       </aside>
 
       <section class="partner-workspace-bar">
-        <div class="workspace-partner">
-          <div v-if="selectedProfile" class="workspace-partner-head">
-            <McHead :texture="selectedSkinTexture" :size="32" />
-          </div>
-          <div class="workspace-partner-copy">
-            <strong>{{ selectedProfile?.name || '未选择伙伴' }}</strong>
-            <span>{{ selectedProfile ? getStatusLabel(currentFullStatus?.status, currentFullStatus) : '请从左侧选择或创建伙伴' }}</span>
-          </div>
-        </div>
         <nav class="partner-workspace-tabs" aria-label="伙伴工作区">
           <button
             v-for="tab in workspaceTabs"
@@ -91,7 +98,7 @@
             class="partner-workspace-tab"
             :class="{ active: workspaceView === tab.id }"
             @click="workspaceView = tab.id"
-          >{{ tab.name }}</button>
+          ><McIcon :name="tab.icon" :size="15" />{{ tab.name }}</button>
         </nav>
       </section>
 
@@ -122,12 +129,27 @@
         @profile-updated="onProfileUpdated"
         @request-global-settings="openGlobalSettings"
       />
-      <template v-else>
-
       <!-- ---------- CENTER · 感知空间 ---------- -->
-      <main class="play-stage perception-stage">
+      <main v-else class="play-stage perception-stage">
         <div class="perception-grid" aria-hidden="true"></div>
         <div class="perception-vignette" aria-hidden="true"></div>
+
+        <div class="perception-stage-heading">
+          <span></span>
+          <strong>感知空间</strong>
+        </div>
+
+        <button
+          v-if="!inGame"
+          class="perception-primary-action"
+          :disabled="!brainReady"
+          @click="joinGame"
+        >
+          <McIcon name="play" :size="13" />进入游戏
+        </button>
+        <button v-else class="perception-primary-action leave" @click="leaveGame">
+          <McIcon name="stop" :size="13" />退出游戏
+        </button>
 
         <!-- 真实 3D 感知（默认关闭·按需开启，避免重 WebGL 拖慢界面 BUG-WEBUI-05） -->
         <div v-if="currentWorldState && show3D" class="perception-scene">
@@ -140,7 +162,7 @@
           />
         </div>
         <!-- 3D 开关 -->
-        <div class="perception-mode-control">
+        <div v-if="currentWorldState" class="perception-mode-control">
           <button class="stage-button" :class="{ active: show3D }" @click="toggle3D">
             <McIcon :name="show3D ? 'stop' : 'play'" :size="13" />
             {{ show3D ? '关闭 3D 感知' : '开启 3D 感知' }}
@@ -172,29 +194,24 @@
             <span class="scan-ring ring-three"></span>
             <span class="scan-ring ring-four"></span>
             <div class="scan-core">
-              <div class="scan-pixel"></div>
+              <McHead :texture="selectedSkinTexture" :size="24" />
             </div>
-          </div>
-          <div class="scan-kicker">PERCEPTION ARRAY</div>
-          <div class="scan-title">等待感知数据</div>
-          <div class="scan-copy">伙伴上线后，将在这里呈现实时世界与环境信号</div>
-          <div class="sensor-status">
-            <span></span>
-            <strong>SENSOR · STANDBY</strong>
           </div>
         </div>
 
         <!-- 外层图例 -->
         <div class="perception-legend">
-          <div class="legend-header">
-            <span class="legend-header-mark"></span>
-            <span>LEGEND · 图例</span>
-          </div>
-          <div class="legend-grid">
-            <div v-for="(lg, i) in legend" :key="i" class="legend-item">
-              <span class="legend-swatch" :style="{ background: lg.c }"></span>
-              <span>{{ lg.t }}</span>
+          <div class="radar-legend-list">
+            <div v-for="item in radarLegend" :key="item.label" class="radar-legend-item">
+              <span :class="item.type"></span>
+              <strong>{{ item.label }}</strong>
             </div>
+          </div>
+          <div class="radar-telemetry">
+            <span>MODE: {{ perceptionTelemetry.mode }}</span>
+            <span>POS: {{ perceptionTelemetry.position }}</span>
+            <span>ENTITY: {{ perceptionTelemetry.entities }}</span>
+            <span>BLOCK: {{ perceptionTelemetry.blocks }}</span>
           </div>
         </div>
       </main>
@@ -203,24 +220,36 @@
       <aside class="play-control partner-inspector">
 
         <template v-if="selectedProfile">
-        <!-- header -->
-        <div class="inspector-header">
-          <div class="inspector-avatar">
-            <McHead :texture="selectedSkinTexture" :size="44" />
-          </div>
-          <div class="inspector-identity">
-            <div class="inspector-name">{{ selectedProfile.name }}</div>
-            <div class="inspector-presence">
-              <span :style="{ background: statusDot(selectedProfile.id) }"></span>
-              <small>{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</small>
+        <!-- 伙伴主卡 -->
+        <section class="partner-hero-card">
+          <div class="inspector-header">
+            <div class="inspector-avatar">
+              <McHead :texture="selectedSkinTexture" :size="54" />
+            </div>
+            <div class="inspector-identity">
+              <div class="inspector-name">{{ selectedProfile.name }}</div>
+              <div class="inspector-presence">
+                <span :style="{ background: statusDot(selectedProfile.id) }"></span>
+                <small>{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</small>
+              </div>
+            </div>
+            <div class="inspector-actions">
+              <button v-if="!inGame" class="inspector-button primary" @click="joinGame" :disabled="!brainReady">进入游戏</button>
+              <button v-else class="inspector-button danger" @click="leaveGame">退出游戏</button>
+              <div class="partner-more-menu">
+                <button class="inspector-button ghost" @click="partnerMenuOpen = !partnerMenuOpen" aria-label="更多伙伴操作" :aria-expanded="partnerMenuOpen"><McIcon name="more" :size="14" /></button>
+                <div v-if="partnerMenuOpen" class="partner-action-popover">
+                  <button @click="showSkinEditor = true; partnerMenuOpen = false"><McIcon name="pen" :size="12" />编辑皮肤</button>
+                  <button class="danger" @click="deleteProfile(selectedProfile.id); partnerMenuOpen = false"><McIcon name="trash" :size="12" />删除伙伴</button>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="inspector-actions">
-            <button v-if="!inGame" class="inspector-button primary" @click="joinGame" :disabled="!brainReady">进游戏</button>
-            <button v-else class="inspector-button danger" @click="leaveGame">退游戏</button>
-            <button class="inspector-button ghost danger" @click="deleteProfile(selectedProfile.id)" aria-label="删除伙伴"><McIcon name="trash" :size="13" /></button>
+          <div class="partner-current-state">
+            <span>当前状态</span>
+            <strong><i :style="{ background: statusDot(selectedProfile.id) }"></i>{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</strong>
           </div>
-        </div>
+        </section>
 
         <!-- HUD vitals -->
         <div v-if="inGame" class="inspector-vitals">
@@ -243,21 +272,6 @@
           </div>
         </div>
 
-        <!-- chips -->
-        <div class="inspector-chips">
-          <div class="status-chip" :class="{ positive: connOk, negative: !connOk }">
-            <span>连接</span>
-            <McIcon :name="connOk ? 'connected' : 'disconnected'" :size="10" />
-            <strong>{{ connOk ? '已接' : '未接' }}</strong>
-          </div>
-          <div class="status-chip">
-            <span>动作</span><strong>{{ currentFullStatus?.currentBehavior || '空闲' }}</strong>
-          </div>
-          <div class="status-chip activity-chip">
-            <span>活动</span><strong>{{ currentFullStatus?.lastActivity || '—' }}</strong>
-          </div>
-        </div>
-
         <!-- problem -->
         <div v-if="inGame && !connOk && currentFullStatus?.serverAddress" class="inspector-problem">
           <McIcon name="warning" :size="12" />
@@ -267,7 +281,9 @@
 
         <!-- tabs -->
         <nav class="control-tabs" aria-label="伙伴详情">
-          <button v-for="t in tabs" :key="t.id" class="control-tab" :class="{ active: ctrlTab === t.id }" @click="ctrlTab = t.id">{{ t.name }}</button>
+          <button v-for="t in tabs" :key="t.id" class="control-tab" :class="{ active: ctrlTab === t.id }" @click="ctrlTab = t.id">
+            <McIcon :name="t.icon" :size="14" />{{ t.name }}
+          </button>
         </nav>
 
         <!-- content -->
@@ -287,27 +303,45 @@
                 </div>
               </div>
               <div class="interaction-summary-copy">
-                <div>
-                  <div class="interaction-summary-title">当前角色交流</div>
-                  <div class="interaction-summary-state">{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</div>
+                <div class="interaction-summary-title">{{ selectedProfile.name }}</div>
+                <div class="interaction-summary-detail">
+                  <span>当前状态</span>
+                  <strong><i :style="{ background: statusDot(selectedProfile.id) }"></i>{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</strong>
+                </div>
+                <div class="interaction-summary-detail">
+                  <span>位置</span>
+                  <strong>{{ currentPositionLabel }}</strong>
+                </div>
+                <div class="interaction-summary-detail">
+                  <span>活动</span>
+                  <strong>{{ currentFullStatus?.lastActivity || '暂无最近活动' }}</strong>
                 </div>
                 <div class="interaction-summary-detail">
                   <span>动作</span>
                   <strong>{{ currentFullStatus?.currentBehavior || '空闲' }}</strong>
                 </div>
                 <div class="interaction-summary-detail">
-                  <span>活动</span>
-                  <strong>{{ currentFullStatus?.lastActivity || '暂无最近活动' }}</strong>
+                  <span>个性</span>
+                  <strong>{{ personalityLabel }}</strong>
                 </div>
-                <button class="interaction-skin-button" @click="showSkinEditor = true">编辑皮肤</button>
               </div>
+              <button class="interaction-focus-button" @click="showSkinEditor = true" title="查看并编辑角色" aria-label="查看并编辑角色"><McIcon name="focus" :size="13" /></button>
             </div>
 
             <div class="chat-panel interaction-chat">
+              <div class="chat-panel-header">
+                <span>聊天记录</span>
+                <select v-model="chatFilter" aria-label="筛选聊天记录">
+                  <option value="all">全部</option>
+                  <option value="partner">伙伴</option>
+                  <option value="self">我</option>
+                  <option value="error">失败</option>
+                </select>
+              </div>
               <div ref="messagesEl" class="interaction-messages">
                 <div v-if="chatHistoryLoading" class="chat-state">正在加载最近聊天记录…</div>
-                <div v-else-if="messages.length === 0" class="chat-state">还没有聊天记录，直接和伙伴说句话吧</div>
-                <div v-for="(msg, i) in messages" :key="i" class="chat-message" :class="{ self: msg.self, error: msg.error }">
+                <div v-else-if="filteredMessages.length === 0" class="chat-state chat-empty-state"><McIcon name="chat" :size="24" /><span>暂无聊天记录</span></div>
+                <div v-for="(msg, i) in filteredMessages" :key="i" class="chat-message" :class="{ self: msg.self, error: msg.error }">
                   <div v-if="msg.thinking" class="thinking-card" @click="msg.thinkExpanded = !msg.thinkExpanded">
                     <span class="thinking-label"><McIcon name="thinking" :size="10" />思考过程 · {{ msg.thinkExpanded ? '收起' : '展开' }}</span>
                     <div class="thinking-copy" :class="{ expanded: msg.thinkExpanded }">{{ msg.thinking }}</div>
@@ -369,7 +403,6 @@
           <span>在左侧挑一个伙伴，或点 + 创建</span>
         </div>
       </aside>
-      </template>
     </div>
 
     <!-- ===================== 创建表单 overlay ===================== -->
@@ -428,31 +461,35 @@ import { useProfileTasks } from './lib/profileTasks.js';
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 const globalSettingsOpen = ref(false);
 const globalSettingsSection = ref('llm-configs');
+const hubMenuOpen = ref(false);
+const sidebarCollapsed = ref(false);
+const partnerMenuOpen = ref(false);
 
 function openGlobalSettings(section = 'llm-configs') {
   globalSettingsSection.value = section;
   globalSettingsOpen.value = true;
 }
 const winMin = () => window.electronAPI?.minimize();
+const winMax = () => window.electronAPI?.toggleMaximize?.();
 const winClose = () => window.electronAPI?.close();
 
 const workspaceTabs = [
-  { id: 'play', name: '互动' },
-  { id: 'brain', name: '大脑' },
-  { id: 'trace', name: '轨迹' },
-  { id: 'settings', name: '设置' },
+  { id: 'play', name: '互动', icon: 'chat' },
+  { id: 'brain', name: '大脑', icon: 'brain' },
+  { id: 'trace', name: '轨迹', icon: 'route' },
+  { id: 'settings', name: '设置', icon: 'settings' },
 ];
 const tabs = [
-  { id: 'status', name: '角色交流' },
-  { id: 'tasks', name: '任务栏' },
-  { id: 'inventory', name: '背包' },
-  { id: 'logs', name: '日志' },
+  { id: 'status', name: '角色交流', icon: 'chat' },
+  { id: 'tasks', name: '任务栏', icon: 'task' },
+  { id: 'inventory', name: '背包', icon: 'backpack' },
+  { id: 'logs', name: '日志', icon: 'history' },
 ];
-const legend = [
-  { c: '#5b8cff', t: 'Bot 自身' }, { c: '#ef4444', t: '敌对生物' }, { c: '#22c55e', t: '友好生物' },
-  { c: '#3b82f6', t: '玩家' }, { c: '#f59e0b', t: '掉落物' }, { c: '#8a8a8a', t: '固体方块(挡)' },
-  { c: '#c9cdbf', t: '可穿过方块' }, { c: '#dc2626', t: '危险方块' }, { c: '#16a34a', t: '资源方块' },
-  { c: '#14b8a6', t: '导航路径' },
+const radarLegend = [
+  { type: 'beacon', label: '伙伴信标' },
+  { type: 'range', label: '感知范围' },
+  { type: 'medium', label: '中等强度' },
+  { type: 'edge', label: '边缘感知' },
 ];
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
 
@@ -533,6 +570,7 @@ const ctrlTab = computed({
 const showCreateForm = ref(false);
 const showSkinEditor = ref(false);
 const messages = ref([]);
+const chatFilter = ref('all');
 const chatHistoryLoading = ref(false);
 const logs = ref([]);
 // BUG-WEBUI-05 · 3D 感知默认关闭（重 WebGL），按需开启，状态持久化
@@ -570,6 +608,36 @@ const currentWorldState = computed(() => {
   return worldStates.get(selectedProfile.value.id) || null;
 });
 
+const perceptionTelemetry = computed(() => {
+  const state = currentWorldState.value;
+  const position = state?.self?.position;
+  const positionText = position && [position.x, position.y, position.z].every(Number.isFinite)
+    ? `${Math.round(position.x)},${Math.round(position.y)},${Math.round(position.z)}`
+    : '—';
+  return {
+    mode: state ? (show3D.value ? '3D' : 'LIVE') : 'STANDBY',
+    position: positionText,
+    entities: Array.isArray(state?.entities) ? state.entities.length : '—',
+    blocks: Array.isArray(state?.blocks) ? state.blocks.length : '—',
+  };
+});
+
+const currentPositionLabel = computed(() => perceptionTelemetry.value.position);
+const personalityLabel = computed(() => {
+  const personality = selectedProfile.value?.personality;
+  if (typeof personality === 'string' && personality.trim()) return personality;
+  if (typeof personality?.description === 'string' && personality.description.trim()) return personality.description;
+  const traits = personality?.traits;
+  if (Array.isArray(traits) && traits.length) return traits.join('、');
+  return '—';
+});
+const filteredMessages = computed(() => {
+  if (chatFilter.value === 'self') return messages.value.filter((message) => message.self);
+  if (chatFilter.value === 'partner') return messages.value.filter((message) => !message.self && !message.error);
+  if (chatFilter.value === 'error') return messages.value.filter((message) => message.error);
+  return messages.value;
+});
+
 const form = ref({
   name: 'LanYi',
   personality: '活泼开朗的冒险伙伴，喜欢探索和帮助人，偶尔有点小调皮',
@@ -604,11 +672,6 @@ async function saveSkin({ skinTexture, skinModel }) {
   } catch { /* ignore */ }
   showSkinEditor.value = false;
 }
-
-const onlineCount = computed(() => profiles.value.filter((p) => {
-  const s = botStatuses.get(p.id);
-  return s && (s.status === 'awake' || s.status === 'online' || s.status === 'busy');
-}).length);
 
 const connOk = computed(() => currentFullStatus.value?.connectionStatus === 'connected');
 const companionPhase = computed(() => currentFullStatus.value?.companionPhase || (connOk.value ? 'playing' : (activeBots.has(selectedProfile.value?.id) ? 'awake' : 'offline')));
@@ -970,26 +1033,35 @@ onMounted(() => { loadProfiles(); });
 .app-brand { display:flex; min-width:0; align-items:center; gap:10px; }
 .app-brand-logo { width:34px; height:34px; flex:none; object-fit:contain; }
 .app-brand-name { color:var(--mc-text); font-family:var(--mc-font-pixel); font-size:13px; letter-spacing:.02em; white-space:nowrap; }
-.app-brand-edition { margin-left:4px; color:var(--mc-text-muted); font:13px/1 var(--mc-font-mono); letter-spacing:.08em; white-space:nowrap; }
 .app-header-spacer { flex:1; }
-.global-settings-button,.window-control,.icon-button { display:grid; place-items:center; cursor:pointer; background:transparent; border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); transition:color var(--mc-duration-fast),background var(--mc-duration-fast),border-color var(--mc-duration-fast); -webkit-app-region:no-drag; }
-.global-settings-button { width:36px; height:34px; }
-.global-settings-button:hover,.global-settings-button.active,.window-control:hover,.icon-button:hover { background:var(--mc-surface-hover); border-color:var(--mc-border-strong); color:var(--mc-text); }
-.app-hub-status { display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; background:var(--mc-accent-soft); border:1px solid rgba(105,201,74,.24); border-radius:var(--mc-radius-sm); color:var(--mc-accent-strong); font-size:12px; font-weight:700; -webkit-app-region:no-drag; }
+.window-control,.icon-button { display:grid; place-items:center; cursor:pointer; background:transparent; border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); transition:color var(--mc-duration-fast),background var(--mc-duration-fast),border-color var(--mc-duration-fast); -webkit-app-region:no-drag; }
+.window-control:hover,.icon-button:hover { background:var(--mc-surface-hover); border-color:var(--mc-border-strong); color:var(--mc-text); }
+.app-hub-menu { position:relative; -webkit-app-region:no-drag; }
+.app-hub-status { display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; cursor:pointer; background:rgba(12,19,14,.82); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-accent-strong); font-size:12px; font-weight:700; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast); }
+.app-hub-status:hover,.app-hub-status.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.28); }
 .app-hub-status .status-indicator { width:7px; height:7px; background:currentColor; border-radius:50%; box-shadow:0 0 10px currentColor; }
 .app-hub-status.offline { background:rgba(228,111,101,.1); border-color:rgba(228,111,101,.22); color:var(--mc-danger); }
+.hub-popover { position:absolute; z-index:40; top:41px; right:0; width:214px; padding:8px; background:rgba(14,21,16,.98); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); box-shadow:0 18px 40px rgba(0,0,0,.36); }
+.hub-popover-status { display:flex; align-items:center; gap:10px; padding:9px 10px 10px; border-bottom:1px solid var(--mc-border); }
+.hub-popover-status > span { width:8px; height:8px; flex:none; background:var(--mc-accent); border-radius:50%; box-shadow:0 0 9px rgba(105,201,74,.55); }
+.hub-popover-status > span.offline { background:var(--mc-danger); box-shadow:0 0 9px rgba(228,111,101,.42); }
+.hub-popover-status div { display:flex; min-width:0; flex-direction:column; gap:2px; }
+.hub-popover-status small { color:var(--mc-text-muted); font-size:10px; }
+.hub-popover-status strong { color:var(--mc-text); font-size:12px; }
+.hub-popover > button { display:flex; width:100%; align-items:center; gap:8px; margin-top:6px; padding:8px 10px; cursor:pointer; text-align:left; background:transparent; border:0; border-radius:var(--mc-radius-xs); color:var(--mc-text-secondary); font-size:11px; }
+.hub-popover > button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
 .window-controls { display:flex; align-items:center; gap:4px; -webkit-app-region:no-drag; }
 .window-control { width:30px; height:30px; }
 .window-control.danger:hover { background:rgba(228,111,101,.12); border-color:rgba(228,111,101,.3); color:var(--mc-danger); }
 .global-settings-layer { position:absolute; z-index:20; inset:60px 0 0; display:flex; min-width:0; min-height:0; background:var(--mc-bg); }
-.partner-workspace-shell { position:relative; z-index:2; display:grid; grid-template-columns:240px minmax(0,1fr) 400px; grid-template-rows:auto minmax(0,1fr); flex:1; min-height:0; }
-.partner-sidebar { display:flex; grid-column:1; grid-row:1 / 3; min-height:0; flex-direction:column; padding:18px 14px; background:rgba(13,19,15,.98); border-right:1px solid var(--mc-border); }
+.partner-workspace-shell { position:relative; z-index:2; display:grid; grid-template-columns:clamp(220px,16.63vw,278px) minmax(0,1fr) clamp(340px,24.88vw,416px); grid-template-rows:50px minmax(0,1fr); column-gap:14px; flex:1; min-height:0; padding:14px 14px 14px 0; transition:grid-template-columns var(--mc-duration-normal); }
+.partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px minmax(0,1fr) clamp(340px,24.88vw,416px); }
+.partner-sidebar { display:flex; grid-column:1; grid-row:1 / 3; min-height:0; flex-direction:column; margin-top:-14px; margin-bottom:-14px; padding:18px 14px 0; background:rgba(13,19,15,.98); border-right:1px solid var(--mc-border); }
 .partner-sidebar-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:0 4px; }
-.section-eyebrow { color:var(--mc-text-muted); font:10px/1 var(--mc-font-pixel); letter-spacing:.04em; }
+.partner-sidebar-heading { color:var(--mc-text-secondary); font-size:13px; font-weight:800; }
 .icon-button { width:30px; height:30px; }
 .icon-button.primary { background:var(--mc-accent); border-color:transparent; color:#081007; }
 .icon-button.primary:hover { background:var(--mc-accent-strong); color:#081007; }
-.partner-sidebar-title { margin:0 5px 10px; color:var(--mc-text-secondary); font-size:12px; font-weight:700; }
 .partner-list { display:flex; min-height:0; flex-direction:column; gap:6px; overflow-y:auto; padding-right:2px; }
 .partner-list-item { position:relative; display:flex; width:100%; align-items:center; gap:11px; padding:9px; cursor:pointer; text-align:left; background:transparent; border:1px solid transparent; border-radius:var(--mc-radius-sm); transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast); }
 .partner-list-item:hover { background:rgba(255,255,255,.025); border-color:var(--mc-border); }
@@ -1002,23 +1074,29 @@ onMounted(() => { loadProfiles(); });
 .partner-list-item.active .partner-list-summary small { color:#91b986; }
 .partner-list-empty { padding:10px 5px; color:var(--mc-text-muted); font-size:12px; line-height:1.6; }
 .partner-sidebar-fill { flex:1; }
-.partner-count { margin-top:14px; padding:14px 5px 0; border-top:1px solid var(--mc-border); color:var(--mc-text-muted); font:13px var(--mc-font-mono); letter-spacing:.04em; }
-.partner-workspace-bar { display:flex; grid-column:2 / 4; grid-row:1; min-width:0; min-height:62px; align-items:center; gap:20px; padding:10px 16px; background:var(--mc-bg-elevated); border-bottom:1px solid var(--mc-border); }
-.workspace-partner { display:flex; min-width:150px; flex:0 0 auto; align-items:center; gap:9px; }
-.workspace-partner-head { display:flex; width:36px; height:36px; align-items:center; justify-content:center; overflow:hidden; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); }
-.workspace-partner-copy { display:flex; min-width:0; flex-direction:column; gap:2px; }
-.workspace-partner-copy strong { max-width:180px; overflow:hidden; color:var(--mc-text); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
-.workspace-partner-copy span { color:var(--mc-text-muted); font-size:11px; white-space:nowrap; }
-.partner-workspace-tabs { display:flex; min-width:0; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
+.partner-sidebar-footer { display:flex; flex:none; gap:6px; margin:0 -14px; padding:10px 10px; border-top:1px solid var(--mc-border); }
+.sidebar-tool { display:flex; min-height:36px; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:transparent; border:1px solid transparent; border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font-size:11px; font-weight:700; }
+.sidebar-tool:hover,.sidebar-tool.active { background:var(--mc-surface-hover); border-color:var(--mc-border); color:var(--mc-text-secondary); }
+.sidebar-tool.primary-tool { flex:1; justify-content:flex-start; padding:0 10px; }
+.sidebar-tool.collapse-tool { width:36px; flex:none; }
+.sidebar-tool.collapse-tool .mc-icon { transition:transform var(--mc-duration-normal); }
+.sidebar-collapsed .collapse-tool .mc-icon { transform:rotate(180deg); }
+.sidebar-collapsed .partner-sidebar-heading,.sidebar-collapsed .partner-list-summary,.sidebar-collapsed .sidebar-tool span { display:none; }
+.sidebar-collapsed .partner-sidebar-header { justify-content:center; padding:0; }
+.sidebar-collapsed .partner-list-item { justify-content:center; padding:7px 5px; }
+.sidebar-collapsed .partner-sidebar-footer { justify-content:center; flex-direction:column; align-items:center; }
+.sidebar-collapsed .sidebar-tool.primary-tool { width:36px; flex:none; padding:0; }
+.partner-workspace-bar { display:flex; grid-column:2; grid-row:1; min-width:0; align-items:center; background:rgba(12,18,14,.88); border:1px solid var(--mc-border); border-bottom:0; border-radius:var(--mc-radius-sm) var(--mc-radius-sm) 0 0; }
+.partner-workspace-tabs { display:flex; width:100%; min-width:0; height:100%; align-items:stretch; overflow-x:auto; scrollbar-width:none; }
 .partner-workspace-tabs::-webkit-scrollbar { display:none; }
-.partner-workspace-tab { position:relative; min-height:36px; flex:0 0 auto; padding:7px 14px; cursor:pointer; background:transparent; border:1px solid transparent; border-radius:var(--mc-radius-sm); color:var(--mc-text-muted); font-family:var(--mc-font-body); font-size:13px; font-weight:700; white-space:nowrap; transition:color var(--mc-duration-fast),background var(--mc-duration-fast); }
+.partner-workspace-tab { position:relative; display:inline-flex; min-width:120px; min-height:49px; flex:0 0 auto; align-items:center; justify-content:center; gap:9px; padding:0 18px; cursor:pointer; background:transparent; border:0; border-right:1px solid var(--mc-border); color:var(--mc-text-muted); font-family:var(--mc-font-body); font-size:13px; font-weight:700; white-space:nowrap; transition:color var(--mc-duration-fast),background var(--mc-duration-fast); }
 .partner-workspace-tab:hover { background:rgba(255,255,255,.025); color:var(--mc-text-secondary); }
-.partner-workspace-tab.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.2); color:var(--mc-accent-strong); }
-.partner-workspace-tab.active::after { position:absolute; right:12px; bottom:-11px; left:12px; height:2px; background:var(--mc-accent); content:''; }
-.partner-workspace-panel { grid-column:2 / 4; grid-row:2; min-width:0; min-height:0; overflow:hidden; }
+.partner-workspace-tab.active { background:linear-gradient(180deg,rgba(105,201,74,.1),rgba(105,201,74,.035)); color:var(--mc-accent-strong); }
+.partner-workspace-tab.active::after { position:absolute; right:0; bottom:-1px; left:0; height:2px; background:var(--mc-accent); content:''; }
+.partner-workspace-panel { grid-column:2; grid-row:2; min-width:0; min-height:0; overflow:hidden; border:1px solid var(--mc-border); }
 .play-stage { grid-column:2; grid-row:2; }
-.play-control { grid-column:3; grid-row:2; }
-.perception-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background-color:#080c09; background-image:linear-gradient(rgba(5,9,6,.34),rgba(5,9,6,.5)),url('/assets/formal-console/perception-field-bg.webp'); background-position:center; background-size:cover; border-right:1px solid var(--mc-border); }
+.play-control { grid-column:3; grid-row:1 / 3; }
+.perception-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background-color:#080c09; background-image:linear-gradient(rgba(5,9,6,.34),rgba(5,9,6,.5)),url('/assets/formal-console/perception-field-bg.webp'); background-position:center; background-size:cover; border:1px solid var(--mc-border); border-top:0; border-radius:0 0 var(--mc-radius-sm) var(--mc-radius-sm); }
 .perception-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(151,184,151,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(151,184,151,.035) 1px,transparent 1px); background-size:32px 32px; }
 .perception-grid::before { position:absolute; inset:0; background-image:linear-gradient(rgba(105,201,74,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(105,201,74,.04) 1px,transparent 1px); background-size:160px 160px; content:''; }
 .perception-vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 62% 66% at 50% 48%,rgba(25,45,29,.14),transparent 65%),linear-gradient(180deg,rgba(4,8,5,.08),rgba(4,8,5,.3)); }
@@ -1031,34 +1109,19 @@ onMounted(() => { loadProfiles(); });
 .stage-button-dot { width:6px; height:6px; background:currentColor; border-radius:50%; }
 .perception-online-state,.perception-empty { position:absolute; z-index:1; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
 .online-compass { display:grid; width:64px; height:64px; place-items:center; margin-bottom:18px; background:var(--mc-accent-soft); border:1px solid rgba(105,201,74,.25); border-radius:50%; color:var(--mc-accent-strong); box-shadow:0 0 40px rgba(105,201,74,.08); }
-.online-state-kicker,.scan-kicker { color:var(--mc-accent); font:12px/1 var(--mc-font-mono); letter-spacing:.16em; }
-.online-state-title,.scan-title { margin-top:12px; color:var(--mc-text); font-size:18px; font-weight:700; }
-.online-state-copy,.scan-copy { max-width:360px; margin-top:8px; color:var(--mc-text-muted); font-size:12px; line-height:1.65; }
+.online-state-kicker { color:var(--mc-accent); font:12px/1 var(--mc-font-mono); letter-spacing:.16em; }
+.online-state-title { margin-top:12px; color:var(--mc-text); font-size:18px; font-weight:700; }
+.online-state-copy { max-width:360px; margin-top:8px; color:var(--mc-text-muted); font-size:12px; line-height:1.65; }
 .scan-field { position:relative; display:grid; width:300px; height:300px; place-items:center; margin-bottom:4px; }
 .scan-crosshair { position:absolute; z-index:0; background:linear-gradient(90deg,transparent,rgba(105,201,74,.13),transparent); }
 .scan-crosshair.horizontal { width:100%; height:1px; }
 .scan-crosshair.vertical { width:1px; height:100%; background:linear-gradient(180deg,transparent,rgba(105,201,74,.13),transparent); }
-.scan-ring { position:absolute; width:260px; height:260px; border:1px solid rgba(105,201,74,.55); border-radius:50%; opacity:0; animation:perceptionScan 4s linear infinite; will-change:transform,opacity; }
-.scan-ring.ring-two { animation-delay:-1s; }
-.scan-ring.ring-three { animation-delay:-2s; }
-.scan-ring.ring-four { animation-delay:-3s; }
+.scan-ring { position:absolute; border:1px solid rgba(105,201,74,.55); border-radius:50%; }
 .scan-core { position:relative; z-index:2; display:grid; width:74px; height:74px; place-items:center; background:rgba(13,23,15,.92); border:1px solid rgba(105,201,74,.56); border-radius:50%; box-shadow:0 0 36px rgba(105,201,74,.13),inset 0 0 22px rgba(105,201,74,.05); }
 .scan-core::before,.scan-core::after { position:absolute; background:rgba(105,201,74,.35); content:''; }
 .scan-core::before { width:96px; height:1px; }
 .scan-core::after { width:1px; height:96px; }
-.scan-pixel { position:relative; z-index:2; width:15px; height:15px; background:var(--mc-accent-strong); border-radius:2px; box-shadow:0 0 18px var(--mc-accent),0 0 42px rgba(105,201,74,.55); animation:scanPixel 1.8s ease-in-out infinite; }
-.sensor-status { display:flex; align-items:center; gap:8px; margin-top:18px; padding:7px 11px; background:rgba(217,170,76,.055); border:1px solid rgba(217,170,76,.14); border-radius:var(--mc-radius-xs); }
-.sensor-status > span { width:6px; height:6px; background:var(--mc-warning); border-radius:50%; box-shadow:0 0 8px rgba(217,170,76,.45); }
-.sensor-status strong { color:#b89858; font:12px var(--mc-font-mono); letter-spacing:.08em; }
 .perception-legend { position:absolute; z-index:3; right:18px; bottom:18px; width:244px; padding:12px; background:rgba(13,19,15,.9); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); box-shadow:0 12px 32px rgba(0,0,0,.2); backdrop-filter:blur(12px); }
-.legend-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; color:var(--mc-text-secondary); font:12px var(--mc-font-mono); letter-spacing:.08em; }
-.legend-header-mark { width:8px; height:8px; background:var(--mc-accent); border-radius:2px; box-shadow:0 0 8px rgba(105,201,74,.35); }
-.legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px 9px; }
-.legend-item { display:flex; min-width:0; align-items:center; gap:7px; color:var(--mc-text-muted); font-size:10px; }
-.legend-item > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.legend-swatch { width:8px; height:8px; flex:none; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
-@keyframes perceptionScan { 0% { transform:scale(.24); opacity:0; } 14% { opacity:.65; } 78% { opacity:.12; } 100% { transform:scale(1); opacity:0; } }
-@keyframes scanPixel { 0%,100% { transform:scale(.86); opacity:.75; } 50% { transform:scale(1); opacity:1; } }
 .partner-inspector { display:flex; min-height:0; flex-direction:column; overflow:hidden; padding:16px; background:var(--mc-surface); }
 .inspector-header { display:flex; flex:none; align-items:center; gap:11px; }
 .inspector-avatar { display:flex; width:50px; height:50px; flex:none; align-items:center; justify-content:center; overflow:hidden; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); }
@@ -1080,14 +1143,6 @@ onMounted(() => { loadProfiles(); });
 .vital-row.food .vital-label { color:var(--mc-warning); }
 .vital-cells { display:flex; flex:1; gap:3px; }
 .vital-value { flex:none; color:var(--mc-text-secondary); font:16px var(--mc-font-mono); }
-.inspector-chips { display:flex; flex:none; flex-wrap:wrap; gap:6px; margin-top:12px; }
-.status-chip { display:flex; min-width:0; align-items:center; gap:6px; padding:6px 9px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
-.status-chip > span { flex:none; color:var(--mc-text-muted); font-size:10px; }
-.status-chip strong { overflow:hidden; color:var(--mc-text-secondary); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
-.status-chip.positive { color:var(--mc-accent-strong); }
-.status-chip.negative { color:var(--mc-danger); }
-.status-chip.positive strong,.status-chip.negative strong { color:currentColor; }
-.activity-chip { flex:1; }
 .inspector-problem { display:flex; flex:none; align-items:center; gap:8px; margin-top:9px; padding:8px 10px; background:rgba(217,170,76,.07); border:1px solid rgba(217,170,76,.2); border-radius:var(--mc-radius-xs); color:var(--mc-warning); }
 .inspector-problem span { flex:none; font-size:11px; }
 .inspector-problem strong { overflow:hidden; font:13px var(--mc-font-mono); text-overflow:ellipsis; white-space:nowrap; }
@@ -1105,12 +1160,9 @@ onMounted(() => { loadProfiles(); });
 .interaction-character { height:126px; }
 .interaction-summary-copy { display:flex; min-width:0; flex-direction:column; justify-content:center; gap:7px; }
 .interaction-summary-title { color:var(--mc-text); font-size:13px; font-weight:800; }
-.interaction-summary-state { margin-top:2px; color:var(--mc-accent-strong); font-size:11px; }
 .interaction-summary-detail { display:flex; min-width:0; gap:8px; font-size:11px; }
 .interaction-summary-detail span { flex:0 0 auto; color:var(--mc-text-muted); }
 .interaction-summary-detail strong { overflow:hidden; color:var(--mc-text-secondary); text-overflow:ellipsis; white-space:nowrap; }
-.interaction-skin-button { align-self:flex-start; min-height:28px; padding:5px 9px; cursor:pointer; background:transparent; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); color:var(--mc-text-secondary); font-size:10px; font-weight:700; }
-.interaction-skin-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
 .chat-panel { overflow:hidden; padding:10px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
 .interaction-chat { display:flex; min-height:250px; flex:1; flex-direction:column; }
 .interaction-messages { display:flex; min-height:0; flex:1; flex-direction:column; gap:10px; overflow-y:auto; padding:2px 3px 8px; }
@@ -1144,27 +1196,120 @@ onMounted(() => { loadProfiles(); });
 .inspector-empty strong { color:var(--mc-text-secondary); font-size:14px; }
 .inspector-empty span { font-size:11px; }
 
+/* BUG-WEBUI-11 · 正式版控制台的舞台与右侧信息层级 */
+.perception-stage-heading { position:absolute; z-index:5; top:19px; left:20px; display:flex; align-items:center; gap:9px; color:var(--mc-text-secondary); font-size:13px; }
+.perception-stage-heading > span { width:7px; height:7px; background:var(--mc-accent); border-radius:50%; box-shadow:0 0 10px rgba(105,201,74,.5); }
+.perception-primary-action { position:absolute; z-index:5; top:15px; right:18px; display:inline-flex; min-height:38px; align-items:center; gap:8px; padding:8px 16px; cursor:pointer; background:linear-gradient(180deg,#336a35,#244f2b); border:1px solid rgba(105,201,74,.58); border-radius:var(--mc-radius-sm); box-shadow:inset 0 1px rgba(255,255,255,.08); color:#eefce8; font-size:12px; font-weight:800; }
+.perception-primary-action:hover:not(:disabled) { background:linear-gradient(180deg,#3c7b3e,#2b5d31); }
+.perception-primary-action.leave { background:rgba(228,111,101,.13); border-color:rgba(228,111,101,.34); color:#e8b0aa; }
+.perception-primary-action:disabled { cursor:not-allowed; filter:saturate(.3); opacity:.42; }
+.perception-mode-control { top:62px; }
+.perception-empty { inset:54px 0 0; }
+.scan-field { width:min(78%,680px); height:auto; aspect-ratio:1; margin:0; }
+.scan-field::before { position:absolute; z-index:0; inset:6%; background:conic-gradient(from -92deg,rgba(105,201,74,.18),rgba(105,201,74,.035) 13deg,transparent 38deg); border-radius:50%; content:''; animation:radarSweep 7s linear infinite; transform-origin:center; }
+.scan-field::after { position:absolute; z-index:1; width:16%; height:16%; border:1px solid rgba(105,201,74,.75); border-radius:50%; content:''; animation:radarPulse 3.6s ease-out infinite; }
+.scan-ring { z-index:1; border-color:rgba(105,201,74,.48); opacity:1; animation:none; }
+.scan-ring.ring-one { width:19%; height:19%; }
+.scan-ring.ring-two { width:40%; height:40%; border-style:dashed; border-color:rgba(138,209,91,.48); }
+.scan-ring.ring-three { width:64%; height:64%; border-color:rgba(105,201,74,.34); }
+.scan-ring.ring-four { width:88%; height:88%; border-style:dashed; border-color:rgba(138,209,91,.3); }
+.scan-core { width:58px; height:58px; overflow:hidden; background:rgba(13,23,15,.92); border-color:rgba(122,222,91,.72); box-shadow:0 0 34px rgba(105,201,74,.26),inset 0 0 22px rgba(105,201,74,.08); }
+.scan-core::before { width:94px; }
+.scan-core::after { height:94px; }
+.scan-core .mc-head { position:relative; z-index:3; }
+.perception-legend { right:auto; bottom:20px; left:20px; display:grid; width:260px; grid-template-columns:minmax(0,1fr) 1fr; gap:14px; padding:13px 14px; }
+.radar-legend-list { display:flex; flex-direction:column; gap:9px; }
+.radar-legend-item { display:flex; align-items:center; gap:9px; color:var(--mc-text-muted); font-size:10px; }
+.radar-legend-item > span { width:12px; height:12px; flex:none; border:1px solid var(--mc-accent); border-radius:50%; }
+.radar-legend-item > span.beacon { width:9px; height:9px; margin:1.5px; background:var(--mc-accent); box-shadow:0 0 8px rgba(105,201,74,.5); }
+.radar-legend-item > span.medium,.radar-legend-item > span.edge { border-style:dashed; }
+.radar-legend-item > span.edge { border-color:rgba(105,201,74,.42); }
+.radar-legend-item strong { color:var(--mc-text-muted); font-size:10px; font-weight:600; }
+.radar-telemetry { display:flex; min-width:0; flex-direction:column; justify-content:center; gap:7px; padding-left:13px; border-left:1px solid rgba(105,201,74,.28); color:#6da16a; font:9px/1.25 var(--mc-font-mono); }
+@keyframes radarPulse { 0% { transform:scale(.6); opacity:0; } 14% { opacity:.75; } 100% { transform:scale(5.5); opacity:0; } }
+@keyframes radarSweep { to { transform:rotate(360deg); } }
+
+.partner-inspector { gap:12px; padding:0; background:transparent; }
+.partner-hero-card { flex:none; padding:14px; background:rgba(14,21,16,.96); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
+.inspector-header { gap:13px; }
+.inspector-avatar { width:66px; height:66px; }
+.inspector-name { font-size:19px; }
+.partner-more-menu { position:relative; }
+.partner-action-popover { position:absolute; z-index:20; top:40px; right:0; width:132px; padding:6px; background:var(--mc-surface-raised); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); box-shadow:0 14px 32px rgba(0,0,0,.34); }
+.partner-action-popover button { display:flex; width:100%; align-items:center; gap:7px; padding:8px; cursor:pointer; text-align:left; background:transparent; border:0; border-radius:var(--mc-radius-xs); color:var(--mc-text-secondary); font-size:11px; }
+.partner-action-popover button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
+.partner-action-popover button.danger { color:var(--mc-danger); }
+.partner-current-state { display:flex; align-items:center; justify-content:space-between; margin-top:13px; padding:10px 12px; background:rgba(255,255,255,.025); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
+.partner-current-state > span { color:var(--mc-text-muted); font-size:11px; font-weight:700; }
+.partner-current-state strong { display:flex; align-items:center; gap:8px; color:var(--mc-text-secondary); font-size:11px; }
+.partner-current-state i,.interaction-summary-detail i { width:7px; height:7px; flex:none; border-radius:50%; }
+.inspector-vitals { margin-top:0; }
+.control-tabs { height:48px; gap:0; margin-top:0; padding:0; overflow:hidden; background:rgba(14,21,16,.96); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
+.control-tab { display:inline-flex; min-width:0; min-height:46px; align-items:center; justify-content:center; gap:7px; padding:0 7px; border-right:1px solid var(--mc-border); border-radius:0; font-size:11px; }
+.control-tab:last-child { border-right:0; }
+.control-tab.active { background:linear-gradient(180deg,rgba(105,201,74,.1),rgba(105,201,74,.035)); }
+.control-tab.active::after { right:0; bottom:0; left:0; }
+.inspector-content { gap:12px; padding-top:0; }
+.interaction-panel { gap:12px; }
+.interaction-summary { position:relative; grid-template-columns:130px minmax(0,1fr); gap:14px; padding:14px; background:rgba(14,21,16,.96); }
+.interaction-avatar { min-height:164px; }
+.interaction-character { height:164px; }
+.interaction-summary-copy { justify-content:flex-start; gap:9px; padding-top:3px; }
+.interaction-summary-title { margin-bottom:2px; font-size:16px; }
+.interaction-summary-detail { align-items:center; gap:8px; font-size:10px; }
+.interaction-summary-detail span { width:46px; }
+.interaction-summary-detail strong { display:flex; min-width:0; align-items:center; gap:6px; font-weight:650; }
+.interaction-focus-button { position:absolute; right:9px; bottom:9px; display:grid; width:27px; height:27px; place-items:center; cursor:pointer; background:rgba(17,25,19,.86); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); }
+.interaction-focus-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
+.chat-panel { padding:0; background:rgba(14,21,16,.96); }
+.chat-panel-header { display:flex; height:42px; flex:none; align-items:center; justify-content:space-between; padding:0 12px; border-bottom:1px solid var(--mc-border); }
+.chat-panel-header > span { color:var(--mc-text-secondary); font-size:11px; font-weight:700; }
+.chat-panel-header select { min-height:26px; padding:3px 24px 3px 8px; background:var(--mc-bg); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font-size:10px; }
+.interaction-messages { padding:10px 12px; }
+.chat-empty-state { align-items:center; justify-content:center; flex:1; flex-direction:column; gap:10px; color:#667068; }
+.chat-empty-state .mc-icon { opacity:.7; }
+.chat-empty-state span { font-size:11px; }
+.interaction-chat > .chat-composer { margin:0 12px 12px; }
+
+@media (max-height:780px) and (min-width:861px) {
+  .partner-inspector { gap:9px; }
+  .partner-hero-card { padding:10px; }
+  .inspector-avatar { width:54px; height:54px; }
+  .partner-current-state { margin-top:8px; padding:7px 10px; }
+  .control-tabs { height:44px; }
+  .control-tab { min-height:42px; }
+  .inspector-content,.interaction-panel { gap:9px; }
+  .interaction-summary { grid-template-columns:104px minmax(0,1fr); gap:10px; padding:9px; }
+  .interaction-avatar { min-height:116px; }
+  .interaction-character { height:116px; }
+  .interaction-summary-copy { gap:5px; padding-top:0; }
+  .interaction-summary-title { font-size:14px; }
+  .interaction-summary-detail { font-size:9px; }
+  .interaction-chat { min-height:190px; }
+}
+
 @media (max-width:1100px) {
-  .partner-workspace-shell { grid-template-columns:200px minmax(0,1fr) 350px; }
-  .workspace-partner { min-width:130px; }
+  .partner-workspace-shell { grid-template-columns:200px minmax(0,1fr) 340px; }
+  .partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px minmax(0,1fr) 340px; }
+  .partner-workspace-tab { min-width:104px; }
   .interaction-summary { grid-template-columns:110px minmax(0,1fr); }
 }
 
 @media (max-width:860px) {
-  .partner-workspace-shell { grid-template-columns:74px minmax(0,1fr); }
+  .partner-workspace-shell,.partner-workspace-shell.sidebar-collapsed { grid-template-columns:74px minmax(0,1fr); grid-template-rows:54px minmax(0,1fr); column-gap:0; padding:0; }
   .partner-sidebar { padding:12px 8px; }
   .partner-sidebar-header { justify-content:center; padding:0; }
-  .section-eyebrow,.partner-sidebar-title,.partner-list-summary,.partner-count { display:none; }
+  .partner-sidebar-heading,.partner-list-summary,.partner-sidebar-footer span { display:none; }
   .partner-list-item { justify-content:center; padding:7px 5px; }
-  .partner-workspace-bar { grid-column:2; gap:10px; padding:8px 10px; }
-  .workspace-partner { min-width:0; }
-  .workspace-partner-copy span { display:none; }
-  .workspace-partner-copy strong { max-width:94px; font-size:12px; }
-  .partner-workspace-tab { min-height:32px; padding:6px 10px; font-size:12px; }
-  .partner-workspace-panel { grid-column:2; }
+  .partner-sidebar { margin:0; }
+  .partner-sidebar-footer { flex-direction:column; align-items:center; }
+  .sidebar-tool.primary-tool { width:36px; flex:none; padding:0; }
+  .partner-workspace-bar { grid-column:2; grid-row:1; border-top:0; border-radius:0; }
+  .partner-workspace-tab { min-width:0; min-height:53px; flex:1; padding:0 8px; font-size:11px; }
+  .partner-workspace-panel { grid-column:2; grid-row:2; }
   .play-stage { display:none; }
-  .play-control { grid-column:2; }
-  .partner-inspector { padding:14px; }
+  .play-control { grid-column:2; grid-row:2; padding:12px; }
+  .partner-workspace-shell:not(.is-play-workspace) .play-control { display:none; }
 }
 
 @media (max-width:640px) {
@@ -1172,26 +1317,21 @@ onMounted(() => { loadProfiles(); });
   .app-brand { flex:0 0 auto; gap:8px; }
   .app-brand-logo { width:32px; height:32px; }
   .app-brand-name { font-size:11px; }
-  .app-brand-edition,.app-hub-status { display:none; }
+  .app-hub-menu { display:none; }
   .global-settings-layer { inset:54px 0 0; }
-  .partner-workspace-shell { grid-template-columns:64px minmax(0,1fr); }
+  .partner-workspace-shell,.partner-workspace-shell.sidebar-collapsed { grid-template-columns:64px minmax(0,1fr); }
   .partner-sidebar { padding:10px 6px; }
   .partner-avatar { width:40px; height:40px; }
   .partner-workspace-bar { min-height:54px; }
-  .workspace-partner { display:none; }
   .partner-workspace-tabs { width:100%; }
   .partner-workspace-tab { flex:1; padding:6px 7px; }
-  .partner-inspector { padding:11px; }
+  .partner-inspector { padding:9px; }
   .inspector-header { gap:8px; }
   .inspector-avatar { width:46px; height:46px; }
   .inspector-name { font-size:16px; }
   .inspector-button { padding:6px 9px; }
   .inspector-button.ghost { width:32px; }
-  .inspector-chips { margin-top:9px; }
-  .status-chip { padding:5px 7px; }
-  .control-tabs { margin-top:10px; }
   .control-tab { padding:5px 4px; font-size:10px; }
-  .inspector-content { padding-top:9px; }
   .interaction-summary { grid-template-columns:96px minmax(0,1fr); gap:8px; padding:7px; }
   .interaction-avatar,.interaction-character { min-height:106px; height:106px; }
   .interaction-summary-copy { gap:5px; }
