@@ -9,6 +9,16 @@
 
 export type { GameAdapter } from './GameAdapter.js';
 export type { NavigationAdapter, NavGoal, GotoOptions } from './NavigationAdapter.js';
+export type {
+  VisualWorldSource,
+  VisualWorldSnapshotOptions,
+  VisualWorldBootstrap,
+  VisualWorldDelta,
+  VisualSection,
+  VisualBlockState,
+  VisualEntity,
+  VisualEnvironment,
+} from './VisualWorldSource.js';
 export { NullGameAdapter } from './NullGameAdapter.js';
 export { NullNavAdapter } from './NullNavAdapter.js';
 export { SwitchableGameAdapter } from './SwitchableGameAdapter.js';

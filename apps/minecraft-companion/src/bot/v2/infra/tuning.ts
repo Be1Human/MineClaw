@@ -227,6 +227,10 @@ export interface TuningConfig {
     entityRenderDistance: number;
     /** 方块增量在服务端合并后发送的窗口。 */
     deltaBatchMs: number;
+    /** 单个增量批次的最大去重后条目数，达到即提前发送。 */
+    maxDeltaBatchEntries: number;
+    /** 前端在 bootstrap 到达前最多暂存的增量批次数。 */
+    maxQueuedDeltaBatches: number;
     /** 单个资源包压缩包最大字节数。 */
     maxPackBytes: number;
     /** 单个资源包最大 ZIP 条目数。 */
@@ -369,6 +373,8 @@ const DEFAULTS: TuningConfig = {
     maxResidentSections: 512,
     entityRenderDistance: 96,
     deltaBatchMs: 100,
+    maxDeltaBatchEntries: 512,
+    maxQueuedDeltaBatches: 32,
     maxPackBytes: 64 * 1024 * 1024,
     maxPackEntries: 20_000,
     maxPackFileBytes: 16 * 1024 * 1024,

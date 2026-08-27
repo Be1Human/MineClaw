@@ -17,6 +17,7 @@ import { resolveCharacterCard } from '../character/migrateCharacterCard.js';
 import type { SkinSyncStatus } from '../bot/mineflayer/types.js';
 import { SkinSyncService } from './skinSyncService.js';
 import type { ServerPreset, ServerPresetStore } from './serverPresetStore.js';
+import type { VisualWorldBootstrap, VisualWorldDelta } from '../bot/adapter/VisualWorldSource.js';
 
 export interface BotInstance {
   id: string;
@@ -51,6 +52,7 @@ export class BotManager {
   onChat?: (botId: string, sender: string, message: string, meta?: ChatMeta) => void;
   onLog?: (botId: string, level: string, message: string) => void;
   onV2WorldUiView?: (botId: string, view: WorldUiView) => void;
+  onVisualWorldDelta?: (botId: string, delta: VisualWorldDelta) => void;
   onAgentLoop?: (botId: string, step: { type: string; data: Record<string, unknown>; timestamp: number }) => void;
 
   async start(profile: BotProfile): Promise<BotInstance> {
@@ -123,6 +125,9 @@ export class BotManager {
 
     runtime.onV2WorldUiView = (view) => {
       this.onV2WorldUiView?.(profile.id, view);
+    };
+    runtime.onVisualWorldDelta = (delta) => {
+      this.onVisualWorldDelta?.(profile.id, delta);
     };
 
     runtime.onAgentLoop = (step) => {
@@ -230,6 +235,18 @@ export class BotManager {
 
   getV2Snapshot(botId: string): Record<string, unknown> | null {
     return this.instances.get(botId)?.runtime.getV2Snapshot() ?? null;
+  }
+
+  getVisualWorldBootstrap(botId: string): Promise<VisualWorldBootstrap | null> {
+    return this.instances.get(botId)?.runtime.getVisualWorldBootstrap() ?? Promise.resolve(null);
+  }
+
+  acquireVisualWorldStream(botId: string): boolean {
+    return this.instances.get(botId)?.runtime.acquireVisualWorldStream() ?? false;
+  }
+
+  releaseVisualWorldStream(botId: string): void {
+    this.instances.get(botId)?.runtime.releaseVisualWorldStream();
   }
 
   getV2Tasks(botId: string): Record<string, unknown>[] | null {

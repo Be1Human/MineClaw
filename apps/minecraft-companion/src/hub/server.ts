@@ -16,6 +16,7 @@ import { LlmTraceQueryError, type LlmTraceAgent } from '../bot/v2/infra/llmTrace
 import { acceptChatSubmit, rejectChatSubmit, type ChatSubmitAck } from './chatSubmit.js';
 import { ResourcePackStore, registerResourcePackRoutes } from './resourcePacks/index.js';
 import { tuning } from '../bot/v2/infra/tuning.js';
+import { VisualWorldDeltaBatcher } from './visualWorldDeltaBatcher.js';
 
 export interface HubConfig {
   port: number;
@@ -45,6 +46,11 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   registerResourcePackRoutes(app, resourcePackStore, () => tuning().worldVisual);
   const botManager = new BotManager(config.dataDir, llmAgentConfigStore, serverPresetStore);
   botManager.defaultLlm = defaultLlm ?? null;
+  const visualWorldRoom = (botId: string): string => `visual-world:${botId}`;
+  const visualWorldBatcher = new VisualWorldDeltaBatcher(
+    () => tuning().worldVisual,
+    (botId, batch) => io.to(visualWorldRoom(botId)).emit('bot:v2:visualWorld:delta', { botId, batch }),
+  );
 
   // 文件日志：每日滚动，写到 <dataDir>/logs/runtime-YYYYMMDD.log
   // 让外部工具（包括 Claude）能直接 tail 而不需要终端 stdout。
@@ -192,9 +198,23 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   botManager.onV2WorldUiView = (botId, view) => {
     io.emit('bot:v2:worldState', { botId, worldState: view });
   };
+  botManager.onVisualWorldDelta = (botId, delta) => {
+    if (io.sockets.adapter.rooms.get(visualWorldRoom(botId))?.size) visualWorldBatcher.enqueue(botId, delta);
+  };
   botManager.onAgentLoop = (botId, step) => {
     io.emit('bot:agentLoop', { botId, ...step });
   };
+
+  app.get('/api/visual-world/config', (_req, res) => {
+    const visual = tuning().worldVisual;
+    res.json({
+      enabled: visual.enabled,
+      sectionBuildBudgetMs: visual.sectionBuildBudgetMs,
+      maxSectionBuildsPerFrame: visual.maxSectionBuildsPerFrame,
+      maxResidentSections: visual.maxResidentSections,
+      maxQueuedDeltaBatches: visual.maxQueuedDeltaBatches,
+    });
+  });
 
   // --- REST API: Profiles ---
 
@@ -1029,6 +1049,50 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   // --- WebSocket ---
 
   io.on('connection', (socket) => {
+    const visualSubscriptions = new Set<string>();
+    const subscribeVisualWorld = async (
+      data: { botId?: unknown } | null,
+      acknowledge?: (result: { ok: boolean; reason?: string }) => void,
+    ): Promise<void> => {
+      const botId = typeof data?.botId === 'string' ? data.botId.trim() : '';
+      if (!botId || !botManager.getStatus(botId)) {
+        acknowledge?.({ ok: false, reason: 'runtime_not_found' });
+        return;
+      }
+      const newlyAcquired = !visualSubscriptions.has(botId);
+      if (newlyAcquired && !botManager.acquireVisualWorldStream(botId)) {
+        acknowledge?.({ ok: false, reason: 'visual_world_unavailable' });
+        return;
+      }
+      visualSubscriptions.add(botId);
+      const room = visualWorldRoom(botId);
+      try {
+        await socket.join(room);
+        const bootstrap = await botManager.getVisualWorldBootstrap(botId);
+        if (!bootstrap) throw new Error('visual_world_unavailable');
+        socket.emit('bot:v2:visualWorld:bootstrap', { botId, bootstrap });
+        acknowledge?.({ ok: true });
+      } catch {
+        await socket.leave(room);
+        if (visualSubscriptions.delete(botId)) botManager.releaseVisualWorldStream(botId);
+        acknowledge?.({ ok: false, reason: 'visual_world_unavailable' });
+      }
+    };
+    socket.on('bot:v2:visualWorld:subscribe', subscribeVisualWorld);
+    socket.on('bot:v2:visualWorld:resync', subscribeVisualWorld);
+
+    socket.on('bot:v2:visualWorld:unsubscribe', async (data: { botId?: unknown } | null) => {
+      const botId = typeof data?.botId === 'string' ? data.botId.trim() : '';
+      if (!botId) return;
+      await socket.leave(visualWorldRoom(botId));
+      if (visualSubscriptions.delete(botId)) botManager.releaseVisualWorldStream(botId);
+    });
+
+    socket.on('disconnect', () => {
+      for (const botId of visualSubscriptions) botManager.releaseVisualWorldStream(botId);
+      visualSubscriptions.clear();
+    });
+
     socket.on('bot:chat', async (
       data: { botId?: unknown; message?: unknown; sender?: unknown } | null,
       acknowledge?: (result: ChatSubmitAck) => void,
@@ -1079,6 +1143,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   }
 
   httpServer.on('close', () => {
+    visualWorldBatcher.close();
     void botManager.stopAll();
   });
 

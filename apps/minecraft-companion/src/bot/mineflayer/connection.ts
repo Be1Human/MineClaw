@@ -8,6 +8,8 @@ import { MineflayerNavigationAdapter } from './MineflayerNavigationAdapter.js';
 import type { GameAdapter } from '../adapter/GameAdapter.js';
 import type { NavigationAdapter } from '../adapter/NavigationAdapter.js';
 import { GameConnectionLease } from './gameConnectionLease.js';
+import { MineflayerVisualWorldSource } from './MineflayerVisualWorldSource.js';
+import type { VisualWorldSource } from '../adapter/VisualWorldSource.js';
 
 export class MineflayerConnection {
   private bot: Bot | null = null;
@@ -39,6 +41,8 @@ export class MineflayerConnection {
   );
   readonly gameAdapter: GameAdapter = this.liveGameAdapter;
   readonly navAdapter: NavigationAdapter = this.liveNavAdapter;
+  private readonly liveVisualWorldSource = new MineflayerVisualWorldSource();
+  readonly visualWorldSource: VisualWorldSource = this.liveVisualWorldSource;
 
   /** 让外部（runtime.ts）注入日志函数，使 NavAdapter 的诊断日志写入文件 */
   setNavLogger(fn: (msg: string) => void): void {
@@ -65,6 +69,7 @@ export class MineflayerConnection {
     if (!this.bot) return;
     this.liveGameAdapter.rebindSubscriptions(null);
     this.liveNavAdapter.rebindSubscriptions(null);
+    this.liveVisualWorldSource.rebind(null);
     try { this.bot.removeAllListeners(); } catch { /* ignore */ }
     try { this.bot.end(); } catch { /* ignore */ }
     this.bot = null;
@@ -97,6 +102,7 @@ export class MineflayerConnection {
       // Bind before spawn so existing onSpawn subscribers observe the new generation.
       this.liveGameAdapter.rebindSubscriptions(bot);
       this.liveNavAdapter.rebindSubscriptions(bot);
+      this.liveVisualWorldSource.rebind(bot);
 
       const timeout = setTimeout(() => {
         bot.removeListener('spawn', spawnHandler);

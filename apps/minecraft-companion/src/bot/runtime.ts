@@ -22,6 +22,8 @@ import { PlannerEvolutionRuntime } from './v2/task/planner/evolution/plannerEvol
 import { formatPlannerExperienceBundle, type PlannerExperienceBundle } from './v2/task/planner/experience/plannerExperienceProvider.js';
 import type { CharacterCardV1 } from '../character/types.js';
 import { assembleCharacterPrompt } from '../character/characterPromptAssembler.js';
+import type { VisualWorldBootstrap, VisualWorldDelta } from './adapter/VisualWorldSource.js';
+import { tuning } from './v2/infra/tuning.js';
 
 export function plannerEvolutionMode(value: string | undefined): PlannerEvolutionMode {
   return value === 'off' || value === 'active' || value === 'observe' ? value : 'off';
@@ -322,6 +324,8 @@ export class BotRuntime {
   private lastActivity: string | null = null;
   /** MineflayerConnection.events survives Bot replacement, so these handlers are installed once. */
   private connectionEventHandlersAttached = false;
+  private visualWorldUnsubscribe: (() => void) | null = null;
+  private visualWorldConsumers = 0;
 
   onStatusChange?: (status: BotStatus) => void;
   /** FEAT-WEBUI-09 · meta 携带 turnId + 该轮思考（供 UI 聊天面板分轨呈现） */
@@ -332,6 +336,8 @@ export class BotRuntime {
   onAgentLoop?: (step: { type: string; data: Record<string, unknown>; timestamp: number }) => void;
   /** v2 世界视图推送 · 替代 v1 的 onWorldState + onNavPhase */
   onV2WorldUiView?: (view: WorldUiView) => void;
+  /** FEAT-WEBUI-27 · 与语义感知完全独立的视觉世界增量。 */
+  onVisualWorldDelta?: (delta: VisualWorldDelta) => void;
 
   constructor(config: BotRuntimeConfig) {
     this.config = config;
@@ -341,6 +347,27 @@ export class BotRuntime {
 
   getStatus(): BotStatus { return this.status; }
   getConnectionStatus() { return this.conn.getStatus(); }
+
+  async getVisualWorldBootstrap(): Promise<VisualWorldBootstrap | null> {
+    const config = tuning().worldVisual;
+    if (!config.enabled || !this.embodied) return null;
+    return this.conn.visualWorldSource.createBootstrap({
+      viewDistanceChunks: config.viewDistanceChunks,
+      entityRenderDistance: config.entityRenderDistance,
+    });
+  }
+
+  acquireVisualWorldStream(): boolean {
+    if (!tuning().worldVisual.enabled || !this.embodied || !this.conn.visualWorldSource.isAvailable()) return false;
+    this.visualWorldConsumers += 1;
+    this.attachVisualWorldStream();
+    return true;
+  }
+
+  releaseVisualWorldStream(): void {
+    this.visualWorldConsumers = Math.max(0, this.visualWorldConsumers - 1);
+    if (this.visualWorldConsumers === 0) this.detachVisualWorldStream();
+  }
 
   /** FEAT-CROSS-09 · 用户控制面读取当前 Profile 的陪伴状态。 */
   getCompanionState(): CompanionCoreState | null {
@@ -514,6 +541,7 @@ export class BotRuntime {
           this.log('warn', `[digTracer] 安装失败：${(e as Error).message}`);
         }
       }
+      if (this.visualWorldConsumers > 0) this.attachVisualWorldStream();
       this.log('info', '🚀 v2.0 运行时已启动');
       this.setStatus('online');
       this.lastActivity = '成功上线';
@@ -569,6 +597,7 @@ export class BotRuntime {
     try {
       // BUG-CROSS-25 · 先翻转身体态，让并发 Heartbeat 立即进入陪聊安全子循环。
       this.embodied = false;
+      this.detachVisualWorldStream();
       this.stopV2WorldUiPush();
       this.v2?.detachBody();
       this.switchableGame?.setTarget(new NullGameAdapter(this.config.personality.name));
@@ -584,6 +613,7 @@ export class BotRuntime {
   }
 
   async stop(): Promise<void> {
+    this.detachVisualWorldStream();
     this.stopV2();
     await this.conn.disconnect();
     this.setStatus('offline');
@@ -751,6 +781,18 @@ export class BotRuntime {
     if (!this.v2PushInterval) return;
     clearInterval(this.v2PushInterval);
     this.v2PushInterval = null;
+  }
+
+  private attachVisualWorldStream(): void {
+    if (this.visualWorldUnsubscribe || this.visualWorldConsumers === 0 || !tuning().worldVisual.enabled) return;
+    this.visualWorldUnsubscribe = this.conn.visualWorldSource.subscribe(delta => {
+      if (this.embodied) this.onVisualWorldDelta?.(delta);
+    });
+  }
+
+  private detachVisualWorldStream(): void {
+    this.visualWorldUnsubscribe?.();
+    this.visualWorldUnsubscribe = null;
   }
 
   private stopV2(): void {
