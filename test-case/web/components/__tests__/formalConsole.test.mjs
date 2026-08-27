@@ -31,3 +31,14 @@ test('正式外壳保留产品导航与 Hub 状态并移除草方块齿边', () 
   assert.doesNotMatch(appSource, /grass teeth|TOP BAR \(grass block\)/);
   assert.doesNotMatch(appSource, /mask-image:repeating-linear-gradient\(90deg,#000 0 7px/);
 });
+
+test('感知空态使用四层局部扫描环且不伪造世界数据', () => {
+  assert.equal((appSource.match(/class="scan-ring /g) || []).length, 4);
+  assert.match(appSource, /@keyframes perceptionScan/);
+  assert.match(appSource, /animation:perceptionScan 4s linear infinite/);
+  assert.match(appSource, /will-change:transform,opacity/);
+  assert.match(appSource, /v-if="!currentWorldState" class="perception-empty"/);
+  assert.match(appSource, /v-if="currentWorldState && !show3D" class="perception-online-state"/);
+  assert.match(appSource, /v-if="currentWorldState && show3D" class="perception-scene"/);
+  assert.doesNotMatch(appSource, /setInterval\([^)]*scan|requestAnimationFrame\([^)]*scan/i);
+});

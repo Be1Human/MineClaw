@@ -125,11 +125,12 @@
       <template v-else>
 
       <!-- ---------- CENTER · 感知空间 ---------- -->
-      <main class="play-stage" style="position:relative; min-width:0; min-height:0; overflow:hidden; background:#0c0e08; border-right:3px solid #0c0e08;">
-        <div style="position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px); background-size:32px 32px; -webkit-mask-image:radial-gradient(ellipse 65% 65% at 50% 46%, #000 35%, transparent 80%); mask-image:radial-gradient(ellipse 65% 65% at 50% 46%, #000 35%, transparent 80%);"></div>
+      <main class="play-stage perception-stage">
+        <div class="perception-grid" aria-hidden="true"></div>
+        <div class="perception-vignette" aria-hidden="true"></div>
 
         <!-- 真实 3D 感知（默认关闭·按需开启，避免重 WebGL 拖慢界面 BUG-WEBUI-05） -->
-        <div v-if="currentWorldState && show3D" style="position:absolute; inset:0; z-index:1;">
+        <div v-if="currentWorldState && show3D" class="perception-scene">
           <PerceptionScene3D
             ref="scene3dRef"
             :worldState="currentWorldState"
@@ -139,54 +140,60 @@
           />
         </div>
         <!-- 3D 开关 -->
-        <div style="position:absolute; top:18px; right:18px; z-index:4;">
-          <button @click="toggle3D" :style="{ cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'7px', padding:'8px 14px', fontWeight:700, fontSize:'12.5px', whiteSpace:'nowrap', border:'2px solid #0d0f0a', color: show3D ? '#fff' : '#cdd2c0', background: show3D ? '#4c7a2a' : '#272d1d', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.35)' }">
+        <div class="perception-mode-control">
+          <button class="stage-button" :class="{ active: show3D }" @click="toggle3D">
             <McIcon :name="show3D ? 'stop' : 'play'" :size="13" />
             {{ show3D ? '关闭 3D 感知' : '开启 3D 感知' }}
           </button>
         </div>
         <!-- 3D 关闭时的轻量占位（有 worldState 但未开 3D） -->
-        <div v-if="currentWorldState && !show3D" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:#7e836e; z-index:1;">
-          <div style="width:54px; height:54px; background:#2c3422; border:2px solid #0c0e08; box-shadow:inset -5px -5px 0 rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center; color:#9dcc7d;"><McIcon name="compass" :size="28" /></div>
-          <div style="font-weight:700; font-size:14px; color:#cdd2c0;">{{ selectedProfile?.name }} 在线中</div>
-          <div style="font-size:12.5px;">3D 感知较耗资源，已默认关闭 · 需要时点右上角开启</div>
+        <div v-if="currentWorldState && !show3D" class="perception-online-state">
+          <div class="online-compass"><McIcon name="compass" :size="25" /></div>
+          <div class="online-state-kicker">WORLD SIGNAL READY</div>
+          <div class="online-state-title">{{ selectedProfile?.name }} 在线中</div>
+          <div class="online-state-copy">已接收真实感知数据 · 需要时开启 3D 视图</div>
         </div>
 
         <!-- 外层视角控件：接到 3D 场景 -->
-        <div v-if="currentWorldState && show3D" style="position:absolute; top:18px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:3;">
-          <button @click="followBot = !followBot" :style="followBtnStyle">
-            <span style="width:7px; height:7px; background:currentColor;"></span>{{ followBot ? '跟随中' : '自由视角' }}
+        <div v-if="currentWorldState && show3D" class="perception-camera-controls">
+          <button class="stage-button" :class="{ active: followBot }" @click="followBot = !followBot">
+            <span class="stage-button-dot"></span>{{ followBot ? '跟随中' : '自由视角' }}
           </button>
-          <button @click="resetSceneCamera" :style="resetBtnStyle">重置视角</button>
+          <button class="stage-button" @click="resetSceneCamera">重置视角</button>
         </div>
 
         <!-- empty state -->
-        <div v-if="!currentWorldState" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-          <div style="position:relative; width:140px; height:140px; display:flex; align-items:center; justify-content:center;">
-            <div style="position:absolute; width:140px; height:140px; border:3px solid rgba(95,158,57,0.25);"></div>
-            <div style="position:relative; width:76px; height:52px; background:#11160c; border:3px solid #5fae3a; box-shadow:0 0 24px rgba(95,174,58,0.4), inset 2px 2px 0 rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
-              <div style="width:20px; height:20px; background:#7cc24e; box-shadow:0 0 14px #7cc24e, inset -3px -3px 0 rgba(0,0,0,0.25);"></div>
+        <div v-if="!currentWorldState" class="perception-empty">
+          <div class="scan-field" aria-hidden="true">
+            <span class="scan-crosshair horizontal"></span>
+            <span class="scan-crosshair vertical"></span>
+            <span class="scan-ring ring-one"></span>
+            <span class="scan-ring ring-two"></span>
+            <span class="scan-ring ring-three"></span>
+            <span class="scan-ring ring-four"></span>
+            <div class="scan-core">
+              <div class="scan-pixel"></div>
             </div>
           </div>
-          <div style="margin-top:26px; font-family:var(--mc-font-pixel); font-size:13px; color:#cfeeb0; text-shadow:2px 2px 0 #0c0e08; letter-spacing:0.02em;">SCANNING…</div>
-          <div style="margin-top:16px; font-weight:700; font-size:17px; color:#e7e3d4;">等待感知数据…</div>
-          <div style="margin-top:8px; font-size:13px; color:#7e836e;">Bot 上线后将实时渲染三维感知空间</div>
-          <div style="margin-top:16px; display:flex; align-items:center; gap:8px; padding:6px 13px; background:#15170f; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(0,0,0,0.4);">
-            <span style="width:8px; height:8px; background:#e0a52f; box-shadow:1px 1px 0 rgba(0,0,0,0.4);"></span>
-            <span style="font-family:var(--mc-font-mono); font-size:15px; color:#c9a25a; letter-spacing:0.05em;">SENSOR · STANDBY</span>
+          <div class="scan-kicker">PERCEPTION ARRAY</div>
+          <div class="scan-title">等待感知数据</div>
+          <div class="scan-copy">伙伴上线后，将在这里呈现实时世界与环境信号</div>
+          <div class="sensor-status">
+            <span></span>
+            <strong>SENSOR · STANDBY</strong>
           </div>
         </div>
 
         <!-- 外层图例 -->
-        <div style="position:absolute; right:20px; bottom:20px; width:256px; padding:13px; background:#22271a; border:2px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.4), 0 6px 0 rgba(0,0,0,0.4); z-index:3;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;">
-            <span style="width:13px; height:13px; background:#5d9c3c; border:2px solid #0c0e08;"></span>
-            <span style="font-family:var(--mc-font-pixel); font-size:9px; color:#cdd2c0; text-shadow:1px 1px 0 #0c0e08;">LEGEND · 图例</span>
+        <div class="perception-legend">
+          <div class="legend-header">
+            <span class="legend-header-mark"></span>
+            <span>LEGEND · 图例</span>
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 10px;">
-            <div v-for="(lg, i) in legend" :key="i" style="display:flex; align-items:center; gap:8px; min-width:0;">
-              <span :style="{ flex:'none', width:'14px', height:'14px', background: lg.c, border:'2px solid #0c0e08', boxShadow:'inset -2px -2px 0 rgba(0,0,0,0.25)' }"></span>
-              <span style="font-size:11px; color:#bcc0ab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ lg.t }}</span>
+          <div class="legend-grid">
+            <div v-for="(lg, i) in legend" :key="i" class="legend-item">
+              <span class="legend-swatch" :style="{ background: lg.c }"></span>
+              <span>{{ lg.t }}</span>
             </div>
           </div>
         </div>
@@ -444,18 +451,6 @@ const legend = [
   { c: '#c9cdbf', t: '可穿过方块' }, { c: '#dc2626', t: '危险方块' }, { c: '#16a34a', t: '资源方块' },
   { c: '#14b8a6', t: '导航路径' },
 ];
-const cameraChrome = {
-  display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px',
-  border: '2px solid #0d0f0a', fontWeight: 700, fontSize: '13px', whiteSpace: 'nowrap', cursor: 'pointer',
-  fontFamily: 'inherit', boxShadow: 'inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35)',
-};
-const followBtnStyle = computed(() => ({
-  ...cameraChrome,
-  background: followBot.value ? '#4c7a2a' : '#272d1d',
-  color: followBot.value ? '#fff' : '#cdd2c0',
-}));
-const resetBtnStyle = { ...cameraChrome, background: '#272d1d', color: '#cdd2c0' };
-
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
 
 function tabStyle(id) {
@@ -1035,6 +1030,47 @@ onMounted(() => { loadProfiles(); });
 .partner-workspace-panel { grid-column:2 / 4; grid-row:2; min-width:0; min-height:0; overflow:hidden; }
 .play-stage { grid-column:2; grid-row:2; }
 .play-control { grid-column:3; grid-row:2; }
+.perception-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background:#080c09; border-right:1px solid var(--mc-border); }
+.perception-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(151,184,151,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(151,184,151,.035) 1px,transparent 1px); background-size:32px 32px; }
+.perception-grid::before { position:absolute; inset:0; background-image:linear-gradient(rgba(105,201,74,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(105,201,74,.04) 1px,transparent 1px); background-size:160px 160px; content:''; }
+.perception-vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 62% 66% at 50% 48%,rgba(25,45,29,.14),transparent 65%),linear-gradient(180deg,rgba(4,8,5,.08),rgba(4,8,5,.3)); }
+.perception-scene { position:absolute; z-index:1; inset:0; }
+.perception-mode-control { position:absolute; z-index:4; top:18px; right:18px; }
+.perception-camera-controls { position:absolute; z-index:3; top:18px; left:50%; display:flex; gap:8px; transform:translateX(-50%); }
+.stage-button { display:inline-flex; min-height:34px; align-items:center; gap:7px; padding:7px 12px; cursor:pointer; background:rgba(17,24,19,.9); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:12px; font-weight:700; white-space:nowrap; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast),color var(--mc-duration-fast); backdrop-filter:blur(10px); }
+.stage-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
+.stage-button.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.3); color:var(--mc-accent-strong); }
+.stage-button-dot { width:6px; height:6px; background:currentColor; border-radius:50%; }
+.perception-online-state,.perception-empty { position:absolute; z-index:1; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
+.online-compass { display:grid; width:64px; height:64px; place-items:center; margin-bottom:18px; background:var(--mc-accent-soft); border:1px solid rgba(105,201,74,.25); border-radius:50%; color:var(--mc-accent-strong); box-shadow:0 0 40px rgba(105,201,74,.08); }
+.online-state-kicker,.scan-kicker { color:var(--mc-accent); font:12px/1 var(--mc-font-mono); letter-spacing:.16em; }
+.online-state-title,.scan-title { margin-top:12px; color:var(--mc-text); font-size:18px; font-weight:700; }
+.online-state-copy,.scan-copy { max-width:360px; margin-top:8px; color:var(--mc-text-muted); font-size:12px; line-height:1.65; }
+.scan-field { position:relative; display:grid; width:300px; height:300px; place-items:center; margin-bottom:4px; }
+.scan-crosshair { position:absolute; z-index:0; background:linear-gradient(90deg,transparent,rgba(105,201,74,.13),transparent); }
+.scan-crosshair.horizontal { width:100%; height:1px; }
+.scan-crosshair.vertical { width:1px; height:100%; background:linear-gradient(180deg,transparent,rgba(105,201,74,.13),transparent); }
+.scan-ring { position:absolute; width:260px; height:260px; border:1px solid rgba(105,201,74,.55); border-radius:50%; opacity:0; animation:perceptionScan 4s linear infinite; will-change:transform,opacity; }
+.scan-ring.ring-two { animation-delay:-1s; }
+.scan-ring.ring-three { animation-delay:-2s; }
+.scan-ring.ring-four { animation-delay:-3s; }
+.scan-core { position:relative; z-index:2; display:grid; width:74px; height:74px; place-items:center; background:rgba(13,23,15,.92); border:1px solid rgba(105,201,74,.56); border-radius:50%; box-shadow:0 0 36px rgba(105,201,74,.13),inset 0 0 22px rgba(105,201,74,.05); }
+.scan-core::before,.scan-core::after { position:absolute; background:rgba(105,201,74,.35); content:''; }
+.scan-core::before { width:96px; height:1px; }
+.scan-core::after { width:1px; height:96px; }
+.scan-pixel { position:relative; z-index:2; width:15px; height:15px; background:var(--mc-accent-strong); border-radius:2px; box-shadow:0 0 18px var(--mc-accent),0 0 42px rgba(105,201,74,.55); animation:scanPixel 1.8s ease-in-out infinite; }
+.sensor-status { display:flex; align-items:center; gap:8px; margin-top:18px; padding:7px 11px; background:rgba(217,170,76,.055); border:1px solid rgba(217,170,76,.14); border-radius:var(--mc-radius-xs); }
+.sensor-status > span { width:6px; height:6px; background:var(--mc-warning); border-radius:50%; box-shadow:0 0 8px rgba(217,170,76,.45); }
+.sensor-status strong { color:#b89858; font:12px var(--mc-font-mono); letter-spacing:.08em; }
+.perception-legend { position:absolute; z-index:3; right:18px; bottom:18px; width:244px; padding:12px; background:rgba(13,19,15,.9); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); box-shadow:0 12px 32px rgba(0,0,0,.2); backdrop-filter:blur(12px); }
+.legend-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; color:var(--mc-text-secondary); font:12px var(--mc-font-mono); letter-spacing:.08em; }
+.legend-header-mark { width:8px; height:8px; background:var(--mc-accent); border-radius:2px; box-shadow:0 0 8px rgba(105,201,74,.35); }
+.legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px 9px; }
+.legend-item { display:flex; min-width:0; align-items:center; gap:7px; color:var(--mc-text-muted); font-size:10px; }
+.legend-item > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.legend-swatch { width:8px; height:8px; flex:none; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+@keyframes perceptionScan { 0% { transform:scale(.24); opacity:0; } 14% { opacity:.65; } 78% { opacity:.12; } 100% { transform:scale(1); opacity:0; } }
+@keyframes scanPixel { 0%,100% { transform:scale(.86); opacity:.75; } 50% { transform:scale(1); opacity:1; } }
 .interaction-panel {
   display: flex;
   flex: 1;
