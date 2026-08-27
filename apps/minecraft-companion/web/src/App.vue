@@ -268,7 +268,7 @@
         <!-- content -->
         <div style="margin-top:16px; display:flex; flex-direction:column; gap:16px; flex:1; min-height:0;">
 
-          <!-- 互动：状态与聊天合并 -->
+          <!-- 角色交流：状态与聊天合并 -->
           <div v-if="ctrlTab === 'status'" class="interaction-panel">
             <AlertBanner :alerts="v2Alerts" />
             <div class="interaction-summary">
@@ -283,7 +283,7 @@
               </div>
               <div class="interaction-summary-copy">
                 <div>
-                  <div class="interaction-summary-title">当前互动</div>
+                  <div class="interaction-summary-title">当前角色交流</div>
                   <div class="interaction-summary-state">{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</div>
                 </div>
                 <div class="interaction-summary-detail">
@@ -429,13 +429,13 @@ const winMin = () => window.electronAPI?.minimize();
 const winClose = () => window.electronAPI?.close();
 
 const workspaceTabs = [
-  { id: 'play', name: '游玩' },
+  { id: 'play', name: '互动' },
   { id: 'brain', name: '大脑' },
   { id: 'trace', name: '轨迹' },
   { id: 'settings', name: '设置' },
 ];
 const tabs = [
-  { id: 'status', name: '互动' },
+  { id: 'status', name: '角色交流' },
   { id: 'tasks', name: '任务栏' },
   { id: 'inventory', name: '背包' },
   { id: 'logs', name: '日志' },

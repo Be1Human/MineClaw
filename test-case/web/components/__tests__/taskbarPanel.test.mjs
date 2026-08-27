@@ -65,15 +65,20 @@ test('正常态展示汇总、根任务、阶段、进度和子步骤', async ()
   assert.doesNotMatch(ready, />旧任务</);
 });
 
-test('控制标签合并状态与聊天并保持唯一任务入口', () => {
+test('双层导航使用互动和角色交流并保持技术 ID', () => {
   const appSource = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/App.vue', import.meta.url), 'utf8');
-  const statusIndex = appSource.indexOf("{ id: 'status', name: '互动' }");
+  const playIndex = appSource.indexOf("{ id: 'play', name: '互动' }");
+  const statusIndex = appSource.indexOf("{ id: 'status', name: '角色交流' }");
   const tasksIndex = appSource.indexOf("{ id: 'tasks', name: '任务栏' }");
   const inventoryIndex = appSource.indexOf("{ id: 'inventory', name: '背包' }");
+  assert.ok(playIndex >= 0);
   assert.ok(statusIndex < tasksIndex && tasksIndex < inventoryIndex);
+  assert.doesNotMatch(appSource, /\{ id: 'play', name: '游玩' \}/);
+  assert.doesNotMatch(appSource, /\{ id: 'status', name: '互动' \}/);
   assert.doesNotMatch(appSource, /\{ id: 'chat', name: '聊天' \}/);
   assert.doesNotMatch(appSource, /ctrlTab === 'chat'/);
   assert.match(appSource, /class="interaction-panel"/);
+  assert.match(appSource, />当前角色交流<\/div>/);
   assert.match(appSource, /<ChatBox @send="sendChat"/);
   assert.doesNotMatch(appSource, /<ChatBox[^>]+:disabled="!brainReady"/);
   assert.match(appSource, /<McCharacter[^>]+:zoom="1\.12"/);
