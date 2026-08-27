@@ -100,6 +100,10 @@
       <BrainPanel
         v-if="workspaceView === 'brain'"
         :key="`brain:${selectedProfile?.id || 'empty'}`"
+        v-model:active-tab="brainTab"
+        :botId="selectedProfile?.id || ''"
+        :profile="selectedProfile"
+        :botStatus="currentFullStatus"
         :agentSteps="agentLoopSteps"
         class="partner-workspace-panel"
       />
@@ -120,13 +124,6 @@
         @profile-updated="onProfileUpdated"
         @request-global-settings="openGlobalSettings"
       />
-      <MemoryPanel
-        v-else-if="workspaceView === 'memory'"
-        :key="`memory:${selectedProfile?.id || 'empty'}`"
-        :botId="selectedProfile?.id"
-        class="partner-workspace-panel"
-      />
-
       <template v-else>
 
       <!-- ---------- CENTER · 感知空间 ---------- -->
@@ -404,12 +401,12 @@ import InventoryPanel from './components/InventoryPanel.vue';
 import ChatBox from './components/ChatBox.vue';
 import BrainPanel from './components/BrainPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
-import MemoryPanel from './components/MemoryPanel.vue';
 import LlmTracePanel from './components/LlmTracePanel.vue';
 import McCharacter from './components/McCharacter.vue';
 import McHead from './components/McHead.vue';
 import McIcon from './components/icons/McIcon.vue';
 import SkinEditor from './components/SkinEditor.vue';
+import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 
 // 无边框窗口控制（仅 Electron 下显示自定义标题栏按钮）
@@ -428,7 +425,6 @@ const workspaceTabs = [
   { id: 'play', name: '游玩' },
   { id: 'brain', name: '大脑' },
   { id: 'trace', name: '轨迹' },
-  { id: 'memory', name: '记忆' },
   { id: 'settings', name: '设置' },
 ];
 const tabs = [
@@ -489,9 +485,12 @@ const wsConnected = ref(false);
 const profiles = ref([]);
 const selectedProfile = ref(null);
 const workspaceViewsByProfile = ref({});
+const brainTabsByProfile = ref({});
 const controlTabsByProfile = ref({});
 const noProfileWorkspaceView = ref('play');
 const validWorkspaceViews = new Set(workspaceTabs.map((tab) => tab.id));
+const legacyWorkspaceViews = new Set([...validWorkspaceViews, 'memory']);
+const validBrainTabs = new Set(BRAIN_TAB_IDS);
 const validControlTabs = new Set(tabs.map((tab) => tab.id));
 
 function persistTabMap(key, value) {
@@ -523,6 +522,21 @@ const workspaceView = computed({
     }
     workspaceViewsByProfile.value = { ...workspaceViewsByProfile.value, [profileId]: value };
     persistTabMap('mc.workspaceTabs.v1', workspaceViewsByProfile.value);
+  },
+});
+
+const brainTab = computed({
+  get() {
+    const profileId = selectedProfile.value?.id;
+    const value = profileId ? brainTabsByProfile.value[profileId] : 'overview';
+    return validBrainTabs.has(value) ? value : 'overview';
+  },
+  set(value) {
+    if (!validBrainTabs.has(value)) value = 'overview';
+    const profileId = selectedProfile.value?.id;
+    if (!profileId) return;
+    brainTabsByProfile.value = { ...brainTabsByProfile.value, [profileId]: value };
+    persistTabMap('mc.brainTabs.v1', brainTabsByProfile.value);
   },
 });
 
@@ -813,8 +827,17 @@ async function loadProfiles() {
     if (bot.fullStatus) botStatuses.set(bot.id, bot.fullStatus);
   }
   try {
-    workspaceViewsByProfile.value = readTabMap('mc.workspaceTabs.v1', validWorkspaceViews);
+    workspaceViewsByProfile.value = readTabMap('mc.workspaceTabs.v1', legacyWorkspaceViews);
+    brainTabsByProfile.value = readTabMap('mc.brainTabs.v1', validBrainTabs);
     controlTabsByProfile.value = readTabMap('mc.controlTabs.v1', validControlTabs);
+    // FEAT-WEBUI-16：旧顶层“记忆”迁入当前伙伴“大脑 -> 记忆”。
+    const memoryMigration = migrateMemoryWorkspaceTabs(workspaceViewsByProfile.value, brainTabsByProfile.value);
+    workspaceViewsByProfile.value = memoryMigration.workspaceTabs;
+    brainTabsByProfile.value = memoryMigration.brainTabs;
+    if (memoryMigration.changed) {
+      persistTabMap('mc.workspaceTabs.v1', workspaceViewsByProfile.value);
+      persistTabMap('mc.brainTabs.v1', brainTabsByProfile.value);
+    }
     // FEAT-WEBUI-19：旧右侧“轨迹(agent)”迁移为伙伴一级工作区，避免保存值失效。
     const legacyControlMap = JSON.parse(localStorage.getItem('mc.controlTabs.v1') || '{}');
     if (legacyControlMap && typeof legacyControlMap === 'object' && !Array.isArray(legacyControlMap)) {
@@ -878,10 +901,13 @@ async function deleteProfile(id) {
   profiles.value = profiles.value.filter((p) => p.id !== id);
   if (selectedProfile.value?.id === id) selectedProfile.value = null;
   const { [id]: _workspace, ...remainingWorkspaceViews } = workspaceViewsByProfile.value;
+  const { [id]: _brain, ...remainingBrainTabs } = brainTabsByProfile.value;
   const { [id]: _control, ...remainingControlTabs } = controlTabsByProfile.value;
   workspaceViewsByProfile.value = remainingWorkspaceViews;
+  brainTabsByProfile.value = remainingBrainTabs;
   controlTabsByProfile.value = remainingControlTabs;
   persistTabMap('mc.workspaceTabs.v1', remainingWorkspaceViews);
+  persistTabMap('mc.brainTabs.v1', remainingBrainTabs);
   persistTabMap('mc.controlTabs.v1', remainingControlTabs);
   activeBots.delete(id);
   botStatuses.delete(id);
