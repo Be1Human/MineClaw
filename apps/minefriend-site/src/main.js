@@ -182,9 +182,9 @@ app.innerHTML = `
         <figure class="details-capture reveal">
           <div class="screen-frame live-capture">
             <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION RELATIONSHIP</b><small>REAL PRODUCT CAPTURE</small></div>
-            <img src="./media/images/live-relationship.jpg" alt="MineClaw 当前演示伙伴配置中的熟悉游戏好友关系、共同经历和相处风格" loading="lazy" />
+            <img src="./media/images/live-relationship.jpg?v=20260827-112520" alt="MineClaw 最新伙伴配置页面，完整展示伙伴身份、性格和 AI Agent 配置" loading="lazy" />
           </div>
-          <figcaption><span>REAL 01</span><strong>关系不是一句宣传语</strong><p>当前角色卡明确记录“熟悉的游戏好友”、共同玩 Minecraft 的经历，以及平等、自然、可以主动邀约和表达不同意见的相处方式。</p></figcaption>
+          <figcaption><span>REAL 01</span><strong>每个伙伴都有自己的身份</strong><p>最新伙伴配置页完整展示名字、皮肤、性格描述与 AI Agent 选择；她如何说话、如何判断，都从清晰可见的设定开始。</p></figcaption>
         </figure>
       </div>
     </section>
@@ -264,16 +264,16 @@ app.innerHTML = `
             <p class="section-kicker light">真实截图不是装饰，而是一条从身体、感知到思考的证据链</p>
             <h2 id="screens-title">此刻她看见什么、带着什么，<br />我们都能一起看见。</h2>
           </div>
-          <p>下面八张画面全部来自真实运行中的 MineClaw。你能看见伙伴在 Minecraft 里的身体、实时坐标与感知、背包实物、聊天、行动过程、完成回执，以及她每一步思考留下的轨迹。</p>
+          <p>下面的画面来自当前 public/main 版本的真实界面。我们保留完整浏览器视野，不再裁掉侧栏、导航或关键状态；你能看见伙伴的身体，以及感知、背包、聊天、任务、角色卡与思考轨迹。</p>
         </div>
         <p class="capture-instance-note reveal"><strong>产品名称：MineClaw</strong><span>画面中的角色昵称仅是当前演示伙伴实例，不代表产品品牌。</span></p>
 
         <figure class="screen-feature live-evidence reveal">
           <div class="screen-frame live-capture perception-capture">
-            <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · LIVE COMPANION PERCEPTION</b><small>2026.08.23 · LIVE WORLD STATE</small></div>
-            <img src="./media/images/live-perception.jpg" alt="MineClaw 当前演示伙伴在本地训练服中的实时三维感知、生命饥饿、坐标、方块与实体状态" loading="lazy" />
+            <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION PERCEPTION</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
+            <img src="./media/images/live-perception.jpg?v=20260827-112520" alt="MineClaw 最新游玩总览完整页面，展示伙伴列表、三维感知待机区和伙伴状态面板" loading="lazy" />
           </div>
-          <figcaption><span>02</span><strong>她此刻正在世界里看见什么</strong><p>实拍时 MineClaw 的演示伙伴在线：生命与饥饿均为 20，坐标、维度、附近 810 个方块、实体和威胁状态都从游戏实时读取；中央 3D 场景就是她正在感知的周围世界。</p></figcaption>
+          <figcaption><span>02</span><strong>她此刻能看见什么，一目了然</strong><p>最新游玩总览把伙伴列表、三维感知区与实时状态放在同一屏。截图使用安全的离线演示实例，因此如实显示感知待机状态；伙伴上线后，这里会渲染她正在感知的周围世界。</p></figcaption>
         </figure>
 
         <div class="screen-pair">
@@ -286,44 +286,44 @@ app.innerHTML = `
           </figure>
           <figure class="screen-inventory reveal">
             <div class="screen-frame live-capture inventory-capture">
-              <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · LIVE COMPANION INVENTORY</b><small>LIVE WORLD STATE</small></div>
-              <img src="./media/images/live-inventory.jpg" alt="MineClaw 当前演示伙伴在本地训练服的实时背包中可见小麦和种子等实物" loading="lazy" />
+              <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION INVENTORY</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
+              <img src="./media/images/live-inventory.jpg?v=20260827-112520" alt="MineClaw 最新背包页面完整视图，保留三维感知区和右侧背包面板" loading="lazy" />
             </div>
-            <figcaption><span>04</span><strong>行动会在背包里留下实物</strong><p>采集时刻的背包里可见 31 个小麦与两组共 102 个种子。这里证明的是实时物品状态可见，不把当时仍失败的完整收割任务包装成成功。</p></figcaption>
+            <figcaption><span>04</span><strong>行动会在背包里留下实物</strong><p>背包页和伙伴当前状态同屏呈现。演示伙伴未上线时，界面明确显示“暂无背包数据”；连接世界后，采集、制作和整理留下的真实物品会出现在这里。</p></figcaption>
           </figure>
         </div>
 
         <div class="screen-pair conversation-pair">
           <figure class="screen-chat reveal">
-            <div class="screen-frame portrait-frame">
-              <div class="screen-chrome"><span></span><span></span><span></span><b>CONVERSATION</b><small>REAL PRODUCT CAPTURE</small></div>
-              <img src="./media/images/mineclaw-companion-chat.png" alt="MineClaw 当前演示伙伴在控制台中汇报寻找木头的真实聊天画面" loading="lazy" />
+            <div class="screen-frame webui-capture">
+              <div class="screen-chrome"><span></span><span></span><span></span><b>CONVERSATION</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
+              <img src="./media/images/mineclaw-companion-chat.png?v=20260827-112520" alt="MineClaw 最新聊天页面完整视图，包含伙伴、感知和聊天输入区域" loading="lazy" />
             </div>
-            <figcaption><span>05</span><strong>做事时，我们也一直在说话</strong><p>她能回应你的话，也会在共同做事时告诉你正在找什么、做到哪一步；行动不会让这个伙伴突然变成无声脚本。</p></figcaption>
+            <figcaption><span>05</span><strong>一起做事，也一直保持对话</strong><p>聊天页始终与伙伴当前状态相连。离线实例会禁用输入并保留清晰提示；连接后，她能回应你的话，也能在共同做事时持续汇报进展。</p></figcaption>
           </figure>
           <figure class="screen-running reveal">
-            <div class="screen-frame workbench-crop">
-              <div class="screen-chrome"><span></span><span></span><span></span><b>LIVE WORKBENCH</b><small>REAL PRODUCT CAPTURE</small></div>
-              <img src="./media/images/task-workbench-running.jpg" alt="MineClaw 控制台展示伙伴正在推进收集橡木任务和实时子步骤" loading="lazy" />
+            <div class="screen-frame webui-capture">
+              <div class="screen-chrome"><span></span><span></span><span></span><b>TASK WORKBENCH</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
+              <img src="./media/images/task-workbench-running.jpg?v=20260827-112520" alt="MineClaw 最新任务栏完整视图，展示任务汇总和运行时状态" loading="lazy" />
             </div>
-            <figcaption><span>06</span><strong>一起做的事有过程</strong><p>说好一个目标后，可以看到 MineClaw 里的伙伴正在推进哪一步、遇到了什么，而不是等一个无法验证的口头答案。</p></figcaption>
+            <figcaption><span>06</span><strong>一起做的事有过程</strong><p>任务栏同时展示进行中、暂停与归档数量。当前演示实例未启动运行时，页面如实给出可重试的空状态；运行后，每一步进展与遇到的问题都会留在这里。</p></figcaption>
           </figure>
         </div>
 
         <figure class="screen-feature completed-screen reveal">
-          <div class="screen-frame">
-            <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPLETION RECEIPT</b><small>REAL PRODUCT CAPTURE</small></div>
-            <img src="./media/images/task-workbench-completed.jpg" alt="任务完成后 MineClaw 工作台清空当前任务并增加归档计数" loading="lazy" />
+          <div class="screen-frame webui-capture">
+            <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION ROLE CARD</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
+            <img src="./media/images/live-role-card.jpg?v=20260827-112520" alt="MineClaw 最新角色卡完整页面，展示身份、背景、人格和表达方式" loading="lazy" />
           </div>
-          <figcaption><span>07</span><strong>共同完成的事有结果</strong><p>背包数量、方块位置、容器内容或玩家距离没有达标，她就不能把一句“完成了”当作结果。达到目标后，任务才进入归档，成为你们真正完成过的共同经历。</p></figcaption>
+          <figcaption><span>07</span><strong>她不只是一套能力，也有完整角色</strong><p>角色卡把身份、背景、自我认知、人格、价值观和边界放在同一处。你可以看见这个伙伴如何认识自己，也能决定你们要以怎样的关系相处。</p></figcaption>
         </figure>
 
         <figure class="screen-feature trace-screen reveal">
           <div class="screen-frame live-capture trace-capture">
-            <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION THOUGHT TRACE</b><small>REAL PRODUCT CAPTURE</small></div>
-            <img src="./media/images/live-trace.jpg" alt="MineClaw 当前演示伙伴的大脑轨迹工作台展示回合、模型调用和事件账本" loading="lazy" />
+            <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION THOUGHT TRACE</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
+            <img src="./media/images/live-trace.jpg?v=20260827-112520" alt="MineClaw 当前演示伙伴的大脑轨迹工作台展示回合、模型调用和事件账本" loading="lazy" />
           </div>
-          <figcaption><span>08</span><strong>连她怎么理解、怎么选择，也能回看</strong><p>当前轨迹工作台记录了 152 个回合、980 次模型调用，并能继续下钻事件账本。陪伴不再依赖黑箱，每次理解、调用和恢复都有迹可循。</p></figcaption>
+          <figcaption><span>08</span><strong>连她怎么理解、怎么选择，也能回看</strong><p>轨迹工作台完整呈现筛选、会话、事件账本与调用检查器。未运行时会明确显示服务状态；运行后，每次理解、调用和恢复都能沿事件链继续下钻。</p></figcaption>
         </figure>
       </div>
     </section>
