@@ -60,4 +60,7 @@ test('FEAT-WEBUI-27-002 | 序列缺口、跨 session 和 reset 均 fail-closed �
     kind: 'reset', sessionId: 's1', generation: 2, sequence: 5, timestamp: 5, reason: 'dimension_change',
   }])), false);
   assert.equal(reset.resyncReason, 'dimension_change');
+  assert.equal(reset.sections.size, 0);
+  assert.equal(reset.entities.size, 0);
+  assert.deepEqual(reset.takeRemovedSections(), ['-1,-4,2']);
 });

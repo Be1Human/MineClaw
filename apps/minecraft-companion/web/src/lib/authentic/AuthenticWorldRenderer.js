@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { ResourcePackClient } from './resourcePackClient.js';
+import { AuthenticEntityRenderer } from './AuthenticEntityRenderer.js';
+import { AuthenticEnvironmentRenderer } from './AuthenticEnvironmentRenderer.js';
 
 export class AuthenticWorldRenderer {
   constructor({ scene, config, onDiagnostic = () => {}, workerFactory, packClient } = {}) {
@@ -11,18 +13,27 @@ export class AuthenticWorldRenderer {
     this.group = new THREE.Group();
     this.group.name = 'authenticWorld';
     this.group.visible = false;
+    this.entityGroup = new THREE.Group();
+    this.entityGroup.name = 'authenticEntities';
+    this.group.add(this.entityGroup);
+    this.entityRenderer = new AuthenticEntityRenderer({ group: this.entityGroup, config, onDiagnostic });
+    this.environmentRenderer = new AuthenticEnvironmentRenderer({ scene, config });
     this.store = null;
     this.pack = null;
     this.sectionMeshes = new Map();
     this.materials = new Map();
     this.queue = [];
     this.queued = new Set();
-    this.running = new Set();
+    this.running = new Map();
     this.buildVersion = new Map();
+    this.renderGeneration = 0;
     this.pendingWorkers = new Map();
     this.nextTaskId = 1;
     this.worker = null;
     this.active = false;
+    this.lastTickAt = null;
+    this.lastEnvironment = null;
+    this.lastEnvironmentConfig = null;
   }
 
   mount() {
@@ -31,6 +42,7 @@ export class AuthenticWorldRenderer {
 
   setStore(store) {
     if (store === this.store) return;
+    this.renderGeneration += 1;
     this.store = store;
     this.clearSections();
     this.queue.length = 0;
@@ -40,6 +52,7 @@ export class AuthenticWorldRenderer {
 
   setPack(descriptor) {
     if (descriptor?.id === this.pack?.id) return;
+    this.renderGeneration += 1;
     this.pack = descriptor;
     this.packClient.select(descriptor);
     this.clearSections();
@@ -54,12 +67,21 @@ export class AuthenticWorldRenderer {
     this.active = true;
     const first = nearestSectionKey(this.store.sections, this.store.center);
     if (first && !this.sectionMeshes.has(first)) await this.buildSection(first);
+    this.entityRenderer.sync(this.store.entities, this.store.center);
+    this.environmentRenderer.activate(this.store.environment, this.store.center);
+    this.lastEnvironment = this.store.environment;
+    this.lastEnvironmentConfig = environmentConfigSignature(this.config);
+    this.lastTickAt = performance.now();
     this.group.visible = true;
   }
 
   deactivate() {
     this.active = false;
     this.group.visible = false;
+    this.environmentRenderer.deactivate();
+    this.lastEnvironment = null;
+    this.lastEnvironmentConfig = null;
+    this.lastTickAt = null;
   }
 
   update({ store, pack } = {}) {
@@ -69,6 +91,18 @@ export class AuthenticWorldRenderer {
 
   tick() {
     if (!this.active || !this.store) return;
+    const now = performance.now();
+    const deltaSeconds = Math.min(0.1, Math.max(0, (now - (this.lastTickAt ?? now)) / 1000));
+    this.lastTickAt = now;
+    this.entityRenderer.sync(this.store.entities, this.store.center);
+    this.entityRenderer.tick(deltaSeconds);
+    const environmentConfig = environmentConfigSignature(this.config);
+    if (this.store.environment !== this.lastEnvironment || environmentConfig !== this.lastEnvironmentConfig) {
+      this.environmentRenderer.update(this.store.environment, this.store.center);
+      this.lastEnvironment = this.store.environment;
+      this.lastEnvironmentConfig = environmentConfig;
+    }
+    this.environmentRenderer.tick(deltaSeconds);
     for (const key of this.store.takeRemovedSections?.() ?? []) this.removeSection(key);
     for (const key of this.store.takeDirtySections?.() ?? []) this.enqueue(key);
     this.evictFarSections();
@@ -78,14 +112,14 @@ export class AuthenticWorldRenderer {
       && performance.now() - startedAt < this.config.sectionBuildBudgetMs) {
       const key = this.queue.shift();
       this.queued.delete(key);
-      if (this.running.has(key) || !this.store.sections.has(key)) continue;
+      if (this.running.get(key) === this.renderGeneration || !this.store.sections.has(key)) continue;
       started += 1;
       void this.buildSection(key).catch(error => this.onDiagnostic({ type: 'section-build-failed', key, message: error.message }));
     }
   }
 
   enqueue(key) {
-    if (!key || this.queued.has(key) || this.running.has(key)) return;
+    if (!key || this.queued.has(key) || this.running.get(key) === this.renderGeneration) return;
     this.queued.add(key);
     this.queue.push(key);
   }
@@ -93,7 +127,8 @@ export class AuthenticWorldRenderer {
   async buildSection(key) {
     const section = this.store?.sections.get(key);
     if (!section) return;
-    this.running.add(key);
+    const renderGeneration = this.renderGeneration;
+    this.running.set(key, renderGeneration);
     const version = (this.buildVersion.get(key) ?? 0) + 1;
     this.buildVersion.set(key, version);
     try {
@@ -105,11 +140,11 @@ export class AuthenticWorldRenderer {
         section,
         paletteModels: resolved.map(item => item.models),
       });
-      if (this.buildVersion.get(key) !== version || !this.store?.sections.has(key)) return;
+      if (this.renderGeneration !== renderGeneration || this.buildVersion.get(key) !== version || !this.store?.sections.has(key)) return;
       await this.applySectionResult(key, result);
     } finally {
-      this.running.delete(key);
-      if (this.store?.dirtySections?.has(key)) this.enqueue(key);
+      if (this.running.get(key) === renderGeneration) this.running.delete(key);
+      if (this.renderGeneration !== renderGeneration || this.store?.dirtySections?.has(key)) this.enqueue(key);
     }
   }
 
@@ -199,6 +234,8 @@ export class AuthenticWorldRenderer {
 
   dispose() {
     this.active = false;
+    this.environmentRenderer.dispose();
+    this.entityRenderer.dispose();
     this.clearSections();
     this.scene.remove(this.group);
     this.worker?.terminate();
@@ -220,6 +257,13 @@ function nearestSectionKey(sections, center) {
 function sectionDistance(key, center = { chunkX: 0, chunkZ: 0 }) {
   const [chunkX, sectionY, chunkZ] = key.split(',').map(Number);
   return (chunkX - center.chunkX) ** 2 + (chunkZ - center.chunkZ) ** 2 + sectionY ** 2 * 0.01;
+}
+
+function environmentConfigSignature(config) {
+  return JSON.stringify([
+    config.weatherParticleCount, config.weatherRadius, config.weatherFallSpeed,
+    config.fogDensity, config.rainFogMultiplier,
+  ]);
 }
 
 function loadTexture(url) {

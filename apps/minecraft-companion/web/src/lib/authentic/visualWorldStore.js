@@ -163,6 +163,10 @@ export class VisualWorldStore {
   }
 
   markResync(reason) {
+    for (const key of this.sections.keys()) this.removedSections.add(key);
+    this.sections.clear();
+    this.entities.clear();
+    this.dirtySections.clear();
     this.needsResync = true;
     this.resyncReason = reason;
     this.status = 'needs-resync';

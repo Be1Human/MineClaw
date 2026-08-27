@@ -732,10 +732,12 @@ let pendingChatSettle = null;
 socket.on('connect', () => { wsConnected.value = true; });
 socket.on('disconnect', () => {
   wsConnected.value = false;
+  visualSubscriptionRequest += 1;
   pendingChatSettle?.({ accepted: false });
   pendingChatSettle = null;
   subscribedVisualBotId = null;
   visualWorldStore.value = null;
+  visualWorldRevision.value += 1;
   visualWorldStatus.value = { state: 'idle', message: 'Hub 已断开' };
 });
 
@@ -789,9 +791,15 @@ socket.on('bot:v2:visualWorld:delta', data => {
 
 async function ensureVisualWorldConfig() {
   if (visualWorldConfig.value) return visualWorldConfig.value;
+  return refreshVisualWorldConfig();
+}
+
+async function refreshVisualWorldConfig() {
   const response = await fetch('/api/visual-world/config');
   if (!response.ok) throw new Error(`视觉配置加载失败 (${response.status})`);
-  visualWorldConfig.value = await response.json();
+  const next = await response.json();
+  if (visualWorldConfig.value) Object.assign(visualWorldConfig.value, next);
+  else visualWorldConfig.value = next;
   return visualWorldConfig.value;
 }
 
@@ -882,10 +890,14 @@ async function refreshV2Alerts() {
 const v2AlertPoll = setInterval(() => { void refreshV2Alerts(); }, 2000);
 
 const v2TaskPoll = setInterval(() => { void refreshV2Tasks(); }, 2000);
+const visualConfigPoll = setInterval(() => {
+  if (worldMode.value === 'authentic' && wsConnected.value) void refreshVisualWorldConfig().catch(() => {});
+}, 1000);
 
 onUnmounted(() => {
   clearInterval(v2AlertPoll);
   clearInterval(v2TaskPoll);
+  clearInterval(visualConfigPoll);
   stopVisualSubscription();
 });
 

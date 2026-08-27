@@ -4,6 +4,8 @@ import { PerceptionRendererRegistry } from '../../apps/minecraft-companion/web/s
 import { ResourcePackClient } from '../../apps/minecraft-companion/web/src/lib/authentic/resourcePackClient.js';
 import { bakeMinecraftBlockModel } from '../../apps/minecraft-companion/web/src/lib/authentic/blockModel.js';
 import { buildSectionMeshPayload } from '../../apps/minecraft-companion/web/src/lib/authentic/sectionMeshWorker.js';
+import { AuthenticWorldRenderer } from '../../apps/minecraft-companion/web/src/lib/authentic/AuthenticWorldRenderer.js';
+import * as THREE from 'three';
 
 test('FEAT-WEBUI-27-003 | RendererRegistry 原子切换，失败保留旧渲染器且 50 次切换不重复实例', async () => {
   const events = [];
@@ -69,6 +71,49 @@ test('FEAT-WEBUI-27-003 | Worker 合并 section 材质桶并剔除相邻完整�
   assert.equal(result.meshes[0].positions.length / 3, 40);
 });
 
+test('FEAT-WEBUI-27-004 | Profile/session 切换使旧 Worker 结果失效，同 section key 可启动新世代首帧', async () => {
+  const tasks = [];
+  const worker = {
+    onmessage: null, onerror: null,
+    postMessage(message) { tasks.push(message); },
+    terminate() {},
+  };
+  const packClient = {
+    select() {}, verifySelected: async () => {}, textureUrl: () => '',
+    resolvePaletteState: async () => ({ models: [], missing: [] }),
+  };
+  const scene = new THREE.Scene();
+  const renderer = new AuthenticWorldRenderer({
+    scene, packClient, workerFactory: () => worker,
+    config: {
+      maxAuthenticEntities: 2, entityInterpolationMs: 120, weatherParticleCount: 0, weatherRadius: 8,
+      weatherFallSpeed: 18, fogDensity: { overworld: 0.004, theNether: 0.018, theEnd: 0.009 }, rainFogMultiplier: 1.45,
+      maxResidentSections: 4, maxSectionBuildsPerFrame: 1, sectionBuildBudgetMs: 4,
+    },
+  });
+  renderer.mount();
+  const firstStore = rendererStore('old-session');
+  renderer.setStore(firstStore);
+  const oldBuild = renderer.buildSection('0,0,0');
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(tasks.length, 1);
+
+  const nextStore = rendererStore('new-session');
+  renderer.setStore(nextStore);
+  const newBuild = renderer.buildSection('0,0,0');
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(tasks.length, 2);
+  worker.onmessage({ data: { taskId: tasks[0].taskId, result: { meshes: [] } } });
+  await oldBuild;
+  assert.equal(renderer.sectionMeshes.size, 0);
+  worker.onmessage({ data: { taskId: tasks[1].taskId, result: { meshes: [] } } });
+  await newBuild;
+  assert.equal(renderer.sectionMeshes.get('0,0,0')?.name, 'section:0,0,0');
+  renderer.dispose();
+});
+
 function cubeFaces(texture) {
   return Object.fromEntries(['west', 'east', 'down', 'up', 'north', 'south'].map(direction => [direction, { texture }]));
 }
@@ -85,5 +130,18 @@ function serializableCube() {
     materialKeys: baked.materialKeys,
     transparent: false,
     occluding: true,
+  };
+}
+
+function rendererStore(sessionId) {
+  return {
+    status: 'ready', sessionId, gameVersion: '1.21', center: { chunkX: 0, chunkZ: 0 },
+    environment: { dimension: 'overworld', timeOfDay: 6000, isRaining: false, thunderState: 0 },
+    entities: new Map(), dirtySections: new Set(),
+    sections: new Map([['0,0,0', {
+      key: '0,0,0', chunkX: 0, sectionY: 0, chunkZ: 0,
+      palette: [{ stateId: 0, name: 'air', properties: {} }], indices: new Uint16Array(4096),
+    }]]),
+    takeRemovedSections: () => [], takeDirtySections: () => [],
   };
 }

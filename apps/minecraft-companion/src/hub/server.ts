@@ -213,6 +213,13 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       maxSectionBuildsPerFrame: visual.maxSectionBuildsPerFrame,
       maxResidentSections: visual.maxResidentSections,
       maxQueuedDeltaBatches: visual.maxQueuedDeltaBatches,
+      maxAuthenticEntities: visual.maxAuthenticEntities,
+      weatherParticleCount: visual.weatherParticleCount,
+      entityInterpolationMs: visual.entityInterpolationMs,
+      weatherRadius: visual.weatherRadius,
+      weatherFallSpeed: visual.weatherFallSpeed,
+      fogDensity: visual.fogDensity,
+      rainFogMultiplier: visual.rainFogMultiplier,
     });
   });
 

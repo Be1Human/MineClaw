@@ -31,6 +31,10 @@ export interface VisualEntity {
   type: string;
   name: string;
   username?: string;
+  skinUrl?: string;
+  skinModel?: 'classic' | 'slim';
+  isSelf?: boolean;
+  itemName?: string;
   position: Vec3;
   velocity: Vec3;
   yaw: number;

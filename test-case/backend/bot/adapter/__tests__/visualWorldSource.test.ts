@@ -90,11 +90,16 @@ test('FEAT-WEBUI-27-002 | 没有真实模式订阅者时不注册 Mineflayer 视
 
 test('FEAT-WEBUI-27-002 | bootstrap 带版本化 session/seq 且只编码视距内已加载列', async () => {
   const bot = Object.assign(new EventEmitter(), {
-    entity: { position: { x: 8, y: 64, z: 8 } },
+    entity: visualEntityFixture(1, { type: 'player', username: 'Bot', name: 'player' }),
     game: { minY: 0, height: 16, dimension: 'overworld' },
     version: '1.21',
     registry: { blocksByStateId: { 0: { name: 'air' } }, biomesById: { 1: { name: 'plains' } } },
-    entities: {},
+    entities: {
+      1: visualEntityFixture(1, { type: 'player', username: 'Bot', name: 'player' }),
+      2: visualEntityFixture(2, { type: 'player', username: 'Alex', name: 'player' }),
+      3: visualEntityFixture(3, { type: 'object', name: 'item', getDroppedItem: () => ({ name: 'diamond' }) }),
+    },
+    players: { Alex: { skinData: { url: 'https://textures.example/alex.png', model: 'slim' } } },
     time: { timeOfDay: 6_000 }, isRaining: false, thunderState: 0,
     world: {
       getColumns: () => [
@@ -111,6 +116,10 @@ test('FEAT-WEBUI-27-002 | bootstrap 带版本化 session/seq 且只编码视距�
   assert.equal(snapshot?.sequence, 1);
   assert.equal(snapshot?.sections.length, 0);
   assert.deepEqual(snapshot?.center, { chunkX: 0, chunkZ: 0 });
+  assert.equal(snapshot?.entities.find(entity => entity.id === 1)?.isSelf, true);
+  assert.equal(snapshot?.entities.find(entity => entity.id === 2)?.skinUrl, 'https://textures.example/alex.png');
+  assert.equal(snapshot?.entities.find(entity => entity.id === 2)?.skinModel, 'slim');
+  assert.equal(snapshot?.entities.find(entity => entity.id === 3)?.itemName, 'diamond');
   source.rebind(null);
 });
 
@@ -121,5 +130,14 @@ function emptyColumn() {
     getBlockLight: () => 0,
     getSkyLight: () => 15,
     getBiome: () => 1,
+  };
+}
+
+function visualEntityFixture(id: number, overrides: Record<string, unknown> = {}) {
+  return {
+    id, type: 'mob', name: 'zombie', position: { x: 8 + id, y: 64, z: 8 }, velocity: { x: 0, y: 0, z: 0 },
+    yaw: 0, pitch: 0, width: 0.6, height: 1.8, onGround: true, equipment: [],
+    getDroppedItem: () => null,
+    ...overrides,
   };
 }

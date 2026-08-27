@@ -108,7 +108,7 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
       viewDistanceChunks: options.viewDistanceChunks,
       sections,
       entities: Object.values(bot.entities)
-        .map(entity => toVisualEntity(entity))
+        .map(entity => toVisualEntity(entity, bot))
         .filter(entity => distanceSq(entity.position, bot.entity.position) <= options.entityRenderDistance ** 2),
       environment: toVisualEnvironment(bot),
       serverResourcePack: this.serverResourcePack,
@@ -140,7 +140,7 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
       this.bumpColumnEpoch(chunkX, chunkZ);
       this.emit({ kind: 'column_unload', chunkX, chunkZ });
     });
-    const upsert = (entity: Entity) => this.emit({ kind: 'entity_upsert', entity: toVisualEntity(entity) });
+    const upsert = (entity: Entity) => this.emit({ kind: 'entity_upsert', entity: toVisualEntity(entity, bot) });
     this.bind(bot, 'entitySpawn', upsert);
     this.bind(bot, 'entityMoved', upsert);
     this.bind(bot, 'entityUpdate', upsert);
@@ -291,12 +291,19 @@ function biomeFromRegistry(registry: VisualRegistry, id: number): VisualBiome {
   return { id, name: registry.biomesById?.[id]?.name ?? `unknown_${id}` };
 }
 
-function toVisualEntity(entity: Entity): VisualEntity {
+function toVisualEntity(entity: Entity, bot?: Bot): VisualEntity {
+  const skinData = entity.username ? bot?.players?.[entity.username]?.skinData : undefined;
+  let droppedItemName: string | undefined;
+  try { droppedItemName = entity.getDroppedItem()?.name; } catch { /* metadata may not be ready yet */ }
   return {
     id: entity.id,
     type: entity.type ?? 'other',
     name: entity.username ?? entity.name ?? entity.mobType ?? entity.displayName ?? 'unknown',
     username: entity.username,
+    skinUrl: skinData?.url,
+    skinModel: skinData?.model === 'slim' ? 'slim' : (skinData ? 'classic' : undefined),
+    isSelf: entity.id === bot?.entity?.id,
+    itemName: droppedItemName,
     position: copyVec(entity.position),
     velocity: copyVec(entity.velocity),
     yaw: finite(entity.yaw),

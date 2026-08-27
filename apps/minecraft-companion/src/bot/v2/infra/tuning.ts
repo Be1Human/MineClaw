@@ -243,6 +243,24 @@ export interface TuningConfig {
     maxCompressionRatio: number;
     /** PNG 最大宽高。 */
     maxImageDimension: number;
+    /** 真实模式同时保留的实体模型上限。 */
+    maxAuthenticEntities: number;
+    /** 雨雪天气粒子上限。 */
+    weatherParticleCount: number;
+    /** 实体位置插值追赶时长。 */
+    entityInterpolationMs: number;
+    /** 天气粒子围绕观察中心的水平半径。 */
+    weatherRadius: number;
+    /** 天气粒子的下落速度（格/秒）。 */
+    weatherFallSpeed: number;
+    /** 不同维度的指数雾密度。 */
+    fogDensity: {
+      overworld: number;
+      theNether: number;
+      theEnd: number;
+    };
+    /** 降雨时的雾密度倍数。 */
+    rainFogMultiplier: number;
   };
 }
 
@@ -381,6 +399,17 @@ const DEFAULTS: TuningConfig = {
     maxExpandedPackBytes: 256 * 1024 * 1024,
     maxCompressionRatio: 100,
     maxImageDimension: 8192,
+    maxAuthenticEntities: 128,
+    weatherParticleCount: 900,
+    entityInterpolationMs: 120,
+    weatherRadius: 32,
+    weatherFallSpeed: 18,
+    fogDensity: {
+      overworld: 0.004,
+      theNether: 0.018,
+      theEnd: 0.009,
+    },
+    rainFogMultiplier: 1.45,
   },
 };
 
