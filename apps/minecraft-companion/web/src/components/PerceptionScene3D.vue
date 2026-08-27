@@ -2,12 +2,8 @@
   <div class="perception-3d" ref="containerRef">
     <canvas ref="canvasRef"></canvas>
 
-    <div class="world-mode-panel">
-      <div class="world-mode-tabs" role="group" aria-label="世界预览模式">
-        <button :class="{ active: worldMode === 'simple' }" @click="emit('update:worldMode', 'simple')">简略版</button>
-        <button :class="{ active: worldMode === 'authentic' }" @click="emit('update:worldMode', 'authentic')">真实版</button>
-      </div>
-      <div v-if="worldMode === 'authentic'" class="resource-pack-row">
+    <div v-if="worldMode === 'authentic'" class="world-mode-panel">
+      <div class="resource-pack-row">
         <select v-model="selectedPackId" @change="selectCurrentPack">
           <option value="">选择资源包</option>
           <option v-for="pack in resourcePacks" :key="pack.id" :value="pack.id">{{ pack.title }} · {{ pack.minecraftVersion }}</option>
@@ -18,7 +14,7 @@
         </label>
         <button v-if="modeError" class="resync-button" @click="emit('request-resync')">重试</button>
       </div>
-      <div v-if="worldMode === 'authentic'" class="world-mode-status" :class="visualWorldStatus?.state">
+      <div class="world-mode-status" :class="visualWorldStatus?.state">
         {{ modeError || packError || (diagnostics.length ? `缺失素材 ${diagnostics.length} 项，已使用紫黑占位` : '') || visualWorldStatus?.message || '等待真实世界数据' }}
       </div>
     </div>
@@ -145,7 +141,7 @@ const props = defineProps({
   visualWorldStatus: { type: Object, default: () => ({ state: 'idle', message: '' }) },
   visualWorldConfig: { type: Object, default: null },
 });
-const emit = defineEmits(['update:followBot', 'update:worldMode', 'request-resync']);
+const emit = defineEmits(['update:followBot', 'request-resync']);
 
 const containerRef = ref(null);
 const canvasRef = ref(null);
@@ -1522,15 +1518,13 @@ onUnmounted(() => {
 .perception-3d { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
 .perception-3d canvas { display: block; width: 100%; height: 100%; }
 .world-mode-panel {
-  position: absolute; z-index: 16; top: 12px; left: 50%; transform: translateX(-50%);
+  position: absolute; z-index: 16; top: 108px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 300px;
   pointer-events: auto;
 }
-.world-mode-tabs { display: flex; padding: 3px; background: rgba(12,14,8,.92); border: 2px solid #000; box-shadow: 2px 2px 0 rgba(0,0,0,.55); }
-.world-mode-tabs button,.resource-pack-row button,.pack-import {
+.resource-pack-row button,.pack-import {
   border: 0; padding: 6px 12px; background: transparent; color: #9da48b; font: 10px var(--mc-font-pixel); cursor: pointer;
 }
-.world-mode-tabs button.active { background: #5c8f3a; color: #fff; box-shadow: inset 0 -2px 0 #2f561e; }
 .resource-pack-row { display: flex; gap: 5px; align-items: center; padding: 5px; background: rgba(12,14,8,.9); border: 1px solid #343a2a; }
 .resource-pack-row select { max-width: 190px; padding: 5px 7px; border: 1px solid #4b523d; background: #11150d; color: #e7e3d4; font: 10px var(--mc-font-body); }
 .pack-import { display: inline-flex; background: #2f5f7a; color: #fff; }

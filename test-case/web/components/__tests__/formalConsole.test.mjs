@@ -85,11 +85,14 @@ test('感知空态使用四层局部扫描环且不伪造世界数据', () => {
   assert.match(appSource, /@keyframes radarSweep/);
   assert.match(appSource, /class="perception-stage-heading"/);
   assert.match(appSource, /class="perception-primary-action"/);
+  assert.match(appSource, /class="world-preview-tabs" role="group" aria-label="世界预览模式"/);
+  assert.match(appSource, /worldPreviewPresentation\.actionLabel/);
+  assert.match(appSource, /worldPreviewPresentation\.message/);
   assert.match(appSource, /const perceptionTelemetry = computed/);
   assert.match(appSource, /entities: Array\.isArray\(state\?\.entities\) \? state\.entities\.length : '—'/);
-  assert.match(appSource, /v-if="!currentWorldState" class="perception-empty"/);
-  assert.match(appSource, /v-if="currentWorldState && !show3D" class="perception-online-state"/);
-  assert.match(appSource, /v-if="currentWorldState && show3D" class="perception-scene"/);
+  assert.match(appSource, /v-if="!worldPreviewPresentation\.shouldMountScene" class="perception-empty"/);
+  assert.match(appSource, /v-if="worldPreviewPresentation\.shouldMountScene" class="perception-scene"/);
+  assert.doesNotMatch(appSource, /v-if="currentWorldState" class="perception-mode-control"/);
   assert.doesNotMatch(appSource, /setInterval\([^)]*scan|requestAnimationFrame\([^)]*scan/i);
 });
 
@@ -123,6 +126,8 @@ test('窄屏折叠感知舞台并为伙伴交流保留完整主列', () => {
   assert.match(appSource, /\.play-control \{ grid-column:2; grid-row:2; padding:12px; \}/);
   assert.match(appSource, /@media \(max-width:640px\)/);
   assert.match(appSource, /grid-template-columns:64px minmax\(0,1fr\)/);
+  assert.match(appSource, /class="world-preview-tabs inspector-world-preview-tabs"/);
+  assert.match(appSource, /\.inspector-world-preview \{ display:flex;/);
   assert.match(appSource, /\.partner-workspace-shell:not\(\.is-play-workspace\) \.play-control \{ display:none; \}/);
 });
 

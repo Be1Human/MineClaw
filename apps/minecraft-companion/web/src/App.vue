@@ -134,25 +134,36 @@
         <div class="perception-grid" aria-hidden="true"></div>
         <div class="perception-vignette" aria-hidden="true"></div>
 
-        <div class="perception-stage-heading">
-          <span></span>
-          <strong>感知空间</strong>
+        <div class="perception-stage-toolbar">
+          <div class="perception-stage-heading">
+            <span></span>
+            <strong>感知空间</strong>
+          </div>
+          <div class="world-preview-tabs" role="group" aria-label="世界预览模式">
+            <button
+              v-for="mode in worldPreviewModeOptions"
+              :key="mode.id"
+              :class="{ active: worldPreviewMode === mode.id }"
+              :aria-pressed="worldPreviewMode === mode.id"
+              :disabled="!selectedProfile"
+              @click="worldPreviewMode = mode.id"
+            >
+              <McIcon :name="mode.icon" :size="13" />{{ mode.label }}
+            </button>
+          </div>
+          <button
+            class="perception-primary-action"
+            :class="{ leave: worldPreviewPresentation.action === 'disconnect' }"
+            :disabled="!worldPreviewPresentation.canAct"
+            @click="handleWorldConnectionAction"
+          >
+            <McIcon :name="worldPreviewPresentation.action === 'disconnect' ? 'stop' : 'play'" :size="13" />
+            {{ worldPreviewPresentation.actionLabel }}
+          </button>
         </div>
 
-        <button
-          v-if="!inGame"
-          class="perception-primary-action"
-          :disabled="!brainReady"
-          @click="joinGame"
-        >
-          <McIcon name="play" :size="13" />进入游戏
-        </button>
-        <button v-else class="perception-primary-action leave" @click="leaveGame">
-          <McIcon name="stop" :size="13" />退出游戏
-        </button>
-
         <!-- 真实 3D 感知（默认关闭·按需开启，避免重 WebGL 拖慢界面 BUG-WEBUI-05） -->
-        <div v-if="currentWorldState && show3D" class="perception-scene">
+        <div v-if="worldPreviewPresentation.shouldMountScene" class="perception-scene">
           <PerceptionScene3D
             ref="scene3dRef"
             :worldState="currentWorldState"
@@ -165,27 +176,12 @@
             :visualWorldStatus="visualWorldStatus"
             :visualWorldConfig="visualWorldConfig"
             v-model:followBot="followBot"
-            @update:worldMode="worldMode = $event"
             @request-resync="requestVisualResync"
           />
         </div>
-        <!-- 3D 开关 -->
-        <div v-if="currentWorldState" class="perception-mode-control">
-          <button class="stage-button" :class="{ active: show3D }" @click="toggle3D">
-            <McIcon :name="show3D ? 'stop' : 'play'" :size="13" />
-            {{ show3D ? '关闭 3D 感知' : '开启 3D 感知' }}
-          </button>
-        </div>
-        <!-- 3D 关闭时的轻量占位（有 worldState 但未开 3D） -->
-        <div v-if="currentWorldState && !show3D" class="perception-online-state">
-          <div class="online-compass"><McIcon name="compass" :size="25" /></div>
-          <div class="online-state-kicker">WORLD SIGNAL READY</div>
-          <div class="online-state-title">{{ selectedProfile?.name }} 在线中</div>
-          <div class="online-state-copy">已接收真实感知数据 · 需要时开启 3D 视图</div>
-        </div>
 
         <!-- 外层视角控件：接到 3D 场景 -->
-        <div v-if="currentWorldState && show3D" class="perception-camera-controls">
+        <div v-if="worldPreviewPresentation.shouldMountScene" class="perception-camera-controls">
           <button class="stage-button" :class="{ active: followBot }" @click="followBot = !followBot">
             <span class="stage-button-dot"></span>{{ followBot ? '跟随中' : '自由视角' }}
           </button>
@@ -193,7 +189,7 @@
         </div>
 
         <!-- empty state -->
-        <div v-if="!currentWorldState" class="perception-empty">
+        <div v-if="!worldPreviewPresentation.shouldMountScene" class="perception-empty">
           <div class="scan-field" aria-hidden="true">
             <span class="scan-crosshair horizontal"></span>
             <span class="scan-crosshair vertical"></span>
@@ -205,6 +201,16 @@
               <McHead :texture="selectedSkinTexture" :size="24" />
             </div>
           </div>
+        </div>
+        <div
+          v-if="!worldPreviewPresentation.shouldMountScene"
+          class="world-preview-state"
+          :class="`is-${worldPreviewPresentation.tone}`"
+          role="status"
+        >
+          <span>{{ worldPreviewPresentation.kicker }}</span>
+          <strong>{{ worldPreviewPresentation.title }}</strong>
+          <p>{{ worldPreviewPresentation.message }}</p>
         </div>
 
         <!-- 外层图例 -->
@@ -242,8 +248,14 @@
               </div>
             </div>
             <div class="inspector-actions">
-              <button v-if="!inGame" class="inspector-button primary" @click="joinGame" :disabled="!brainReady">进入游戏</button>
-              <button v-else class="inspector-button danger" @click="leaveGame">退出游戏</button>
+              <button
+                class="inspector-button"
+                :class="worldPreviewPresentation.action === 'disconnect' ? 'danger' : 'primary'"
+                :disabled="!worldPreviewPresentation.canAct"
+                @click="handleWorldConnectionAction"
+              >
+                {{ worldPreviewPresentation.actionLabel }}
+              </button>
               <div class="partner-more-menu">
                 <button class="inspector-button ghost" @click="partnerMenuOpen = !partnerMenuOpen" aria-label="更多伙伴操作" :aria-expanded="partnerMenuOpen"><McIcon name="more" :size="14" /></button>
                 <div v-if="partnerMenuOpen" class="partner-action-popover">
@@ -256,6 +268,24 @@
           <div class="partner-current-state">
             <span>当前状态</span>
             <strong><i :style="{ background: statusDot(selectedProfile.id) }"></i>{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</strong>
+          </div>
+          <div class="inspector-world-preview">
+            <div class="inspector-world-preview-heading">
+              <span>世界预览</span>
+              <strong>{{ worldPreviewPresentation.modeLabel }}</strong>
+            </div>
+            <div class="world-preview-tabs inspector-world-preview-tabs" role="group" aria-label="移动端世界预览模式">
+              <button
+                v-for="mode in worldPreviewModeOptions"
+                :key="mode.id"
+                :class="{ active: worldPreviewMode === mode.id }"
+                :aria-pressed="worldPreviewMode === mode.id"
+                @click="worldPreviewMode = mode.id"
+              >
+                <McIcon :name="mode.icon" :size="12" />{{ mode.label }}
+              </button>
+            </div>
+            <p :class="`is-${worldPreviewPresentation.tone}`">{{ worldPreviewPresentation.title }}</p>
           </div>
         </section>
 
@@ -465,6 +495,12 @@ import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation
 import { CONTROL_TAB_IDS, migrateControlTabs, normalizeControlTab } from './lib/controlNavigation.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 import { VisualWorldStore } from './lib/authentic/visualWorldStore.js';
+import {
+  WORLD_PREVIEW_MODES,
+  migrateWorldPreviewModes,
+  normalizeWorldPreviewMode,
+  projectWorldPreview,
+} from './lib/worldPreviewPresentation.js';
 
 // 无边框窗口控制（仅 Electron 下显示自定义标题栏按钮）
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -502,6 +538,12 @@ const radarLegend = [
 ];
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
 
+const worldPreviewModeOptions = [
+  { id: 'radar', label: '雷达', icon: 'compass' },
+  { id: 'simple', label: '简略', icon: 'world' },
+  { id: 'authentic', label: '真实', icon: 'eye' },
+];
+
 const wsConnected = ref(false);
 const profiles = ref([]);
 const selectedProfile = ref(null);
@@ -509,12 +551,14 @@ const workspaceViewsByProfile = ref({});
 const brainTabsByProfile = ref({});
 const controlTabsByProfile = ref({});
 const worldModesByProfile = ref({});
+const worldPreviewModesByProfile = ref({});
 const noProfileWorkspaceView = ref('play');
 const validWorkspaceViews = new Set(workspaceTabs.map((tab) => tab.id));
 const legacyWorkspaceViews = new Set([...validWorkspaceViews, 'memory']);
 const validBrainTabs = new Set(BRAIN_TAB_IDS);
 const validControlTabs = new Set(CONTROL_TAB_IDS);
 const validWorldModes = new Set(['simple', 'authentic']);
+const validWorldPreviewModes = new Set(WORLD_PREVIEW_MODES);
 
 function persistTabMap(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
@@ -592,20 +636,36 @@ const worldMode = computed({
   },
 });
 
+const worldPreviewMode = computed({
+  get() {
+    const profileId = selectedProfile.value?.id;
+    const value = profileId ? worldPreviewModesByProfile.value[profileId] : 'radar';
+    return normalizeWorldPreviewMode(value);
+  },
+  set(value) {
+    const profileId = selectedProfile.value?.id;
+    const normalized = normalizeWorldPreviewMode(value);
+    if (!profileId) return;
+    worldPreviewModesByProfile.value = {
+      ...worldPreviewModesByProfile.value,
+      [profileId]: normalized,
+    };
+    persistTabMap('mc.worldPreviewModes.v1', worldPreviewModesByProfile.value);
+    if (normalized !== 'radar') worldMode.value = normalized;
+    try { localStorage.setItem('mc.show3D', normalized === 'radar' ? '0' : '1'); } catch {}
+  },
+});
+
 const showCreateForm = ref(false);
 const showSkinEditor = ref(false);
 const messages = ref([]);
 const chatFilter = ref('all');
 const chatHistoryLoading = ref(false);
 const logs = ref([]);
-// BUG-WEBUI-05 · 3D 感知默认关闭（重 WebGL），按需开启，状态持久化
-const show3D = ref(false);
+// BUG-WEBUI-05/14 · 默认雷达不挂载 WebGL；用户显式选择简略/真实后才启动 3D。
+const show3D = computed(() => worldPreviewMode.value !== 'radar');
 const followBot = ref(true);
 const scene3dRef = ref(null);
-function toggle3D() {
-  show3D.value = !show3D.value;
-  try { localStorage.setItem('mc.show3D', show3D.value ? '1' : '0'); } catch {}
-}
 function resetSceneCamera() {
   scene3dRef.value?.resetCamera();
   followBot.value = true;
@@ -615,6 +675,8 @@ const logsEl = ref(null);
 const activeBots = reactive(new Set());
 const botStatuses = reactive(new Map());
 const worldStates = reactive(new Map());
+const worldConnectionActions = reactive(new Map());
+const worldConnectionErrors = reactive(new Map());
 const visualWorldStore = ref(null);
 const visualWorldRevision = ref(0);
 const visualWorldStatus = ref({ state: 'idle', message: '' });
@@ -646,8 +708,13 @@ const perceptionTelemetry = computed(() => {
   const positionText = position && [position.x, position.y, position.z].every(Number.isFinite)
     ? `${Math.round(position.x)},${Math.round(position.y)},${Math.round(position.z)}`
     : '—';
+  const modeText = worldPreviewMode.value === 'authentic'
+    ? (state ? 'REAL' : 'REAL WAIT')
+    : worldPreviewMode.value === 'simple'
+      ? (state ? 'SIMPLE' : 'SIMPLE WAIT')
+      : 'RADAR';
   return {
-    mode: state ? (show3D.value ? (worldMode.value === 'authentic' ? 'REAL' : 'SIMPLE') : 'LIVE') : 'STANDBY',
+    mode: modeText,
     position: positionText,
     entities: Array.isArray(state?.entities) ? state.entities.length : '—',
     blocks: Array.isArray(state?.blocks) ? state.blocks.length : '—',
@@ -709,6 +776,25 @@ const connOk = computed(() => currentFullStatus.value?.connectionStatus === 'con
 const companionPhase = computed(() => currentFullStatus.value?.companionPhase || (connOk.value ? 'playing' : (activeBots.has(selectedProfile.value?.id) ? 'awake' : 'offline')));
 const brainReady = computed(() => companionPhase.value === 'awake' || companionPhase.value === 'playing');
 const inGame = computed(() => companionPhase.value === 'playing' || currentFullStatus.value?.embodied === true || connOk.value);
+const currentWorldConnectionAction = computed(() => {
+  const profileId = selectedProfile.value?.id;
+  return profileId ? (worldConnectionActions.get(profileId) || '') : '';
+});
+const currentWorldConnectionError = computed(() => {
+  const profileId = selectedProfile.value?.id;
+  return profileId ? (worldConnectionErrors.get(profileId) || '') : '';
+});
+const worldPreviewPresentation = computed(() => projectWorldPreview({
+  mode: worldPreviewMode.value,
+  hasProfile: Boolean(selectedProfile.value),
+  hubConnected: wsConnected.value,
+  brainReady: brainReady.value,
+  inGame: inGame.value,
+  connectionStatus: currentFullStatus.value?.connectionStatus,
+  lastError: currentWorldConnectionError.value || currentFullStatus.value?.lastError,
+  hasWorldState: Boolean(currentWorldState.value),
+  pendingAction: currentWorldConnectionAction.value,
+}));
 
 const hpCells = computed(() => {
   const h = currentFullStatus.value?.health;
@@ -749,6 +835,7 @@ socket.on('bot:status', (data) => {
 socket.on('bot:fullStatus', (data) => {
   activeBots.add(data.botId);
   botStatuses.set(data.botId, data);
+  if (data.connectionStatus === 'connected' && !data.lastError) worldConnectionErrors.delete(data.botId);
 });
 socket.on('bot:chat', (data) => {
   if (selectedProfile.value && data.botId === selectedProfile.value.id) {
@@ -891,7 +978,7 @@ const v2AlertPoll = setInterval(() => { void refreshV2Alerts(); }, 2000);
 
 const v2TaskPoll = setInterval(() => { void refreshV2Tasks(); }, 2000);
 const visualConfigPoll = setInterval(() => {
-  if (worldMode.value === 'authentic' && wsConnected.value) void refreshVisualWorldConfig().catch(() => {});
+  if (show3D.value && worldMode.value === 'authentic' && wsConnected.value) void refreshVisualWorldConfig().catch(() => {});
 }, 1000);
 
 onUnmounted(() => {
@@ -1003,6 +1090,14 @@ async function loadProfiles() {
     workspaceViewsByProfile.value = readTabMap('mc.workspaceTabs.v1', legacyWorkspaceViews);
     brainTabsByProfile.value = readTabMap('mc.brainTabs.v1', validBrainTabs);
     worldModesByProfile.value = readTabMap('mc.worldModes.v1', validWorldModes);
+    const previewMigration = migrateWorldPreviewModes({
+      storedModes: readTabMap('mc.worldPreviewModes.v1', validWorldPreviewModes),
+      profileIds: profiles.value.map((profile) => profile.id),
+      legacyShow3D: localStorage.getItem('mc.show3D'),
+      legacyWorldModes: worldModesByProfile.value,
+    });
+    worldPreviewModesByProfile.value = previewMigration.modes;
+    if (previewMigration.changed) persistTabMap('mc.worldPreviewModes.v1', previewMigration.modes);
     const storedControlTabs = JSON.parse(localStorage.getItem('mc.controlTabs.v1') || '{}');
     const controlMigration = migrateControlTabs(storedControlTabs);
     controlTabsByProfile.value = controlMigration.controlTabs;
@@ -1047,7 +1142,6 @@ async function loadProfiles() {
       persistTabMap('mc.controlTabs.v1', controlTabsByProfile.value);
     }
     localStorage.removeItem('mc.ctrlTab');
-    show3D.value = localStorage.getItem('mc.show3D') === '1';
   } catch {}
 }
 
@@ -1107,17 +1201,58 @@ async function reconnectBot() {
   if (res.ok) botStatuses.set(selectedProfile.value.id, await res.json());
 }
 
+async function readActionResponse(response) {
+  try { return await response.json(); }
+  catch { return {}; }
+}
+
 async function joinGame() {
   if (!selectedProfile.value) return;
-  await ensureBrainStarted(selectedProfile.value.id);
-  const res = await fetch(`/api/bots/${selectedProfile.value.id}/join-game`, { method: 'POST' });
-  if (res.ok) botStatuses.set(selectedProfile.value.id, await res.json());
+  const botId = selectedProfile.value.id;
+  if (worldConnectionActions.has(botId)) return;
+  worldConnectionActions.set(botId, 'connect');
+  worldConnectionErrors.delete(botId);
+  try {
+    await ensureBrainStarted(botId);
+    const response = await fetch(`/api/bots/${botId}/join-game`, { method: 'POST' });
+    const data = await readActionResponse(response);
+    if (!response.ok) {
+      worldConnectionErrors.set(botId, data.error || `连接请求失败 (${response.status})`);
+      return;
+    }
+    botStatuses.set(botId, data);
+  } catch (error) {
+    worldConnectionErrors.set(botId, error instanceof Error ? error.message : String(error));
+  } finally {
+    worldConnectionActions.delete(botId);
+  }
 }
 
 async function leaveGame() {
   if (!selectedProfile.value) return;
-  const res = await fetch(`/api/bots/${selectedProfile.value.id}/leave-game`, { method: 'POST' });
-  if (res.ok) botStatuses.set(selectedProfile.value.id, await res.json());
+  const botId = selectedProfile.value.id;
+  if (worldConnectionActions.has(botId)) return;
+  worldConnectionActions.set(botId, 'disconnect');
+  worldConnectionErrors.delete(botId);
+  try {
+    const response = await fetch(`/api/bots/${botId}/leave-game`, { method: 'POST' });
+    const data = await readActionResponse(response);
+    if (!response.ok) {
+      worldConnectionErrors.set(botId, data.error || `断开请求失败 (${response.status})`);
+      return;
+    }
+    botStatuses.set(botId, data);
+  } catch (error) {
+    worldConnectionErrors.set(botId, error instanceof Error ? error.message : String(error));
+  } finally {
+    worldConnectionActions.delete(botId);
+  }
+}
+
+function handleWorldConnectionAction() {
+  if (!worldPreviewPresentation.value.canAct) return;
+  if (worldPreviewPresentation.value.action === 'disconnect') void leaveGame();
+  else void joinGame();
 }
 
 function appendChatSubmitError(message, botId) {
@@ -1236,8 +1371,7 @@ onMounted(() => { loadProfiles(); });
 .perception-grid::before { position:absolute; inset:0; background-image:linear-gradient(rgba(105,201,74,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(105,201,74,.04) 1px,transparent 1px); background-size:160px 160px; content:''; }
 .perception-vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 62% 66% at 50% 48%,rgba(25,45,29,.14),transparent 65%),linear-gradient(180deg,rgba(4,8,5,.08),rgba(4,8,5,.3)); }
 .perception-scene { position:absolute; z-index:1; inset:0; }
-.perception-mode-control { position:absolute; z-index:4; top:18px; right:18px; }
-.perception-camera-controls { position:absolute; z-index:3; top:18px; left:50%; display:flex; gap:8px; transform:translateX(-50%); }
+.perception-camera-controls { position:absolute; z-index:3; top:66px; left:50%; display:flex; gap:8px; transform:translateX(-50%); }
 .stage-button { display:inline-flex; min-height:34px; align-items:center; gap:7px; padding:7px 12px; cursor:pointer; background:rgba(17,24,19,.9); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:12px; font-weight:700; white-space:nowrap; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast),color var(--mc-duration-fast); backdrop-filter:blur(10px); }
 .stage-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
 .stage-button.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.3); color:var(--mc-accent-strong); }
@@ -1268,6 +1402,7 @@ onMounted(() => { loadProfiles(); });
 .inspector-actions { display:flex; flex:none; gap:6px; }
 .inspector-button { min-height:34px; padding:7px 12px; cursor:pointer; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); font-size:12px; font-weight:800; white-space:nowrap; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }
 .inspector-button.primary { background:var(--mc-accent); border-color:transparent; color:#081007; }
+.inspector-button:disabled { cursor:not-allowed; filter:saturate(.35); opacity:.48; }
 .inspector-button.primary:hover:not(:disabled) { background:var(--mc-accent-strong); }
 .inspector-button.ghost { display:grid; width:34px; padding:0; place-items:center; background:transparent; color:var(--mc-text-muted); }
 .inspector-button.danger:hover { background:rgba(228,111,101,.1); border-color:rgba(228,111,101,.28); color:var(--mc-danger); }
@@ -1331,15 +1466,29 @@ onMounted(() => { loadProfiles(); });
 .inspector-empty strong { color:var(--mc-text-secondary); font-size:14px; }
 .inspector-empty span { font-size:11px; }
 
-/* BUG-WEBUI-11 · 正式版控制台的舞台与右侧信息层级 */
-.perception-stage-heading { position:absolute; z-index:5; top:19px; left:20px; display:flex; align-items:center; gap:9px; color:var(--mc-text-secondary); font-size:13px; }
+/* BUG-WEBUI-11/14 · 正式版感知舞台、始终可见的世界预览控制层 */
+.perception-stage-toolbar { position:absolute; z-index:5; top:14px; right:18px; left:20px; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; pointer-events:none; }
+.perception-stage-heading { display:flex; align-items:center; gap:9px; justify-self:start; color:var(--mc-text-secondary); font-size:13px; }
 .perception-stage-heading > span { width:7px; height:7px; background:var(--mc-accent); border-radius:50%; box-shadow:0 0 10px rgba(105,201,74,.5); }
-.perception-primary-action { position:absolute; z-index:5; top:15px; right:18px; display:inline-flex; min-height:38px; align-items:center; gap:8px; padding:8px 16px; cursor:pointer; background:linear-gradient(180deg,#336a35,#244f2b); border:1px solid rgba(105,201,74,.58); border-radius:var(--mc-radius-sm); box-shadow:inset 0 1px rgba(255,255,255,.08); color:#eefce8; font-size:12px; font-weight:800; }
+.world-preview-tabs { display:inline-flex; justify-self:center; padding:3px; pointer-events:auto; background:rgba(12,19,14,.9); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); box-shadow:0 10px 26px rgba(0,0,0,.2); backdrop-filter:blur(10px); }
+.world-preview-tabs button { display:inline-flex; min-height:30px; align-items:center; gap:6px; padding:5px 10px; cursor:pointer; background:transparent; border:0; border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font-size:11px; font-weight:750; white-space:nowrap; }
+.world-preview-tabs button:hover:not(:disabled) { background:var(--mc-surface-hover); color:var(--mc-text-secondary); }
+.world-preview-tabs button.active { background:var(--mc-accent-soft); color:var(--mc-accent-strong); box-shadow:inset 0 0 0 1px rgba(105,201,74,.16); }
+.world-preview-tabs button:disabled { cursor:not-allowed; opacity:.42; }
+.perception-primary-action { position:static; display:inline-flex; min-height:38px; align-items:center; gap:8px; justify-self:end; padding:8px 16px; pointer-events:auto; cursor:pointer; background:linear-gradient(180deg,#336a35,#244f2b); border:1px solid rgba(105,201,74,.58); border-radius:var(--mc-radius-sm); box-shadow:inset 0 1px rgba(255,255,255,.08); color:#eefce8; font-size:12px; font-weight:800; white-space:nowrap; }
 .perception-primary-action:hover:not(:disabled) { background:linear-gradient(180deg,#3c7b3e,#2b5d31); }
 .perception-primary-action.leave { background:rgba(228,111,101,.13); border-color:rgba(228,111,101,.34); color:#e8b0aa; }
 .perception-primary-action:disabled { cursor:not-allowed; filter:saturate(.3); opacity:.42; }
-.perception-mode-control { top:62px; }
 .perception-empty { inset:54px 0 0; }
+.world-preview-state { position:absolute; z-index:3; top:76px; left:50%; display:flex; width:min(430px,calc(100% - 44px)); align-items:center; flex-direction:column; gap:5px; padding:11px 16px; text-align:center; background:rgba(12,19,14,.88); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); box-shadow:0 14px 34px rgba(0,0,0,.24); transform:translateX(-50%); backdrop-filter:blur(12px); }
+.world-preview-state > span { color:var(--mc-accent); font:9px/1.2 var(--mc-font-mono); letter-spacing:.14em; }
+.world-preview-state > strong { color:var(--mc-text); font-size:13px; }
+.world-preview-state > p { max-width:390px; margin:0; color:var(--mc-text-muted); font-size:11px; line-height:1.5; }
+.world-preview-state.is-warning { border-color:rgba(224,165,47,.34); }
+.world-preview-state.is-warning > span { color:var(--mc-warning); }
+.world-preview-state.is-error { background:rgba(31,17,16,.9); border-color:rgba(228,111,101,.4); }
+.world-preview-state.is-error > span,.world-preview-state.is-error > strong { color:var(--mc-danger); }
+.world-preview-state.is-ready { border-color:rgba(105,201,74,.3); }
 .scan-field { width:min(78%,680px); height:auto; aspect-ratio:1; margin:0; }
 .scan-field::before { position:absolute; z-index:0; inset:6%; background:conic-gradient(from -92deg,rgba(105,201,74,.18),rgba(105,201,74,.035) 13deg,transparent 38deg); border-radius:50%; content:''; animation:radarSweep 7s linear infinite; transform-origin:center; }
 .scan-field::after { position:absolute; z-index:1; width:16%; height:16%; border:1px solid rgba(105,201,74,.75); border-radius:50%; content:''; animation:radarPulse 3.6s ease-out infinite; }
@@ -1378,6 +1527,7 @@ onMounted(() => { loadProfiles(); });
 .partner-current-state > span { color:var(--mc-text-muted); font-size:11px; font-weight:700; }
 .partner-current-state strong { display:flex; align-items:center; gap:8px; color:var(--mc-text-secondary); font-size:11px; }
 .partner-current-state i,.interaction-summary-detail i { width:7px; height:7px; flex:none; border-radius:50%; }
+.inspector-world-preview { display:none; }
 .inspector-vitals { margin-top:0; }
 .control-tabs { height:48px; gap:0; margin-top:0; padding:0; overflow:hidden; background:rgba(14,21,16,.96); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
 .control-tab { display:inline-flex; min-width:0; min-height:46px; align-items:center; justify-content:center; gap:7px; padding:0 7px; border-right:1px solid var(--mc-border); border-radius:0; font-size:11px; }
@@ -1428,6 +1578,10 @@ onMounted(() => { loadProfiles(); });
   .partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px minmax(0,1fr) 340px; }
   .partner-workspace-tab { min-width:104px; }
   .interaction-summary { grid-template-columns:110px minmax(0,1fr); }
+  .perception-stage-toolbar { right:10px; left:12px; gap:7px; }
+  .perception-stage-heading strong { display:none; }
+  .world-preview-tabs button { gap:4px; padding:5px 7px; font-size:10px; }
+  .perception-primary-action { padding:8px 10px; font-size:10px; }
 }
 
 @media (max-width:860px) {
@@ -1445,6 +1599,13 @@ onMounted(() => { loadProfiles(); });
   .play-stage { display:none; }
   .play-control { grid-column:2; grid-row:2; padding:12px; }
   .partner-workspace-shell:not(.is-play-workspace) .play-control { display:none; }
+  .inspector-world-preview { display:flex; flex-direction:column; gap:8px; margin-top:9px; padding:9px; background:rgba(255,255,255,.025); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
+  .inspector-world-preview-heading { display:flex; align-items:center; justify-content:space-between; color:var(--mc-text-muted); font-size:10px; }
+  .inspector-world-preview-heading strong { color:var(--mc-accent-strong); font-size:10px; }
+  .inspector-world-preview-tabs { display:flex; width:100%; padding:2px; }
+  .inspector-world-preview-tabs button { min-width:0; flex:1; justify-content:center; padding:5px 4px; }
+  .inspector-world-preview > p { margin:0; color:var(--mc-text-muted); font-size:10px; line-height:1.4; }
+  .inspector-world-preview > p.is-error { color:var(--mc-danger); }
 }
 
 @media (max-width:640px) {
