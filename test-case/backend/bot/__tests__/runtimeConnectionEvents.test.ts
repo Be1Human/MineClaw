@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BotRuntime, plannerExperimentsEnabled, type BotRuntimeConfig } from '../../../../apps/minecraft-companion/src/bot/runtime.js';
+import { BotRuntime, plannerEvolutionMode, plannerExperimentsEnabled, type BotRuntimeConfig } from '../../../../apps/minecraft-companion/src/bot/runtime.js';
 import type { MineflayerConnection } from '../../../../apps/minecraft-companion/src/bot/mineflayer/connection.js';
 
 const config: BotRuntimeConfig = {
@@ -41,4 +41,13 @@ test('Planner Candidate 实验授权可限制在固定 Profile', () => {
   assert.equal(plannerExperimentsEnabled('authorized','profile-a','profile-a,profile-b'),true);
   assert.equal(plannerExperimentsEnabled('authorized','profile-c','profile-a,profile-b'),false);
   assert.equal(plannerExperimentsEnabled('authorized','profile-c',''),true);
+});
+
+test('Planner Evolution 模式默认和非法值均 fail closed 为 off', () => {
+  assert.equal(plannerEvolutionMode(undefined), 'off');
+  assert.equal(plannerEvolutionMode(''), 'off');
+  assert.equal(plannerEvolutionMode('invalid'), 'off');
+  assert.equal(plannerEvolutionMode('off'), 'off');
+  assert.equal(plannerEvolutionMode('observe'), 'observe');
+  assert.equal(plannerEvolutionMode('active'), 'active');
 });

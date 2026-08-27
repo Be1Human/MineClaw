@@ -908,6 +908,20 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     res.json(snap);
   });
 
+  app.get('/api/bots/:botId/v2/supervisor-alerts', (req, res) => {
+    const botId = req.params.botId;
+    if (!profileStore.get(botId)) {
+      res.status(404).json({ error: 'Bot not found.' });
+      return;
+    }
+    const alerts = botManager.getV2SupervisorAlerts(botId);
+    if (!alerts) {
+      res.status(503).json({ error: 'V2 runtime not active for this bot.' });
+      return;
+    }
+    res.json(alerts);
+  });
+
   app.get('/api/bots/:botId/v2/runs', (req, res) => {
     const runs = botManager.getBenchRuns(req.params.botId);
     runs ? res.json({ runs }) : res.status(404).json({ error: 'V2 runtime not active' });

@@ -98,6 +98,10 @@ export interface TuningConfig {
   defense: {
     automaticEnabled: boolean;
   };
+  /** FEAT-CROSS-20 · 研发 TestBench 默认关闭，仅允许显式热开启。 */
+  testBench: {
+    enabled: boolean;
+  };
   /** FEAT-L7-16 · 任务终态闭环推送（task_feedback 通道） */
   l7: {
     /** 任务终态去抖窗口 ms：窗口内多个 completed/failed/cancelled 合并成一次 task_feedback turn */
@@ -258,6 +262,9 @@ const DEFAULTS: TuningConfig = {
   },
   defense: {
     automaticEnabled: true,
+  },
+  testBench: {
+    enabled: false,
   },
   l7: {
     taskFeedbackDebounceMs: 1500,

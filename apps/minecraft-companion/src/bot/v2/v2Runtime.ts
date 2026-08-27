@@ -1749,6 +1749,10 @@ export class V2Runtime {
   private handleBenchCommand(message: string): boolean {
     const command = parseBenchCommand(message);
     if (command.kind === 'not_bench') return false;
+    if (!tuning().testBench.enabled) {
+      this.heart.submitSay('bench', '测试台默认关闭；开发时可在 data/tuning.json 中开启 testBench.enabled。');
+      return true;
+    }
     if (command.kind === 'list') {
       this.heart.submitSay('bench', `可用测试：${TEST_CARDS.map(card => card.id).join('、')}`);
       return true;

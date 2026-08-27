@@ -127,9 +127,11 @@ test('查询编码保留 Unicode/游标并将服务端错误转成可判断错�
 
 test('App 一级工作区顺序固定并把旧 agent 标签迁移到 trace', () => {
   const source = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/App.vue', import.meta.url), 'utf8');
-  const ids = ['play', 'brain', 'trace', 'memory', 'evolution', 'bench', 'settings'];
+  const ids = ['play', 'brain', 'trace', 'memory', 'settings'];
   const positions = ids.map(id => source.indexOf(`{ id: '${id}', name:`));
   assert.ok(positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1])));
+  assert.doesNotMatch(source, /\{ id: 'evolution', name: '进化' \}|\{ id: 'bench', name: '测试台' \}/);
+  assert.doesNotMatch(source, /<PlannerEvolutionPanel|<BenchPanel/);
   assert.match(source, /workspaceViewsByProfile\.value\[profileId\] = 'trace'/);
   assert.match(source, /<LlmTracePanel/);
   assert.doesNotMatch(source, /<AgentLoopPanel/);

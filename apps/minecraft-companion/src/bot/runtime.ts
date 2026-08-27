@@ -1,5 +1,5 @@
 import { MineflayerConnection, ConnectionConfig, type SkinSyncStatus } from './mineflayer/index.js';
-import { V2Runtime, type PlannerEvolutionMode } from './v2/index.js';
+import { V2Runtime, type PlannerEvolutionMode, type V2RuntimeConfig } from './v2/index.js';
 import { NullGameAdapter, NullNavAdapter, SwitchableGameAdapter, SwitchableNavAdapter } from './adapter/index.js';
 import type { WorldStateView } from './v2/types.js';
 import type { SpatialEntry } from './v2/infra/memory.js';
@@ -23,8 +23,8 @@ import { formatPlannerExperienceBundle, type PlannerExperienceBundle } from './v
 import type { CharacterCardV1 } from '../character/types.js';
 import { assembleCharacterPrompt } from '../character/characterPromptAssembler.js';
 
-function plannerEvolutionMode(value: string | undefined): PlannerEvolutionMode {
-  return value === 'off' || value === 'active' || value === 'observe' ? value : 'observe';
+export function plannerEvolutionMode(value: string | undefined): PlannerEvolutionMode {
+  return value === 'off' || value === 'active' || value === 'observe' ? value : 'off';
 }
 
 export function plannerExperimentsEnabled(
@@ -269,6 +269,8 @@ export interface BotRuntimeConfig {
   memory?: {
     semanticSearch?: boolean;
   };
+  /** FEAT-CROSS-20 · 进化运行时装配模式；缺省为 off。 */
+  plannerEvolutionMode?: PlannerEvolutionMode;
 }
 
 export type BotStatus = 'offline' | 'awake' | 'connecting' | 'online' | 'busy' | 'reconnecting' | 'error';
@@ -610,11 +612,15 @@ export class BotRuntime {
     const dataDir = this.config.dataDir ?? 'data';
     const persistence = resolveRuntimePersistencePaths(dataDir, memoryId);
     const dbPath = persistence.memoryDbPath;
-    this.plannerEvolution ??= new PlannerEvolutionRuntime({
-      dbPath: persistence.plannerEvolutionDbPath,
-      executionFactsPath: persistence.plannerExecutionFactsPath,
-    });
-    void this.plannerEvolution.start().catch(error => this.log('warn', `[PlannerEvolution] 启动失败，安全降级为无经验：${String(error)}`));
+    const evolutionMode = this.config.plannerEvolutionMode ?? plannerEvolutionMode(process.env.PLANNER_EVOLUTION_MODE);
+    const evolutionEnabled = evolutionMode !== 'off';
+    if (evolutionEnabled) {
+      this.plannerEvolution ??= new PlannerEvolutionRuntime({
+        dbPath: persistence.plannerEvolutionDbPath,
+        executionFactsPath: persistence.plannerExecutionFactsPath,
+      });
+      void this.plannerEvolution.start().catch(error => this.log('warn', `[PlannerEvolution] 启动失败，安全降级为无经验：${String(error)}`));
+    }
     this.companion ??= new CompanionCore({
       profileId: this.config.id ?? memoryId,
       corePersona: {
@@ -636,6 +642,34 @@ export class BotRuntime {
     const ownerName = this.config.characterCard?.relationship.userPersona.name || process.env.V2_OWNER || 'qxy';
     const ownerAliases = (process.env.V2_OWNER_ALIASES || 'cloudboyboy').split(',').map(s => s.trim()).filter(Boolean);
     const llmOk = !!(this.config.llm?.apiKey && this.config.llm?.baseUrl);
+    const plannerEvolutionConfig: Partial<V2RuntimeConfig> = evolutionEnabled ? {
+      plannerExperienceContext: goalText => formatPlannerExperienceForGoal(this.plannerEvolution?.experience.retrieve(goalText) ?? null, goalText),
+      plannerExperienceSnapshot: goalText => this.plannerEvolution?.experience.retrieve(goalText) ?? null,
+      plannerExperienceFreeze: request => this.plannerEvolution?.freezeForPlan({
+        planRunId: request.planRunId,
+        goalSignature: request.goalSignature,
+        context: request.context,
+        experimentsEnabled: plannerExperimentsEnabled(
+          process.env.PLANNER_EXPERIMENT_MODE,
+          this.config.id ?? memoryId,
+        ),
+      }) ?? {
+        status: 'cold_start' as const,
+        reason: 'no_applicable_experience' as const,
+        selectionManifest: {
+          id: `manifest:${request.planRunId}:runtime-unavailable`, planRunId: request.planRunId,
+          query: { goalSignature: request.goalSignature.key, contextSignatureHash: 'runtime_unavailable' },
+          selected: [], rejected: [],
+        },
+      },
+      plannerExecutionFactsPath: persistence.plannerExecutionFactsPath,
+      plannerPolicyInvalidationSubscribe: listener => this.plannerEvolution?.onPolicyInvalidated(listener) ?? (() => {}),
+      plannerPlanTerminalNotify: terminal => this.plannerEvolution?.experiments.finalizePlanRun(
+        terminal.planRunId,
+        terminal.outcome,
+        terminal.detail,
+      ),
+    } : {};
     this.v2 = new V2Runtime({
       game: this.switchableGame,
       nav: this.switchableNav,
@@ -660,36 +694,11 @@ export class BotRuntime {
       characterPrompt: this.config.characterCard
         ? (message: string) => assembleCharacterPrompt(this.config.characterCard!, message)
         : undefined,
-      plannerExperienceContext: goalText => formatPlannerExperienceForGoal(this.plannerEvolution?.experience.retrieve(goalText) ?? null, goalText),
-      plannerExperienceSnapshot: goalText => this.plannerEvolution?.experience.retrieve(goalText) ?? null,
-      plannerExperienceFreeze: request => this.plannerEvolution?.freezeForPlan({
-        planRunId: request.planRunId,
-        goalSignature: request.goalSignature,
-        context: request.context,
-        experimentsEnabled: plannerExperimentsEnabled(
-          process.env.PLANNER_EXPERIMENT_MODE,
-          this.config.id ?? memoryId,
-        ),
-      }) ?? {
-        status: 'cold_start' as const,
-        reason: 'no_applicable_experience' as const,
-        selectionManifest: {
-          id: `manifest:${request.planRunId}:runtime-unavailable`, planRunId: request.planRunId,
-          query: { goalSignature: request.goalSignature.key, contextSignatureHash: 'runtime_unavailable' },
-          selected: [], rejected: [],
-        },
-      },
-      plannerExecutionFactsPath: persistence.plannerExecutionFactsPath,
+      ...plannerEvolutionConfig,
       plannerRuntimeDbPath: persistence.plannerRuntimeDbPath,
       plannerExecutionCodeRevision: process.env.GIT_COMMIT || 'local-dev',
       plannerExecutionConfigRevision: memoryId,
-      plannerEvolutionMode: plannerEvolutionMode(process.env.PLANNER_EVOLUTION_MODE),
-      plannerPolicyInvalidationSubscribe: listener => this.plannerEvolution?.onPolicyInvalidated(listener) ?? (() => {}),
-      plannerPlanTerminalNotify: terminal => this.plannerEvolution?.experiments.finalizePlanRun(
-        terminal.planRunId,
-        terminal.outcome,
-        terminal.detail,
-      ),
+      plannerEvolutionMode: evolutionMode,
       companion: this.companion,
       // BUG-L1-03: 注入真实 bot 让 patchedBlockAt 打到 bot.blockAt（接通 pathfinder 记忆寻路）
       getRawBotForPatch: () => {

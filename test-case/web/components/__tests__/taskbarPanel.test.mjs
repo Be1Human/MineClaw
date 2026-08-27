@@ -65,18 +65,20 @@ test('正常态展示汇总、根任务、阶段、进度和子步骤', async ()
   assert.doesNotMatch(ready, />旧任务</);
 });
 
-test('控制标签、一级轨迹入口与唯一任务入口合同保持稳定', () => {
+test('控制标签收敛调试入口并保持唯一任务入口', () => {
   const appSource = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/App.vue', import.meta.url), 'utf8');
   const statusIndex = appSource.indexOf("{ id: 'status', name: '状态' }");
   const tasksIndex = appSource.indexOf("{ id: 'tasks', name: '任务栏' }");
-  const runtimeIndex = appSource.indexOf("{ id: 'runtime', name: '运行时' }");
-  assert.ok(statusIndex < tasksIndex && tasksIndex < runtimeIndex);
+  const inventoryIndex = appSource.indexOf("{ id: 'inventory', name: '背包' }");
+  assert.ok(statusIndex < tasksIndex && tasksIndex < inventoryIndex);
+  assert.doesNotMatch(appSource, /\{ id: 'runtime', name: '运行时' \}/);
   assert.match(appSource, /\{ id: 'trace', name: '轨迹' \}/);
   assert.doesNotMatch(appSource, /\{ id: 'agent', name: '轨迹' \}/);
   assert.match(appSource, /legacyTab === 'agent'/);
   assert.doesNotMatch(appSource, /name:\s*'Agent'/);
   assert.equal((appSource.match(/<TaskBarPanel/g) || []).length, 1);
-
-  const runtimeSource = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/components/V2StatusPanel.vue', import.meta.url), 'utf8');
-  assert.doesNotMatch(runtimeSource, /📋 任务|Active Tasks/);
+  assert.doesNotMatch(appSource, /<V2StatusPanel|<CriticPanel/);
+  assert.doesNotMatch(appSource, /fetch\('\/api\/v2\/(?:status|critic|supervisor-alerts)'\)/);
+  assert.match(appSource, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/v2\/supervisor-alerts/);
+  assert.match(appSource, /<AlertBanner :alerts="v2Alerts"/);
 });

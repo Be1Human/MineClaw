@@ -19,7 +19,7 @@
           title="全局设置"
           aria-label="全局设置"
           @click="globalSettingsOpen = !globalSettingsOpen"
-        >⚙</button>
+        ><McIcon name="settings" :size="16" /></button>
 
         <!-- hub status -->
         <div class="app-hub-status" style="display:flex; align-items:center; gap:9px; padding:8px 14px; background:#1c2414; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35); -webkit-app-region:no-drag;">
@@ -29,8 +29,8 @@
 
         <!-- 无边框窗口控制（自定义标题栏）-->
         <div v-if="isElectron" style="display:flex; align-items:center; gap:6px; -webkit-app-region:no-drag;">
-          <button @click="winMin" title="最小化" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.35); color:#cdd2c0; font-family:var(--mc-font-pixel); font-size:11px; line-height:1;">_</button>
-          <button @click="winClose" title="关闭到托盘" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#3a2420; border:2px solid #1a0f0d; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.35); color:#f0b4b4; font-family:var(--mc-font-pixel); font-size:11px; line-height:1;">✕</button>
+          <button @click="winMin" title="最小化" aria-label="最小化" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06), inset -2px -2px 0 rgba(0,0,0,0.35); color:#cdd2c0; font-family:var(--mc-font-pixel); font-size:11px; line-height:1;"><McIcon name="minus" :size="12" /></button>
+          <button @click="winClose" title="关闭到托盘" aria-label="关闭到托盘" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#3a2420; border:2px solid #1a0f0d; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.35); color:#f0b4b4; font-family:var(--mc-font-pixel); font-size:11px; line-height:1;"><McIcon name="close" :size="12" /></button>
         </div>
       </div>
       <!-- grass teeth -->
@@ -53,7 +53,7 @@
       <aside class="partner-sidebar" style="display:flex; flex-direction:column; min-height:0; padding:16px; border-right:3px solid #0c0e08; background:#1b1e14;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
           <span style="font-family:var(--mc-font-pixel); font-size:10px; color:#8aa86a; text-shadow:1px 1px 0 #0c0e08;">PARTNERS</span>
-          <button @click="showCreateForm = true" style="width:30px; height:30px; cursor:pointer; background:#4c7a2a; border:2px solid #2b5e16; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3); color:#fff; font-family:var(--mc-font-pixel); font-size:12px; line-height:1;">+</button>
+          <button @click="showCreateForm = true" title="创建伙伴" aria-label="创建伙伴" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#4c7a2a; border:2px solid #2b5e16; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3); color:#fff; font-family:var(--mc-font-pixel); font-size:12px; line-height:1;"><McIcon name="plus" :size="13" /></button>
         </div>
         <div style="font-weight:700; font-size:13px; color:#cdd2c0; margin:0 2px 10px;">我的伙伴</div>
 
@@ -120,21 +120,9 @@
         @profile-updated="onProfileUpdated"
         @request-global-settings="openGlobalSettings"
       />
-      <BenchPanel
-        v-else-if="workspaceView === 'bench'"
-        :key="`bench:${selectedProfile?.id || 'empty'}`"
-        :botId="selectedProfile?.id"
-        class="partner-workspace-panel"
-      />
       <MemoryPanel
         v-else-if="workspaceView === 'memory'"
         :key="`memory:${selectedProfile?.id || 'empty'}`"
-        :botId="selectedProfile?.id"
-        class="partner-workspace-panel"
-      />
-      <PlannerEvolutionPanel
-        v-else-if="workspaceView === 'evolution'"
-        :key="`evolution:${selectedProfile?.id || 'empty'}`"
         :botId="selectedProfile?.id"
         class="partner-workspace-panel"
       />
@@ -157,13 +145,14 @@
         </div>
         <!-- 3D 开关 -->
         <div style="position:absolute; top:18px; right:18px; z-index:4;">
-          <button @click="toggle3D" :style="{ cursor:'pointer', padding:'8px 14px', fontWeight:700, fontSize:'12.5px', whiteSpace:'nowrap', border:'2px solid #0d0f0a', color: show3D ? '#fff' : '#cdd2c0', background: show3D ? '#4c7a2a' : '#272d1d', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.35)' }">
-            {{ show3D ? '⏹ 关闭 3D 感知' : '▶ 开启 3D 感知' }}
+          <button @click="toggle3D" :style="{ cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'7px', padding:'8px 14px', fontWeight:700, fontSize:'12.5px', whiteSpace:'nowrap', border:'2px solid #0d0f0a', color: show3D ? '#fff' : '#cdd2c0', background: show3D ? '#4c7a2a' : '#272d1d', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.35)' }">
+            <McIcon :name="show3D ? 'stop' : 'play'" :size="13" />
+            {{ show3D ? '关闭 3D 感知' : '开启 3D 感知' }}
           </button>
         </div>
         <!-- 3D 关闭时的轻量占位（有 worldState 但未开 3D） -->
         <div v-if="currentWorldState && !show3D" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:#7e836e; z-index:1;">
-          <div style="width:54px; height:54px; background:#2c3422; border:2px solid #0c0e08; box-shadow:inset -5px -5px 0 rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center; font-size:24px;">🧭</div>
+          <div style="width:54px; height:54px; background:#2c3422; border:2px solid #0c0e08; box-shadow:inset -5px -5px 0 rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center; color:#9dcc7d;"><McIcon name="compass" :size="28" /></div>
           <div style="font-weight:700; font-size:14px; color:#cdd2c0;">{{ selectedProfile?.name }} 在线中</div>
           <div style="font-size:12.5px;">3D 感知较耗资源，已默认关闭 · 需要时点右上角开启</div>
         </div>
@@ -236,7 +225,7 @@
           <div style="display:flex; align-items:center; gap:12px;">
             <span style="width:34px; flex:none; font-family:var(--mc-font-pixel); font-size:9px; color:#ff6b6b; text-shadow:1px 1px 0 #000;">HP</span>
             <div style="flex:1; display:flex; gap:3px;">
-              <span v-for="(c, i) in hpCells" :key="i" :style="{ fontFamily:'var(--mc-font-body)', fontSize:'18px', lineHeight:1, color: c.on ? '#ff4d4d' : '#5a1f1c', textShadow:'1px 1px 0 #000, -1px 0 0 #000, 0 -1px 0 #000' }">♥</span>
+              <McIcon v-for="(c, i) in hpCells" :key="i" name="health" :size="16" :style="{ color: c.on ? '#ff4d4d' : '#5a1f1c', '--mc-icon-accent': c.on ? '#ff8a8a' : '#3a1512' }" />
             </div>
             <span style="flex:none; font-family:var(--mc-font-mono); font-size:17px; color:#cdd2c0;">{{ hpLabel }}</span>
           </div>
@@ -256,7 +245,7 @@
         <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
           <div style="display:flex; align-items:center; gap:7px; padding:7px 11px; background:#20241a; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05);">
             <span style="font-size:11px; color:#7e836e;">连接</span>
-            <span :style="{ display:'flex', alignItems:'center', justifyContent:'center', width:'14px', height:'14px', background: connOk ? '#1d3a20' : '#3a201d', color: connOk ? '#8ee06a' : '#ff8a8a', fontSize:'9px', fontWeight:700 }">{{ connOk ? '✓' : '✕' }}</span>
+            <span :style="{ display:'flex', alignItems:'center', justifyContent:'center', width:'14px', height:'14px', background: connOk ? '#1d3a20' : '#3a201d', color: connOk ? '#8ee06a' : '#ff8a8a' }"><McIcon :name="connOk ? 'connected' : 'disconnected'" :size="10" /></span>
             <span :style="{ fontSize:'12px', fontWeight:700, color: connOk ? '#8ee06a' : '#ff8a8a' }">{{ connOk ? '已接' : '未接' }}</span>
           </div>
           <div style="display:flex; align-items:center; gap:7px; padding:7px 11px; background:#20241a; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05);">
@@ -269,7 +258,7 @@
 
         <!-- problem -->
         <div v-if="inGame && !connOk && currentFullStatus?.serverAddress" style="margin-top:10px; display:flex; align-items:center; gap:9px; padding:9px 12px; background:#2c2410; border:2px solid #5a4410; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06);">
-          <span style="display:flex; align-items:center; justify-content:center; flex:none; width:16px; height:16px; background:#e0a52f; color:#1c1606; font-family:var(--mc-font-pixel); font-size:9px;">!</span>
+          <span style="display:flex; align-items:center; justify-content:center; flex:none; width:16px; height:16px; background:#e0a52f; color:#1c1606;"><McIcon name="warning" :size="12" /></span>
           <span style="font-size:11.5px; color:#e6c98a;">问题 · 服务器</span>
           <span style="font-family:var(--mc-font-mono); font-size:15px; color:#f0c259; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ currentFullStatus.serverAddress }}</span>
         </div>
@@ -284,6 +273,7 @@
 
           <!-- 状态 -->
           <template v-if="ctrlTab === 'status'">
+            <AlertBanner :alerts="v2Alerts" />
             <div>
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -315,13 +305,6 @@
             @retry="refreshV2Tasks({ showLoading: true })"
           />
 
-          <!-- 运行时 -->
-          <template v-else-if="ctrlTab === 'runtime'">
-            <AlertBanner :alerts="v2Alerts" />
-            <V2StatusPanel :status="v2Status" />
-            <CriticPanel :verdicts="v2Verdicts" />
-          </template>
-
           <!-- 背包 -->
           <div v-else-if="ctrlTab === 'inventory'">
             <InventoryPanel :worldState="currentWorldState" />
@@ -335,7 +318,7 @@
               <div v-for="(msg, i) in messages" :key="i" :style="{ display:'flex', flexDirection:'column', alignItems: msg.self ? 'flex-end' : 'flex-start' }">
                 <div v-if="msg.thinking" @click="msg.thinkExpanded = !msg.thinkExpanded"
                   style="max-width:88%; margin-bottom:3px; padding:5px 10px; background:#171a26; border:2px dashed #4a4060; opacity:0.7; cursor:pointer; font-style:italic;">
-                  <span style="font-family:var(--mc-font-pixel); font-size:8px; color:#a78bd0; margin-right:6px;">💭</span>
+                  <McIcon name="thinking" :size="10" style="color:#a78bd0; margin-right:6px;" />
                   <span style="font-size:9px; color:#6e7681;">{{ msg.thinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
                   <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: msg.thinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: msg.thinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: msg.thinkExpanded ? 'visible':'hidden' }">{{ msg.thinking }}</div>
                 </div>
@@ -348,7 +331,7 @@
             </div>
             <div v-if="liveThinking" @click="liveThinkExpanded = !liveThinkExpanded"
               style="margin:6px 0; padding:5px 10px; background:#14160f; border:2px solid #2f2a40; opacity:0.65; cursor:pointer; font-style:italic;">
-              <span style="font-family:var(--mc-font-pixel); font-size:8px; color:#a78bd0; margin-right:6px;">💭 正在想</span>
+              <span style="display:inline-flex; align-items:center; gap:5px; font-size:10px; color:#a78bd0; margin-right:6px;"><McIcon name="thinking" :size="10" />正在想</span>
               <span style="font-size:9px; color:#6e7681;">{{ liveThinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
               <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: liveThinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: liveThinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: liveThinkExpanded ? 'visible':'hidden' }">{{ liveThinking }}</div>
             </div>
@@ -403,7 +386,7 @@
       <div style="max-width:94vw; max-height:90vh; overflow:auto; padding:20px; background:#1b1e14; border:3px solid #0c0e08; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06), 0 8px 0 rgba(0,0,0,0.5);">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
           <span style="font-family:var(--mc-font-pixel); font-size:12px; color:#cfeeb0; text-shadow:2px 2px 0 #0c0e08;">SKIN EDITOR · {{ selectedProfile.name }}</span>
-          <button @click="showSkinEditor = false" style="width:30px; height:30px; cursor:pointer; background:#3a2420; border:2px solid #1a0f0d; color:#f0b4b4; font-family:var(--mc-font-pixel); font-size:11px;">✕</button>
+          <button @click="showSkinEditor = false" title="关闭皮肤编辑器" aria-label="关闭皮肤编辑器" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#3a2420; border:2px solid #1a0f0d; color:#f0b4b4; font-family:var(--mc-font-pixel); font-size:11px;"><McIcon name="close" :size="12" /></button>
         </div>
         <SkinEditor :texture="selectedSkinTexture" :initModel="selectedSkinModel" @save="saveSkin" />
       </div>
@@ -415,20 +398,17 @@
 import { ref, reactive, onMounted, onUnmounted, nextTick, watch, computed, markRaw } from 'vue';
 import { io } from 'socket.io-client';
 import PerceptionScene3D from './components/PerceptionScene3D.vue';
-import V2StatusPanel from './components/V2StatusPanel.vue';
 import TaskBarPanel from './components/TaskBarPanel.vue';
-import CriticPanel from './components/CriticPanel.vue';
 import AlertBanner from './components/AlertBanner.vue';
 import InventoryPanel from './components/InventoryPanel.vue';
 import ChatBox from './components/ChatBox.vue';
 import BrainPanel from './components/BrainPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
-import BenchPanel from './components/BenchPanel.vue';
 import MemoryPanel from './components/MemoryPanel.vue';
-import PlannerEvolutionPanel from './components/PlannerEvolutionPanel.vue';
 import LlmTracePanel from './components/LlmTracePanel.vue';
 import McCharacter from './components/McCharacter.vue';
 import McHead from './components/McHead.vue';
+import McIcon from './components/icons/McIcon.vue';
 import SkinEditor from './components/SkinEditor.vue';
 import { useProfileTasks } from './lib/profileTasks.js';
 
@@ -449,14 +429,11 @@ const workspaceTabs = [
   { id: 'brain', name: '大脑' },
   { id: 'trace', name: '轨迹' },
   { id: 'memory', name: '记忆' },
-  { id: 'evolution', name: '进化' },
-  { id: 'bench', name: '测试台' },
   { id: 'settings', name: '设置' },
 ];
 const tabs = [
   { id: 'status', name: '状态' },
   { id: 'tasks', name: '任务栏' },
-  { id: 'runtime', name: '运行时' },
   { id: 'inventory', name: '背包' },
   { id: 'chat', name: '聊天' },
   { id: 'logs', name: '日志' },
@@ -587,8 +564,6 @@ const unreadChat = ref(0);
 const activeBots = reactive(new Set());
 const botStatuses = reactive(new Map());
 const worldStates = reactive(new Map());
-const v2Status = ref({});
-const v2Enabled = ref(false);
 const {
   tasks: v2Tasks,
   state: v2TaskState,
@@ -596,7 +571,6 @@ const {
   selectBot: selectTaskBot,
   refresh: refreshV2Tasks,
 } = useProfileTasks();
-const v2Verdicts = ref([]);
 const v2Alerts = ref({ suspendedByDanger: [], recentDiagnoses: [], narrationCooldowns: {} });
 const agentLoopSteps = ref([]);
 // FEAT-WEBUI-09 · 常驻单思考气泡
@@ -715,40 +689,47 @@ socket.on('bot:agentLoop', (data) => {
   }
 });
 
-const v2Poll = setInterval(async () => {
-  try {
-    const r = await fetch('/api/v2/status');
-    if (r.ok) { v2Status.value = await r.json(); v2Enabled.value = true; }
-    else v2Enabled.value = false;
-  } catch {}
-}, 1000);
+const emptyV2Alerts = () => ({ suspendedByDanger: [], recentDiagnoses: [], narrationCooldowns: {} });
 
-const v2DetailPoll = setInterval(async () => {
-  if (!v2Enabled.value) return;
+async function refreshV2Alerts() {
+  const botId = selectedProfile.value?.id;
+  if (!botId || workspaceView.value !== 'play' || ctrlTab.value !== 'status') {
+    v2Alerts.value = emptyV2Alerts();
+    return;
+  }
   try {
-    const [rCritic, rAlerts] = await Promise.all([
-      fetch('/api/v2/critic'), fetch('/api/v2/supervisor-alerts'),
-    ]);
-    if (rCritic.ok) v2Verdicts.value = (await rCritic.json()).verdicts ?? [];
-    if (rAlerts.ok) v2Alerts.value = await rAlerts.json();
-  } catch {}
-}, 2000);
+    const response = await fetch(`/api/bots/${encodeURIComponent(botId)}/v2/supervisor-alerts`);
+    if (!response.ok || selectedProfile.value?.id !== botId) {
+      v2Alerts.value = emptyV2Alerts();
+      return;
+    }
+    v2Alerts.value = await response.json();
+  } catch {
+    v2Alerts.value = emptyV2Alerts();
+  }
+}
+
+const v2AlertPoll = setInterval(() => { void refreshV2Alerts(); }, 2000);
 
 const v2TaskPoll = setInterval(() => { void refreshV2Tasks(); }, 2000);
 
 onUnmounted(() => {
-  clearInterval(v2Poll);
-  clearInterval(v2DetailPoll);
+  clearInterval(v2AlertPoll);
   clearInterval(v2TaskPoll);
 });
 
 watch(
   () => selectedProfile.value?.id,
-  botId => { void selectTaskBot(botId); },
+  botId => {
+    v2Alerts.value = emptyV2Alerts();
+    void selectTaskBot(botId);
+    void refreshV2Alerts();
+  },
   { flush: 'sync' },
 );
 
 watch([workspaceView, ctrlTab], ([view, tab]) => {
+  if (view === 'play' && tab === 'status') void refreshV2Alerts();
   if (view !== 'play' || tab !== 'chat') return;
   unreadChat.value = 0;
   void scrollBottom(messagesEl);
