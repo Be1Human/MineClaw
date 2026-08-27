@@ -10,16 +10,16 @@ window.MINECLAW_SHOWCASE_MEDIA = {
   overview: {
     title: '一个伙伴，真正走进我的世界',
     src: '',
-    poster: './media/images/mineclaw-companion-in-world.png',
+    poster: './media/ai-keyframes/02-meeting-end.png?v=20260827-2205',
   },
   recovery: {
     title: '我们一起度过 Minecraft 的一天',
     src: '',
-    poster: './media/images/live-perception.jpg',
+    poster: './media/ai-keyframes/04-homecoming-end.png?v=20260827-2205',
   },
   memory: {
     title: '她不只听懂我，还能和我一起把事做成',
     src: '',
-    poster: './media/images/task-workbench-completed.jpg',
+    poster: './media/ai-keyframes/03-departure-end.png?v=20260827-2205',
   },
 };

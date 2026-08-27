@@ -31,9 +31,10 @@ app.innerHTML = `
 
   <main id="top">
     <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-media" style="background-image: url('./media/images/minefriend-hero-v2.png')" aria-hidden="true"></div>
+      <div class="hero-media" style="background-image: url('./media/ai-keyframes/05-finale-start.png?v=20260827-2205')" aria-hidden="true"></div>
       <div class="hero-veil" aria-hidden="true"></div>
       <div class="hero-grid" aria-hidden="true"></div>
+      <p class="hero-concept"><i></i> AI STORY FRAME · CONCEPT RENDER</p>
       <div class="page-shell hero-content">
         <div class="hero-copy">
           <p class="eyebrow"><span class="eyebrow-dot"></span> A COMPANION WHO LIVES IN YOUR WORLD</p>
@@ -49,6 +50,7 @@ app.innerHTML = `
           <div class="hero-film-meta"><span><i></i> MINECLAW · PROMO FILM</span><small>01:30</small></div>
           <div class="media-placeholder hero-film-placeholder">
             <span class="media-state"><i></i> 宣传片预览</span>
+            <span class="concept-badge">AI STORY FRAME · CONCEPT RENDER</span>
             <div class="media-play hero-film-play" aria-hidden="true">▶</div>
             <p>她走进世界，来到你身边。你们第一次面对面聊天，然后一起决定今天要去哪里。</p>
           </div>
@@ -72,6 +74,7 @@ app.innerHTML = `
         <article class="media-slot reveal" data-media-key="recovery">
           <div class="media-placeholder clay">
             <span class="media-state"><i></i> 故事预览</span>
+            <span class="concept-badge">AI STORY FRAME · CONCEPT RENDER</span>
             <strong class="media-duration">00:45</strong>
             <div class="media-play" aria-hidden="true">▶</div>
             <p>晨光里聊天 → 一起准备营地与物资 → 穿过森林 → 走进矿洞 → 夜色中并肩回到家</p>
@@ -81,6 +84,7 @@ app.innerHTML = `
         <article class="media-slot reveal" data-media-key="memory">
           <div class="media-placeholder amber">
             <span class="media-state"><i></i> 故事预览</span>
+            <span class="concept-badge">AI STORY FRAME · CONCEPT RENDER</span>
             <strong class="media-duration">00:45</strong>
             <div class="media-play" aria-hidden="true">▶</div>
             <p>玩家说出目标 → MineClaw 的伙伴理解并规划 → 采集、制作或整理 → 遇阻调整 → 世界结果与共同完成画面</p>
@@ -99,6 +103,18 @@ app.innerHTML = `
       <div class="belief-note reveal">
         <p>MineClaw 让伙伴和你聊天，听见你的想法，也用自己的语气回应你。更重要的是，她不是屏幕外的抽象助手：她拥有 Minecraft 里的身体、位置和背包，能来到你的身边，和你进入同一个正在发生的故事。</p>
         <span class="hand-note">Talk. Play. Explore. Grow together →</span>
+      </div>
+      <div class="belief-sequence reveal" aria-label="从独自一人到伙伴来到身边的故事转场">
+        <figure class="belief-frame">
+          <img src="./media/ai-keyframes/01-solitude-start.png?v=20260827-2205" alt="玩家独自在山林中眺望远方的概念故事画面" loading="lazy" decoding="async" />
+          <figcaption><span>BEFORE</span><strong>世界很大，但故事还只有一个人。</strong></figcaption>
+        </figure>
+        <span class="belief-arrow" aria-hidden="true">→</span>
+        <figure class="belief-frame">
+          <img src="./media/ai-keyframes/01-solitude-end.png?v=20260827-2205" alt="伙伴从林间走来与玩家相遇的概念故事画面" loading="lazy" decoding="async" />
+          <figcaption><span>TOGETHER</span><strong>直到另一个人真正走进同一个世界。</strong></figcaption>
+        </figure>
+        <p class="concept-label"><i></i> AI STORY FRAME · CONCEPT RENDER</p>
       </div>
     </section>
 
@@ -199,11 +215,10 @@ app.innerHTML = `
       <div class="story-grid">
         <article class="story story-world reveal">
           <div class="story-number">A</div>
-          <div class="story-visual world-visual" aria-hidden="true">
-            <div class="voxel voxel-a"></div><div class="voxel voxel-b"></div><div class="voxel voxel-c"></div>
-            <span class="scan-line"></span>
-            <div class="world-readout"><i></i> MINECLAW · COMPANION BESIDE YOU</div>
-          </div>
+          <figure class="story-frame">
+            <img src="./media/ai-keyframes/02-meeting-end.png?v=20260827-2205" alt="MineClaw 伙伴在 Minecraft 山林中第一次来到玩家身边的概念故事画面" loading="lazy" decoding="async" />
+            <figcaption><i></i> AI STORY FRAME · CONCEPT RENDER</figcaption>
+          </figure>
           <div class="story-copy">
             <p class="story-label">MEET IN THE WORLD</p>
             <h3>上线以后，<br />她会来到你的身边。</h3>
@@ -213,26 +228,23 @@ app.innerHTML = `
 
         <article class="story story-skill reveal">
           <div class="story-number">B</div>
+          <figure class="story-frame">
+            <img src="./media/ai-keyframes/06-building-together.png?v=20260827-2205" alt="MineClaw 伙伴与玩家在木屋前共同布置工作台和营地设施的概念故事画面" loading="lazy" decoding="async" />
+            <figcaption><i></i> AI STORY FRAME · CONCEPT RENDER</figcaption>
+          </figure>
           <div class="story-copy">
             <p class="story-label">BUILD TOGETHER</p>
             <h3>你说起想建的家。<br />她和你一起准备现场。</h3>
             <p>你决定基地要变成什么样，她能制作工作台、熔炉和箱子，也能把床与火把放到指定位置。这里的“一起建造”，不是一句气氛文案，而是她真的参与准备现场。</p>
           </div>
-          <div class="skill-stack" aria-label="营地工作站准备结果">
-            <span><b>01</b>4 块木板 → 工作台</span>
-            <span><b>02</b>8 块圆石 → 熔炉</span>
-            <span><b>03</b>8 块木板 → 右侧箱子</span>
-            <span class="skill-fast"><b>04</b>火把 → 指定石块顶面 <i>PLACED</i></span>
-          </div>
         </article>
 
         <article class="story story-memory reveal">
           <div class="story-number">C</div>
-          <div class="memory-quote">
-            <span class="quote-mark">“</span>
-            <p>“把左边箱子里的 8 根原木，<br />搬到右边箱子。”</p>
-            <small>A 16 → 8 · B 0 → 8 · BOT 归零 · 总量守恒</small>
-          </div>
+          <figure class="story-frame">
+            <img src="./media/ai-keyframes/07-supplies-together.png?v=20260827-2205" alt="MineClaw 伙伴与玩家在木屋前共同整理箱子、铁镐与火把的概念故事画面" loading="lazy" decoding="async" />
+            <figcaption><i></i> AI STORY FRAME · CONCEPT RENDER</figcaption>
+          </figure>
           <div class="story-copy">
             <p class="story-label">GET READY TOGETHER</p>
             <h3>出发之前，<br />我们一起把物资准备好。</h3>
@@ -242,12 +254,10 @@ app.innerHTML = `
 
         <article class="story story-observe reveal">
           <div class="story-number">D</div>
-          <div class="trace-card" aria-label="模型调用轨迹示意">
-            <div class="trace-head"><span><i></i> FOLLOW · ACTIVE</span><b>LIVE</b></div>
-            <div class="trace-row active"><span>目标</span><strong>走到我身边，跟着我</strong><small>NOW</small></div>
-            <div class="trace-row"><span>行动</span><strong>自主移动到玩家 2 格内</strong><small>8.4s</small></div>
-            <div class="trace-row"><span>持续</span><strong>玩家移动后继续跟随</strong><small>ACTIVE</small></div>
-          </div>
+          <figure class="story-frame">
+            <img src="./media/ai-keyframes/08-cave-adventure.png?v=20260827-2205" alt="MineClaw 伙伴与玩家在矿洞里一个采矿、一个提灯协作探索的概念故事画面" loading="lazy" decoding="async" />
+            <figcaption><i></i> AI STORY FRAME · CONCEPT RENDER</figcaption>
+          </figure>
           <div class="story-copy">
             <p class="story-label">ADVENTURE TOGETHER</p>
             <h3>你走进森林和矿洞。<br />她会从远处跟上。</h3>
@@ -279,7 +289,7 @@ app.innerHTML = `
         <div class="screen-pair">
           <figure class="screen-world reveal">
             <div class="world-shot">
-              <img src="./media/images/mineclaw-companion-in-world.png" alt="MineClaw 的伙伴真实进入 Minecraft 世界并站在玩家身边" loading="lazy" />
+              <img src="./media/images/mineclaw-companion-in-world.png?v=20260827-2205" alt="MineClaw 最新 App 完整页面，展示伙伴列表、感知空间和伙伴交流面板" loading="lazy" />
               <div class="world-shot-tag"><i></i> MINECLAW · COMPANION IN WORLD</div>
             </div>
             <figcaption><span>03</span><strong>她真正来到我的世界</strong><p>拥有 Minecraft 身体、位置和背包，不是屏幕外的一个声音；你可以在同一片方块上看到她、找到她，和她并肩出发。</p></figcaption>
@@ -365,8 +375,9 @@ app.innerHTML = `
     </section>
 
     <section class="finale" aria-labelledby="finale-title">
-      <div class="finale-bg" style="background-image: url('./media/images/minefriend-hero-v2.png')" aria-hidden="true"></div>
+      <div class="finale-bg" style="background-image: url('./media/ai-keyframes/05-finale-end.png?v=20260827-2205')" aria-hidden="true"></div>
       <div class="finale-veil" aria-hidden="true"></div>
+      <p class="finale-concept"><i></i> AI STORY FRAME · CONCEPT RENDER</p>
       <div class="page-shell finale-content reveal">
         <p class="eyebrow"><span class="eyebrow-dot"></span> A WORLD TO SHARE · A STORY THAT CONTINUES</p>
         <h2 id="finale-title">我们创造的不只是一个 NPC。<br /><em>而是一段会在虚拟世界里继续发生的关系。</em></h2>
