@@ -133,17 +133,17 @@ function catColor(name) {
 <style scoped>
 .inv-panel { min-height: 300px; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .inv-empty { flex: 1; gap: 5px; margin: 12px; color: var(--mc-text-muted); }
-.inv-empty h3 { margin: 4px 0 0; color: var(--mc-text-secondary); font-size: 14px; }
-.inv-empty p { max-width: 280px; margin: 0; font-size: 11px; }
+.inv-empty h3 { margin: 4px 0 0; color: var(--mc-text-secondary); font-size: var(--mc-type-section-title); }
+.inv-empty p { max-width: 280px; margin: 0; font-size: var(--mc-type-secondary); }
 .inv-head {
   display: flex; justify-content: space-between; align-items: center;
   flex: none; padding: 13px 14px; border-bottom: 1px solid var(--mc-border);
-  background: var(--mc-surface); color: var(--mc-text); font-size: 13px; font-weight: 700;
+  background: var(--mc-surface); color: var(--mc-text); font-size: var(--mc-type-body); font-weight: 700;
 }
 .inv-title { display: inline-flex; align-items: center; gap: 6px; }
-.inv-meta { color: var(--mc-text-muted); font-weight: 400; font-size: 11px; }
+.inv-meta { color: var(--mc-text-muted); font-weight: 400; font-size: var(--mc-type-meta); }
 .inv-held { display: flex; align-items: center; gap: 8px; margin: 14px 14px 16px; }
-.held-label { font-size: 11px; color: var(--mc-text-muted); }
+.held-label { font-size: var(--mc-type-meta); color: var(--mc-text-muted); }
 
 .inv-grid {
   display: grid;

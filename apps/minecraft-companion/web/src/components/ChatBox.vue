@@ -40,7 +40,7 @@ function emitSend() {
 
 <style scoped>
 .chat-composer { display:flex; flex:none; gap:8px; padding-top:10px; border-top:1px solid var(--mc-border); }
-.chat-composer input { min-width:0; min-height:40px; flex:1; padding:9px 12px; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text); font-size:12px; transition:border-color var(--mc-duration-fast),box-shadow var(--mc-duration-fast); }
+.chat-composer input { min-width:0; min-height:40px; flex:1; padding:9px 12px; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text); font-size:var(--mc-type-body); line-height:var(--mc-line-control); transition:border-color var(--mc-duration-fast),box-shadow var(--mc-duration-fast); }
 .chat-composer input::placeholder { color:var(--mc-text-muted); }
 .chat-composer input:focus { border-color:rgba(105,201,74,.55); outline:0; box-shadow:0 0 0 3px rgba(105,201,74,.09); }
 .chat-composer button { display:grid; width:44px; min-width:44px; min-height:40px; place-items:center; padding:0; cursor:pointer; background:linear-gradient(180deg,#397a3a,#2a5c30); border:1px solid rgba(105,201,74,.5); border-radius:var(--mc-radius-sm); color:#effdeb; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }

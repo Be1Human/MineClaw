@@ -87,23 +87,23 @@ const activeCount = computed(() => runningCount.value + pausedCount.value);
 .taskbar-heading { min-width: 0; }
 .taskbar-title-row { display: flex; align-items: center; gap: 8px; }
 .taskbar-title-mark { width: 8px; height: 8px; flex: none; background: var(--mc-accent); border-radius: 50%; box-shadow: 0 0 8px rgba(105,201,74,.42); }
-.taskbar-header h2 { margin: 0; color: var(--mc-text); font-size: 15px; line-height: 1.4; }
-.taskbar-header p { margin: 5px 0 0 16px; overflow: hidden; color: var(--mc-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.taskbar-header h2 { margin: 0; color: var(--mc-text); font-size: var(--mc-type-section-title); line-height: 1.4; }
+.taskbar-header p { margin: 5px 0 0 16px; overflow: hidden; color: var(--mc-text-muted); font-size: var(--mc-type-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .taskbar-header p strong { color: var(--mc-text-secondary); font-weight: 700; }
 .taskbar-summary { display: flex; flex: none; gap: 5px; }
 .summary-chip { min-width: 47px; padding: 6px 7px 5px; background: var(--mc-bg-elevated); border: 1px solid var(--mc-border); border-radius: var(--mc-radius-sm); text-align: center; }
-.summary-chip span { display: block; font-family: var(--mc-font-mono); font-size: 13px; font-weight: 700; line-height: 1.2; }
-.summary-chip small { display: block; margin-top: 3px; color: var(--mc-text-muted); font-size: 9px; white-space: nowrap; }
+.summary-chip span { display: block; font-family: var(--mc-font-mono); font-size: var(--mc-type-body); font-weight: 700; line-height: 1.2; }
+.summary-chip small { display: block; margin-top: 3px; color: var(--mc-text-muted); font-size: var(--mc-type-micro); white-space: nowrap; }
 .summary-chip--running span { color: var(--mc-accent-strong); }
 .summary-chip--paused span { color: var(--mc-warning); }
 .summary-chip--archived span { color: var(--mc-text-secondary); }
 .taskbar-body { flex: 1; min-height: 0; }
 .taskbar-ready { overflow-y: auto; padding: 12px; }
-.taskbar-section-label { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 8px; color: var(--mc-text-secondary); font-size: 11px; font-weight: 800; }
-.taskbar-section-label small { color: var(--mc-accent); font-size: 9px; font-weight: 500; }
+.taskbar-section-label { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 8px; color: var(--mc-text-secondary); font-size: var(--mc-type-secondary); font-weight: 800; }
+.taskbar-section-label small { color: var(--mc-accent); font-size: var(--mc-type-micro); font-weight: 500; }
 .taskbar-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 26px 18px; color: var(--mc-text-muted); text-align: center; }
-.taskbar-state h3 { margin: 12px 0 5px; color: var(--mc-text-secondary); font-size: 14px; }
-.taskbar-state p { max-width: 280px; margin: 0; font-size: 11px; line-height: 1.6; }
+.taskbar-state h3 { margin: 12px 0 5px; color: var(--mc-text-secondary); font-size: var(--mc-type-section-title); }
+.taskbar-state p { max-width: 280px; margin: 0; font-size: var(--mc-type-secondary); line-height: 1.6; }
 .state-icon { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--mc-border); border-radius: 50%; }
 .state-icon--error { background: rgba(228,111,101,.11); color: #f1a9a2; font-size: 14px; }
 .state-icon--loading { grid-template-columns: repeat(3, 5px); gap: 3px; background: var(--mc-surface-raised); }

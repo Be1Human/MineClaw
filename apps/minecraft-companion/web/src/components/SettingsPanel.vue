@@ -931,7 +931,7 @@ watch(() => props.initialSection, section => {
 }
 .settings-nav-header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .snav-title {
-  font-size: 11px; font-weight: 700; color: var(--mc-text-muted);
+  font-size: var(--mc-type-meta); font-weight: 700; color: var(--mc-text-muted);
   text-transform: uppercase; letter-spacing: 0.5px;
   padding: 0 8px;
 }
@@ -939,7 +939,7 @@ watch(() => props.initialSection, section => {
 .snav-item {
   display: flex; align-items: center; gap: 7px;
   width: 100%; padding: 8px 10px; border-radius: var(--mc-radius-sm);
-  font-size: 12px; color: var(--mc-text-muted); cursor: pointer;
+  font-size: var(--mc-type-body); color: var(--mc-text-muted); cursor: pointer;
   transition: all .15s; margin-bottom: 2px;
   background: transparent; border: 1px solid transparent; text-align: left;
 }
@@ -950,22 +950,22 @@ watch(() => props.initialSection, section => {
 /* Content */
 .settings-content { flex: 1; overflow-y: auto; padding: 24px 28px; }
 .settings-section { max-width: 1080px; }
-.settings-section h3 { font-size: 17px; color: var(--mc-text); margin: 0 0 4px; }
+.settings-section h3 { font-size: var(--mc-type-section-title); color: var(--mc-text); margin: 0 0 4px; }
 .icon-heading { display: flex; align-items: center; gap: 7px; }
-.desc { font-size: 12px; color: var(--mc-text-muted); margin: 0 0 18px; }
+.desc { font-size: var(--mc-type-secondary); color: var(--mc-text-muted); margin: 0 0 18px; }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-field { display: flex; flex-direction: column; gap: 4px; }
 .form-field.full { grid-column: span 2; }
-.form-field label { font-size: 11px; font-weight: 600; color: var(--mc-text-secondary); }
+.form-field label { font-size: var(--mc-type-secondary); font-weight: 600; color: var(--mc-text-secondary); }
 .form-field input, .form-field select, .form-field textarea {
   min-height: 38px; padding: 8px 10px; border-radius: var(--mc-radius-sm);
   border: 1px solid var(--mc-border-strong); background: var(--mc-bg);
-  color: var(--mc-text); box-shadow: none; font-size: 12px; outline: none; font-family: inherit;
+  color: var(--mc-text); box-shadow: none; font-size: var(--mc-type-body); line-height: var(--mc-line-control); outline: none; font-family: inherit;
 }
 .form-field textarea { min-height: 84px; line-height: 1.55; resize: vertical; }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--mc-accent); }
-.hint { font-size: 11px; color: var(--mc-text-muted); }
+.hint { font-size: var(--mc-type-meta); color: var(--mc-text-muted); }
 
 .character-tabs {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -973,12 +973,12 @@ watch(() => props.initialSection, section => {
 }
 .character-tab {
   min-height: 38px; padding: 7px 8px; border: 0; border-bottom: 2px solid transparent;
-  background: transparent; color: var(--mc-text-muted); cursor: pointer; font-size: 12px;
+  background: transparent; color: var(--mc-text-muted); cursor: pointer; font-size: var(--mc-type-body);
 }
 .character-tab:hover { color: var(--mc-text-secondary); }
 .character-tab.active { color: var(--mc-accent-strong); border-bottom-color: var(--mc-accent); background: var(--mc-accent-soft); }
 .check-row, .inline-checks, .capability-grid label {
-  color: var(--mc-text-secondary); font-size: 12px; display: flex; align-items: center; gap: 7px;
+  color: var(--mc-text-secondary); font-size: var(--mc-type-secondary); display: flex; align-items: center; gap: 7px;
 }
 .section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--mc-text); }
 .repeat-editor { margin-top: 10px; padding: 12px; border: 1px solid var(--mc-border); border-radius: var(--mc-radius-sm); background: var(--mc-surface); }
@@ -994,8 +994,8 @@ watch(() => props.initialSection, section => {
   padding: 11px 12px; border-radius: var(--mc-radius-sm);
   background: var(--mc-surface); border: 1px solid var(--mc-border); margin-bottom: 8px;
 }
-.toggle-label { font-size: 12px; color: var(--mc-text); }
-.toggle-desc { font-size: 11px; color: var(--mc-text-muted); margin-top: 1px; }
+.toggle-label { font-size: var(--mc-type-body); color: var(--mc-text); }
+.toggle-desc { font-size: var(--mc-type-meta); color: var(--mc-text-muted); margin-top: 1px; }
 .toggle {
   width: 32px; height: 18px; border-radius: 9px;
   background: #3f8d3d; cursor: pointer; position: relative; flex-shrink: 0;
@@ -1010,7 +1010,7 @@ watch(() => props.initialSection, section => {
 
 .quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .qa-btn {
-  min-height: 34px; padding: 6px 12px; border-radius: var(--mc-radius-sm); font-size: 11px; cursor: pointer;
+  min-height: 34px; padding: 6px 12px; border-radius: var(--mc-radius-sm); font-size: var(--mc-type-body); cursor: pointer;
   background: var(--mc-surface-raised); border: 1px solid var(--mc-border-strong); color: var(--mc-text-secondary); box-shadow: none; transition: all .15s;
 }
 .qa-btn:hover { color: var(--mc-text); border-color: rgba(105,201,74,.3); background: var(--mc-surface-hover); }
@@ -1019,11 +1019,11 @@ watch(() => props.initialSection, section => {
 .icon-button-label { display: inline-flex; align-items: center; gap: 6px; }
 
 .form-actions { display: flex; gap: 8px; margin-top: 16px; }
-.btn { min-height: 36px; padding: 7px 14px; border-radius: var(--mc-radius-sm); border: 1px solid var(--mc-border-strong); box-shadow: none; font-size: 12px; cursor: pointer; font-weight: 700; }
+.btn { min-height: 36px; padding: 7px 14px; border-radius: var(--mc-radius-sm); border: 1px solid var(--mc-border-strong); box-shadow: none; font-size: var(--mc-type-body); cursor: pointer; font-weight: 700; }
 .btn-primary { background: #2f6d30; border-color: #488e42; color: #fff; }
 .btn-ghost { background: var(--mc-surface-raised); color: var(--mc-text-secondary); }
 .btn:hover { border-color: rgba(105,201,74,.3); background: var(--mc-surface-hover); color: var(--mc-text); }
-.save-ok, .save-error { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; }
+.save-ok, .save-error { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: var(--mc-type-meta); }
 .save-ok { color: var(--mc-accent); }
 .save-error { color: var(--mc-danger); }
 .warn-box {

@@ -16,6 +16,7 @@ const componentSources = {
   settings: source('components/SettingsPanel.vue'),
   tasks: source('components/TaskBarPanel.vue'),
   inventory: source('components/InventoryPanel.vue'),
+  chat: source('components/ChatBox.vue'),
   skin: source('components/SkinEditor.vue'),
 };
 
@@ -37,6 +38,53 @@ test('子系统共用正式版页面、面板、字段、空态与弹窗原语',
   }
   assert.match(themeSource, /--mc-radius-sm:/);
   assert.match(themeSource, /--mc-space-4:/);
+});
+
+test('全产品字体层级由语义令牌驱动且共享控件不回落到浏览器默认字号', () => {
+  for (const token of [
+    '--mc-type-page-title: 18px',
+    '--mc-type-section-title: 16px',
+    '--mc-type-body: 13px',
+    '--mc-type-secondary: 12px',
+    '--mc-type-meta: 11px',
+    '--mc-type-micro: 10px',
+    '--mc-line-body: 1.55',
+    '--mc-line-control: 1.25',
+  ]) {
+    assert.ok(themeSource.includes(token), `缺少字体语义令牌 ${token}`);
+  }
+
+  assert.match(themeSource, /body\s*\{[\s\S]*?font-size:\s*var\(--mc-type-body\)/);
+  assert.match(themeSource, /\.mc-button\s*\{[\s\S]*?font-size:\s*var\(--mc-type-body\)/);
+  assert.match(themeSource, /\.mc-field-control\s*\{[\s\S]*?font-size:\s*var\(--mc-type-body\)/);
+  assert.match(themeSource, /\.mc-subnav-button\s*\{[\s\S]*?font-size:\s*var\(--mc-type-body\)/);
+  assert.match(themeSource, /\.mc-eyebrow\s*\{[\s\S]*?font-size:\s*var\(--mc-type-micro\)/);
+  assert.match(appSource, /\.partner-workspace-tab[^}]*font-size:var\(--mc-type-body\)/);
+  assert.match(appSource, /\.control-tab[^}]*font-size:var\(--mc-type-body\)/);
+  assert.match(appSource, /\.message-copy[^}]*font-size:var\(--mc-type-body\)/);
+  assert.match(componentSources.chat, /\.chat-composer input[^}]*font-size:var\(--mc-type-body\)/);
+  assert.match(componentSources.settings, /\.form-field input[\s\S]*?font-size:\s*var\(--mc-type-body\)/);
+});
+
+test('记忆控制台消费字体语义并将状态筛选完整本地化', () => {
+  assert.match(componentSources.memory, /\.memory-header h1[^}]*var\(--mc-type-page-title\)/);
+  assert.match(componentSources.memory, /\.memory-header p[^}]*var\(--mc-type-secondary\)/);
+  assert.match(componentSources.memory, /\.count[^}]*var\(--mc-type-meta\)/);
+  assert.match(componentSources.memory, /\.fact-text[^}]*var\(--mc-type-body\)/);
+
+  for (const [value, label] of [
+    ['active', '已生效'],
+    ['candidate', '候选'],
+    ['superseded', '已取代'],
+    ['deleted', '已删除'],
+    ['rejected', '已拒绝'],
+    ['expired', '已过期'],
+  ]) {
+    assert.ok(
+      componentSources.memory.includes(`<option value="${value}">${label}</option>`),
+      `记忆状态 ${value} 缺少中文显示文案`,
+    );
+  }
 });
 
 test('大脑、记忆、轨迹与设置使用同一套子系统层级', () => {

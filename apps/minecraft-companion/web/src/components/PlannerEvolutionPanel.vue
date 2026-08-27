@@ -845,7 +845,7 @@ button.primary { background:#4c7a2a; border-color:#2b5e16; }
 .policy-content,.audit-list { display:flex; flex-direction:column; gap:7px; margin:0 14px 14px; padding:12px; background:#12150e; border:2px solid #0c0e08; }
 .policy-content pre { max-height:260px; overflow:auto; color:#aeb99b; white-space:pre-wrap; }
 .policy-content ul { margin:0; padding-left:20px; color:#c6cfb7; }.policy-content li+li { margin-top:5px; }
-.source-evidence { align-items:flex-start; }.source-evidence button { padding:5px 8px; font-family:var(--mc-font-mono); font-size:11px; }.source-evidence span { color:#8f9682; }
+.source-evidence { align-items:flex-start; }.source-evidence button { padding:5px 8px; font-family:var(--mc-font-mono); font-size:var(--mc-type-body); }.source-evidence span { color:#8f9682; }
 .governance-actions { display:flex; align-items:center; gap:10px; margin:14px; flex-wrap:wrap; }.governance-actions span { color:#b5a46f; font-size:11px; }.danger { background:#6c3028; }
 .audit-list span { color:#aeb99b; font-family:var(--mc-font-mono); font-size:11px; }
 .timeline { margin:0; padding:16px; list-style:none; }.timeline li { display:grid; grid-template-columns:34px 1fr; gap:10px; padding-bottom:14px; }.timeline i { display:grid; place-items:center; width:28px; height:28px; background:#3d6127; border:2px solid #0c0e08; font-style:normal; }.timeline li>div { padding:10px; background:#12150e; border:2px solid #0c0e08; }.timeline small { display:block; color:#7f8774; }.timeline pre { max-height:180px; overflow:auto; color:#aeb99b; white-space:pre-wrap; }

@@ -202,7 +202,7 @@ function formatTime(value) {
 .overview-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:20px; }
 .overview-card { min-height:112px; display:flex; flex-direction:column; padding:17px; }
 .overview-card span { color:var(--mc-text-muted); font-size:11px; }
-.overview-card strong { margin-top:10px; color:var(--mc-text); font-size:17px; }
+.overview-card strong { margin-top:10px; color:var(--mc-text); font-size:var(--mc-type-section-title); }
 .overview-card small { margin-top:auto; padding-top:12px; color:var(--mc-text-secondary); font-size:11px; line-height:1.5; }
 .decision-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
 .decision-heading > span { padding:5px 8px; border-radius:999px; background:var(--mc-surface-raised); color:var(--mc-text-secondary); font:12px var(--mc-font-mono); }

@@ -13,6 +13,16 @@
   --mc-font-mono:  'VT323', 'Noto Sans SC', monospace;
   --mc-font-body:  'Noto Sans SC', system-ui, sans-serif;
 
+  /* 产品级字体层级：标题 > 区块 > 正文/控件 > 说明 > 元信息 > 技术眉题。 */
+  --mc-type-page-title: 18px;
+  --mc-type-section-title: 16px;
+  --mc-type-body: 13px;
+  --mc-type-secondary: 12px;
+  --mc-type-meta: 11px;
+  --mc-type-micro: 10px;
+  --mc-line-body: 1.55;
+  --mc-line-control: 1.25;
+
   /* 产品级语义色：组件只引用语义，不再散落旧版方块高光。 */
   --mc-bg: #090d0b;
   --mc-bg-elevated: #0c110e;
@@ -49,6 +59,8 @@ body {
   background: var(--mc-bg);
   color: var(--mc-text);
   font-family: var(--mc-font-body);
+  font-size: var(--mc-type-body);
+  line-height: var(--mc-line-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -96,7 +108,7 @@ textarea:focus-visible {
   margin: 0;
   color: var(--mc-text);
   font-family: var(--mc-font-body);
-  font-size: 18px;
+  font-size: var(--mc-type-page-title);
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -105,7 +117,7 @@ textarea:focus-visible {
 .mc-section-copy p {
   margin: 5px 0 0;
   color: var(--mc-text-muted);
-  font-size: 12px;
+  font-size: var(--mc-type-secondary);
   line-height: 1.55;
 }
 
@@ -138,8 +150,9 @@ textarea:focus-visible {
   background: transparent;
   color: var(--mc-text-muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--mc-type-body);
   font-weight: 700;
+  line-height: var(--mc-line-control);
   white-space: nowrap;
   transition: color var(--mc-duration-fast), background var(--mc-duration-fast), border-color var(--mc-duration-fast);
 }
@@ -174,12 +187,14 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-.mc-section-copy h3 { font-size: 17px; }
+.mc-section-copy h1,
+.mc-section-copy h2 { font-size: var(--mc-type-page-title); }
+.mc-section-copy h3 { font-size: var(--mc-type-section-title); }
 
 .mc-eyebrow {
   color: var(--mc-accent);
   font-family: var(--mc-font-mono);
-  font-size: 11px;
+  font-size: var(--mc-type-micro);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -215,7 +230,9 @@ textarea:focus-visible {
   color: var(--mc-text-secondary);
   box-shadow: none;
   cursor: pointer;
+  font-size: var(--mc-type-body);
   font-weight: 700;
+  line-height: var(--mc-line-control);
   transition: color var(--mc-duration-fast), background var(--mc-duration-fast), border-color var(--mc-duration-fast), transform var(--mc-duration-fast);
 }
 
@@ -241,6 +258,8 @@ textarea:focus-visible {
   background: var(--mc-bg);
   color: var(--mc-text);
   box-shadow: none;
+  font-size: var(--mc-type-body);
+  line-height: var(--mc-line-control);
 }
 
 textarea.mc-field-control { min-height: 84px; resize: vertical; line-height: 1.55; }
@@ -257,7 +276,7 @@ textarea.mc-field-control { min-height: 84px; resize: vertical; line-height: 1.5
   border-radius: 999px;
   background: var(--mc-surface-raised);
   color: var(--mc-text-secondary);
-  font-size: 11px;
+  font-size: var(--mc-type-meta);
   font-weight: 700;
   line-height: 1;
 }
@@ -278,7 +297,7 @@ textarea.mc-field-control { min-height: 84px; resize: vertical; line-height: 1.5
   background: rgba(16, 22, 18, 0.62);
   color: var(--mc-text-muted);
   text-align: center;
-  font-size: 12px;
+  font-size: var(--mc-type-secondary);
   line-height: 1.6;
 }
 
@@ -288,7 +307,7 @@ textarea.mc-field-control { min-height: 84px; resize: vertical; line-height: 1.5
   border-radius: var(--mc-radius-sm);
   background: var(--mc-surface-raised);
   color: var(--mc-text-secondary);
-  font-size: 12px;
+  font-size: var(--mc-type-secondary);
 }
 
 .mc-notice.ok { background: var(--mc-accent-soft); border-color: rgba(105, 201, 74, 0.22); color: var(--mc-accent-strong); }
@@ -333,8 +352,8 @@ textarea.mc-field-control { min-height: 84px; resize: vertical; line-height: 1.5
 }
 
 .mc-dialog-title { min-width: 0; }
-.mc-dialog-title h2 { margin: 0; color: var(--mc-text); font-size: 18px; }
-.mc-dialog-title p { margin: 5px 0 0; color: var(--mc-text-muted); font-size: 12px; line-height: 1.5; }
+.mc-dialog-title h2 { margin: 0; color: var(--mc-text); font-size: var(--mc-type-page-title); }
+.mc-dialog-title p { margin: 5px 0 0; color: var(--mc-text-muted); font-size: var(--mc-type-secondary); line-height: 1.5; }
 .mc-dialog-close { width: 34px; height: 34px; flex: none; padding: 0; }
 .mc-dialog-body { min-height: 0; overflow: auto; padding: 20px; }
 .mc-dialog-footer { flex: none; display: flex; justify-content: flex-end; gap: 9px; padding: 13px 20px; border-top: 1px solid var(--mc-border); background: var(--mc-bg-elevated); }
@@ -342,7 +361,7 @@ textarea.mc-field-control { min-height: 84px; resize: vertical; line-height: 1.5
 .mc-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .mc-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .mc-field.full { grid-column: 1 / -1; }
-.mc-field > span { color: var(--mc-text-secondary); font-size: 12px; font-weight: 600; }
+.mc-field > span { color: var(--mc-text-secondary); font-size: var(--mc-type-secondary); font-weight: 600; }
 
 /* 轨迹工作台保留三栏领域结构，外壳统一到正式主题。 */
 .mc-subsystem.trace-panel .trace-header {

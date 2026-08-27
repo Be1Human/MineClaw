@@ -18,12 +18,12 @@
       <div class="toolbar mc-toolbar">
         <input v-model="query" class="mc-field-control" type="search" placeholder="搜索记忆正文" @keyup.enter="loadFacts" />
         <select v-model="status" class="mc-field-control" @change="loadFacts">
-          <option value="active">Active</option>
-          <option value="candidate">Candidate</option>
-          <option value="superseded">Superseded</option>
-          <option value="deleted">Deleted</option>
-          <option value="rejected">Rejected</option>
-          <option value="expired">Expired</option>
+          <option value="active">已生效</option>
+          <option value="candidate">候选</option>
+          <option value="superseded">已取代</option>
+          <option value="deleted">已删除</option>
+          <option value="rejected">已拒绝</option>
+          <option value="expired">已过期</option>
           <option value="">全部状态</option>
         </select>
         <button class="mc-button" :disabled="busy" @click="loadFacts">检索</button>
@@ -273,30 +273,30 @@ function formatTime(value: number): string { return new Date(value).toLocaleStri
 <style scoped>
 .memory-shell { position:relative; z-index:2; }
 .memory-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:20px; }
-h1 { margin:8px 0 5px; color:var(--mc-text); font-family:var(--mc-font-body); font-size:18px; }
-p { margin:0; color:var(--mc-text-secondary); }
+.memory-header h1 { margin:8px 0 5px; color:var(--mc-text); font-family:var(--mc-font-body); font-size:var(--mc-type-page-title); }
+.memory-header p { margin:0; color:var(--mc-text-secondary); font-size:var(--mc-type-secondary); }
 .header-actions,.toolbar,.fact-actions,.fact-topline,.fact-meta { display:flex; align-items:center; gap:8px; }
 .header-actions { flex-wrap:wrap; justify-content:flex-end; }
 .toolbar { margin:18px 0; }
 .toolbar input { flex:1; min-width:180px; }
 .toolbar select { width:auto; min-width:152px; }
-.count { margin-left:auto; color:var(--mc-text-muted); font-family:var(--mc-font-mono); }
+.count { margin-left:auto; color:var(--mc-text-muted); font-family:var(--mc-font-mono); font-size:var(--mc-type-meta); }
 .notice { margin-bottom:14px; }
 .fact-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:14px; }
 .fact-card { padding:16px; }
 .fact-topline { flex-wrap:wrap; }
-.fact-topline time { margin-left:auto; color:var(--mc-text-muted); font-size:12px; }
-.status-chip,.kind-chip,.scope-chip { padding:4px 7px; font-size:11px; border:1px solid var(--mc-border); border-radius:999px; background:var(--mc-surface-raised); }
+.fact-topline time { margin-left:auto; color:var(--mc-text-muted); font-size:var(--mc-type-meta); }
+.status-chip,.kind-chip,.scope-chip { padding:4px 7px; font-size:var(--mc-type-meta); border:1px solid var(--mc-border); border-radius:999px; background:var(--mc-surface-raised); }
 .status-active { color:var(--mc-accent-strong); background:var(--mc-accent-soft); }
 .status-deleted,.status-rejected,.status-expired { color:#f1a9a2; background:rgba(228,111,101,.11); }
 .status-superseded { color:#e4bd6d; background:rgba(217,170,76,.1); }
-.fact-text { min-height:48px; margin:15px 0; color:var(--mc-text); line-height:1.6; white-space:pre-wrap; }
+.fact-text { min-height:48px; margin:15px 0; color:var(--mc-text); font-size:var(--mc-type-body); line-height:1.6; white-space:pre-wrap; }
 textarea { margin:14px 0; }
-.fact-meta { flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--mc-border); color:var(--mc-text-muted); font-size:12px; }
+.fact-meta { flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--mc-border); color:var(--mc-text-muted); font-size:var(--mc-type-meta); }
 .fact-actions { margin-top:13px; flex-wrap:wrap; }
-.sources { margin-top:14px; padding:12px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); }
-.sources-title { margin-bottom:9px; color:var(--mc-text); font-weight:700; }
+.sources { margin-top:14px; padding:12px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:var(--mc-type-secondary); }
+.sources-title { margin-bottom:9px; color:var(--mc-text); font-size:var(--mc-type-body); font-weight:700; }
 blockquote { margin:8px 0; padding:9px 11px; border-left:2px solid var(--mc-accent); border-radius:0 var(--mc-radius-xs) var(--mc-radius-xs) 0; background:var(--mc-surface); white-space:pre-wrap; }
-blockquote span { display:block; margin-bottom:5px; color:var(--mc-text-muted); font-size:11px; }
+blockquote span { display:block; margin-bottom:5px; color:var(--mc-text-muted); font-size:var(--mc-type-meta); }
 @media (max-width:800px) { .memory-header { flex-direction:column; } .header-actions { justify-content:flex-start; } .fact-grid { grid-template-columns:1fr; } .toolbar { flex-wrap:wrap; } }
 </style>
