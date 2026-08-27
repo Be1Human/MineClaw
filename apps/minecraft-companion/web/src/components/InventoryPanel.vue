@@ -6,14 +6,18 @@
     名字归一化 → 依次试 items/ → blocks/ 多候选 → 全失败降级为「分类配色方块+缩写」（永不破图/空白）。
 -->
 <template>
-  <div class="inv-panel">
-    <div v-if="!inv" class="inv-empty">暂无背包数据（bot 未上线或未感知）</div>
+  <section class="inv-panel mc-panel" aria-labelledby="inventory-title">
+    <header class="inv-head">
+      <span id="inventory-title" class="inv-title"><McIcon name="backpack" :size="16" /> 背包</span>
+      <span v-if="inv" class="inv-meta">{{ inv.items?.length || 0 }} 占用 · {{ inv.freeSlots ?? '?' }} 空格</span>
+      <span v-else class="inv-meta">等待数据</span>
+    </header>
+    <div v-if="!inv" class="inv-empty mc-empty-state">
+      <McIcon name="backpack" :size="26" />
+      <h3>暂无背包数据</h3>
+      <p>伙伴进入游戏并完成首次感知后，这里会显示手持物和物品格。</p>
+    </div>
     <template v-else>
-      <div class="inv-head">
-        <span class="inv-title"><McIcon name="backpack" :size="16" /> 背包</span>
-        <span class="inv-meta">{{ inv.items?.length || 0 }} 占用 · {{ inv.freeSlots ?? '?' }} 空格</span>
-      </div>
-
       <!-- 手持 -->
       <div class="inv-held" v-if="heldName">
         <span class="held-label">手持</span>
@@ -54,10 +58,13 @@
             :style="{ width: (100 * it.durability / it.maxDurability) + '%' }"
           ></span>
         </div>
-        <div v-if="!inv.items || inv.items.length === 0" class="inv-empty">空空如也~</div>
+        <div v-if="!inv.items || inv.items.length === 0" class="inv-empty mc-empty-state">
+          <h3>背包是空的</h3>
+          <p>获得物品后会自动出现在这里。</p>
+        </div>
       </div>
     </template>
-  </div>
+  </section>
 </template>
 
 <script setup>
@@ -124,22 +131,27 @@ function catColor(name) {
 </script>
 
 <style scoped>
-.inv-panel { padding: 8px; }
-.inv-empty { color: #7e836e; font-size: 12px; padding: 16px; text-align: center; }
+.inv-panel { min-height: 300px; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.inv-empty { flex: 1; gap: 5px; margin: 12px; color: var(--mc-text-muted); }
+.inv-empty h3 { margin: 4px 0 0; color: var(--mc-text-secondary); font-size: 14px; }
+.inv-empty p { max-width: 280px; margin: 0; font-size: 11px; }
 .inv-head {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #e7e3d4;
+  flex: none; padding: 13px 14px; border-bottom: 1px solid var(--mc-border);
+  background: var(--mc-surface); color: var(--mc-text); font-size: 13px; font-weight: 700;
 }
 .inv-title { display: inline-flex; align-items: center; gap: 6px; }
-.inv-meta { color: #7e836e; font-weight: 400; font-size: 11px; }
-.inv-held { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.held-label { font-size: 11px; color: #7e836e; }
+.inv-meta { color: var(--mc-text-muted); font-weight: 400; font-size: 11px; }
+.inv-held { display: flex; align-items: center; gap: 8px; margin: 14px 14px 16px; }
+.held-label { font-size: 11px; color: var(--mc-text-muted); }
 
 .inv-grid {
   display: grid;
   grid-template-columns: repeat(9, 1fr);
   gap: 4px;
+  padding: 0 14px 14px;
 }
+.inv-grid > .inv-empty { grid-column: 1 / -1; min-height: 180px; margin: 0; }
 @media (max-width: 520px) { .inv-grid { grid-template-columns: repeat(6, 1fr); } }
 
 .inv-slot {
@@ -169,5 +181,5 @@ function catColor(name) {
   text-shadow: 1px 1px 0 #3f3f3f;
 }
 .slot-dura { position: absolute; left: 1px; bottom: 1px; height: 2px; background: #5c8a4f; }
-.slot-name-tip { position: absolute; bottom: -14px; left: 0; font-size: 9px; color: #7e836e; white-space: nowrap; }
+.slot-name-tip { position: absolute; bottom: -14px; left: 0; font-size: 9px; color: var(--mc-text-muted); white-space: nowrap; }
 </style>

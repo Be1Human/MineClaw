@@ -415,14 +415,24 @@
           </div>
 
           <!-- 日志 -->
-          <div v-else-if="ctrlTab === 'logs'" ref="logsEl" class="inspector-logs">
-            <div v-if="logs.length === 0" class="inspector-logs-empty">暂无运行日志</div>
-            <div v-for="(log, i) in logs" :key="i" class="inspector-log-row">
-              <span>{{ formatTime(log.timestamp) }}</span>
-              <strong :class="`level-${log.level}`">{{ log.level }}</strong>
-              <p>{{ log.message }}</p>
+          <section v-else-if="ctrlTab === 'logs'" ref="logsEl" class="inspector-logs mc-panel" aria-labelledby="inspector-logs-title">
+            <header class="inspector-tool-header">
+              <span id="inspector-logs-title"><McIcon name="history" :size="14" />运行日志</span>
+              <small>{{ logs.length }} 条</small>
+            </header>
+            <div v-if="logs.length === 0" class="inspector-logs-empty mc-empty-state">
+              <McIcon name="history" :size="24" />
+              <h3>暂无运行日志</h3>
+              <p>伙伴启动或执行动作后，运行事件会显示在这里。</p>
             </div>
-          </div>
+            <div v-else class="inspector-log-list">
+              <div v-for="(log, i) in logs" :key="i" class="inspector-log-row">
+                <span>{{ formatTime(log.timestamp) }}</span>
+                <strong :class="`level-${log.level}`">{{ log.level }}</strong>
+                <p>{{ log.message }}</p>
+              </div>
+            </div>
+          </section>
 
         </div>
         </template>
@@ -444,34 +454,45 @@
     </div>
 
     <!-- ===================== 创建表单 overlay ===================== -->
-    <div v-if="showCreateForm" style="position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6);" @click.self="showCreateForm = false">
-      <div style="width:520px; max-width:92vw; max-height:88vh; overflow-y:auto; padding:22px; background:#1b1e14; border:3px solid #0c0e08; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06), 0 8px 0 rgba(0,0,0,0.5);">
-        <div style="font-family:var(--mc-font-pixel); font-size:13px; color:#cfeeb0; text-shadow:2px 2px 0 #0c0e08; margin-bottom:6px;">NEW PARTNER</div>
-        <div style="font-size:13px; color:#7e836e; margin-bottom:18px;">取个名字、设定性格，连接到你的 Minecraft 世界</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-          <label style="grid-column:span 2; display:flex; flex-direction:column; gap:5px;"><span style="font-size:12px; color:#bcc0ab;">名字</span><input v-model="form.name" :style="inputStyle" /></label>
-          <label style="grid-column:span 2; display:flex; flex-direction:column; gap:5px;"><span style="font-size:12px; color:#bcc0ab;">性格描述</span><input v-model="form.personality" :style="inputStyle" /></label>
-          <label style="display:flex; flex-direction:column; gap:5px;"><span style="font-size:12px; color:#bcc0ab;">MC 服务器地址</span><input v-model="form.host" :style="inputStyle" /></label>
-          <label style="display:flex; flex-direction:column; gap:5px;"><span style="font-size:12px; color:#bcc0ab;">端口</span><input v-model.number="form.port" type="number" :style="inputStyle" /></label>
-          <label style="display:flex; flex-direction:column; gap:5px;"><span style="font-size:12px; color:#bcc0ab;">验证方式</span>
-            <select v-model="form.auth" :style="inputStyle"><option value="offline">离线模式</option><option value="microsoft">微软登录</option></select></label>
+    <div v-if="showCreateForm" class="mc-dialog-backdrop" @click.self="showCreateForm = false" @keydown.esc="showCreateForm = false">
+      <section ref="createDialog" class="mc-dialog create-partner-dialog" role="dialog" aria-modal="true" aria-labelledby="create-partner-title" tabindex="-1">
+        <header class="mc-dialog-header">
+          <div class="mc-dialog-title">
+            <h2 id="create-partner-title">新建伙伴</h2>
+            <p>取个名字、设定性格，连接到你的 Minecraft 世界。</p>
+          </div>
+          <button class="mc-button mc-dialog-close" type="button" title="关闭新建伙伴" aria-label="关闭新建伙伴" @click="showCreateForm = false"><McIcon name="close" :size="12" /></button>
+        </header>
+        <div class="mc-dialog-body">
+          <div class="mc-form-grid">
+            <label class="mc-field full"><span>名字</span><input v-model="form.name" class="mc-field-control" /></label>
+            <label class="mc-field full"><span>性格描述</span><input v-model="form.personality" class="mc-field-control" /></label>
+            <label class="mc-field"><span>MC 服务器地址</span><input v-model="form.host" class="mc-field-control" /></label>
+            <label class="mc-field"><span>端口</span><input v-model.number="form.port" class="mc-field-control" type="number" /></label>
+            <label class="mc-field"><span>验证方式</span><select v-model="form.auth" class="mc-field-control"><option value="offline">离线模式</option><option value="microsoft">微软登录</option></select></label>
+          </div>
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
-          <button @click="showCreateForm = false" style="padding:9px 16px; cursor:pointer; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06); color:#b9bda8; font-weight:700; font-size:13px;">取消</button>
-          <button @click="createProfile" style="padding:9px 18px; cursor:pointer; background:#4c9a2a; border:2px solid #2b5e16; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3), 0 3px 0 #214b13; color:#fff; font-weight:700; font-size:13px; text-shadow:1px 1px 0 rgba(0,0,0,0.4);">创建伙伴</button>
-        </div>
-      </div>
+        <footer class="mc-dialog-footer">
+          <button class="mc-button" type="button" @click="showCreateForm = false">取消</button>
+          <button class="mc-button primary" type="button" @click="createProfile">创建伙伴</button>
+        </footer>
+      </section>
     </div>
 
     <!-- ===================== 皮肤编辑器 overlay ===================== -->
-    <div v-if="showSkinEditor && selectedProfile" style="position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6);" @click.self="showSkinEditor = false">
-      <div style="max-width:94vw; max-height:90vh; overflow:auto; padding:20px; background:#1b1e14; border:3px solid #0c0e08; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06), 0 8px 0 rgba(0,0,0,0.5);">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-          <span style="font-family:var(--mc-font-pixel); font-size:12px; color:#cfeeb0; text-shadow:2px 2px 0 #0c0e08;">SKIN EDITOR · {{ selectedProfile.name }}</span>
-          <button @click="showSkinEditor = false" title="关闭皮肤编辑器" aria-label="关闭皮肤编辑器" style="width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; background:#3a2420; border:2px solid #1a0f0d; color:#f0b4b4; font-family:var(--mc-font-pixel); font-size:11px;"><McIcon name="close" :size="12" /></button>
+    <div v-if="showSkinEditor && selectedProfile" class="mc-dialog-backdrop" @click.self="showSkinEditor = false" @keydown.esc="showSkinEditor = false">
+      <section ref="skinDialog" class="mc-dialog wide" role="dialog" aria-modal="true" aria-labelledby="skin-editor-title" tabindex="-1">
+        <header class="mc-dialog-header">
+          <div class="mc-dialog-title">
+            <h2 id="skin-editor-title">皮肤编辑器 · {{ selectedProfile.name }}</h2>
+            <p>编辑 64×64 皮肤纹理并实时预览角色外观。</p>
+          </div>
+          <button class="mc-button mc-dialog-close" type="button" @click="showSkinEditor = false" title="关闭皮肤编辑器" aria-label="关闭皮肤编辑器"><McIcon name="close" :size="12" /></button>
+        </header>
+        <div class="mc-dialog-body">
+          <SkinEditor :texture="selectedSkinTexture" :initModel="selectedSkinModel" @save="saveSkin" />
         </div>
-        <SkinEditor :texture="selectedSkinTexture" :initModel="selectedSkinModel" @save="saveSkin" />
-      </div>
+      </section>
     </div>
   </div>
 </template>
@@ -536,8 +557,6 @@ const radarLegend = [
   { type: 'medium', label: '中等强度' },
   { type: 'edge', label: '边缘感知' },
 ];
-const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
-
 const worldPreviewModeOptions = [
   { id: 'radar', label: '雷达', icon: 'compass' },
   { id: 'simple', label: '简略', icon: 'world' },
@@ -658,6 +677,18 @@ const worldPreviewMode = computed({
 
 const showCreateForm = ref(false);
 const showSkinEditor = ref(false);
+const createDialog = ref(null);
+const skinDialog = ref(null);
+watch(showCreateForm, async (open) => {
+  if (!open) return;
+  await nextTick();
+  createDialog.value?.focus();
+});
+watch(showSkinEditor, async (open) => {
+  if (!open) return;
+  await nextTick();
+  skinDialog.value?.focus();
+});
 const messages = ref([]);
 const chatFilter = ref('all');
 const chatHistoryLoading = ref(false);
@@ -1453,9 +1484,15 @@ onMounted(() => { loadProfiles(); });
 .thinking-label { display:inline-flex; align-items:center; gap:5px; color:#9a88b7; font-size:9px; }
 .thinking-copy { display:-webkit-box; margin-top:4px; overflow:hidden; color:#9087a1; font-size:11px; line-height:1.45; white-space:pre-wrap; word-break:break-word; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .thinking-copy.expanded { display:block; overflow:visible; }
-.inspector-logs { min-height:260px; flex:1; overflow-y:auto; padding:10px; background:var(--mc-bg); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); font-family:var(--mc-font-mono); }
-.inspector-logs-empty { color:var(--mc-text-muted); font-size:13px; }
-.inspector-log-row { display:flex; gap:8px; padding:3px 0; color:var(--mc-text-muted); font-size:13px; line-height:1.45; }
+.inspector-logs { min-height:260px; flex:1; display:flex; flex-direction:column; overflow:hidden; padding:0; background:var(--mc-bg); font-family:var(--mc-font-mono); }
+.inspector-tool-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 13px; border-bottom:1px solid var(--mc-border); background:var(--mc-surface); font-family:var(--mc-font-body); }
+.inspector-tool-header > span { display:inline-flex; align-items:center; gap:7px; color:var(--mc-text); font-size:13px; font-weight:700; }
+.inspector-tool-header small { color:var(--mc-text-muted); font-size:10px; }
+.inspector-logs-empty { flex:1; gap:5px; margin:12px; color:var(--mc-text-muted); }
+.inspector-logs-empty h3 { margin:4px 0 0; color:var(--mc-text-secondary); font:700 14px var(--mc-font-body); }
+.inspector-logs-empty p { max-width:280px; margin:0; font:11px/1.6 var(--mc-font-body); }
+.inspector-log-list { flex:1; min-height:0; overflow-y:auto; padding:10px; }
+.inspector-log-row { display:flex; gap:8px; padding:5px 0; border-bottom:1px solid var(--mc-border); color:var(--mc-text-muted); font-size:13px; line-height:1.45; }
 .inspector-log-row > span,.inspector-log-row > strong { flex:none; }
 .inspector-log-row strong { color:var(--mc-accent); font-weight:400; }
 .inspector-log-row .level-error { color:var(--mc-danger); }

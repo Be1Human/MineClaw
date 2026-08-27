@@ -1,20 +1,20 @@
 <template>
-  <section class="brain-view">
-    <header class="brain-header">
-      <div class="brain-heading">
+  <section class="brain-view mc-subsystem">
+    <header class="brain-header mc-subsystem-header">
+      <div class="brain-heading mc-subsystem-heading">
         <div>
           <h2><McIcon name="brain" :size="17" />大脑</h2>
           <p>{{ profile?.name || '当前伙伴' }}的思考、记忆与能力都集中在这里。</p>
         </div>
-        <span class="brain-state" :class="brainStateTone">{{ brainStateLabel }}</span>
+        <span class="brain-state mc-status" :class="brainStateTone">{{ brainStateLabel }}</span>
       </div>
 
-      <nav class="brain-tabs" aria-label="大脑工作区">
+      <nav class="brain-tabs mc-subnav" aria-label="大脑工作区">
         <button
           v-for="tab in tabs"
           :key="tab.id"
           type="button"
-          :class="{ active: activeTab === tab.id }"
+          :class="['mc-subnav-button', { active: activeTab === tab.id }]"
           @click="selectTab(tab.id)"
         >
           <McIcon :name="tab.icon" :size="13" />
@@ -23,31 +23,31 @@
       </nav>
     </header>
 
-    <div class="brain-content">
-      <section v-if="activeTab === 'overview'" class="overview-view">
-        <div class="section-copy">
-          <div class="eyebrow">OVERVIEW</div>
+    <div class="brain-content mc-subsystem-content">
+      <section v-if="activeTab === 'overview'" class="overview-view mc-page">
+        <div class="section-copy mc-section-copy">
+          <div class="eyebrow mc-eyebrow">OVERVIEW</div>
           <h3>当前伙伴概览</h3>
           <p>这里只展示当前伙伴的真实配置和运行状态。</p>
         </div>
 
         <div class="overview-grid">
-          <article class="overview-card">
+          <article class="overview-card mc-panel">
             <span>伙伴</span>
             <strong>{{ profile?.name || '未选择' }}</strong>
             <small>{{ profile?.personality?.description || '尚未填写性格描述' }}</small>
           </article>
-          <article class="overview-card">
+          <article class="overview-card mc-panel">
             <span>大脑状态</span>
             <strong>{{ brainStateLabel }}</strong>
             <small>{{ botStatus?.lastActivity || '暂无最近活动' }}</small>
           </article>
-          <article class="overview-card">
+          <article class="overview-card mc-panel">
             <span>AI Agent</span>
             <strong>{{ profile?.llmConfigId ? '已配置' : '未配置' }}</strong>
             <small>{{ profile?.llmConfigId ? '使用当前伙伴选择的全局配置' : '请在伙伴设置中选择配置' }}</small>
           </article>
-          <article class="overview-card">
+          <article class="overview-card mc-panel">
             <span>当前动作</span>
             <strong>{{ botStatus?.currentBehavior || '空闲' }}</strong>
             <small>{{ connectionLabel }}</small>
@@ -55,18 +55,18 @@
         </div>
       </section>
 
-      <section v-else-if="activeTab === 'decision'" class="decision-view">
-        <div class="section-copy decision-heading">
+      <section v-else-if="activeTab === 'decision'" class="decision-view mc-page">
+        <div class="section-copy mc-section-copy decision-heading">
           <div>
-            <div class="eyebrow">DECISION STREAM</div>
+            <div class="eyebrow mc-eyebrow">DECISION STREAM</div>
             <h3>实时决策</h3>
             <p>显示当前伙伴本次运行产生的最近决策事件。</p>
           </div>
           <span>{{ agentSteps.length }} 条</span>
         </div>
-        <div v-if="agentSteps.length === 0" class="empty-state">尚无决策事件。伙伴开始思考或执行任务后会显示在这里。</div>
+        <div v-if="agentSteps.length === 0" class="empty-state mc-empty-state">尚无决策事件。伙伴开始思考或执行任务后会显示在这里。</div>
         <div v-else class="decision-list">
-          <article v-for="(step, index) in agentSteps.slice(-80).reverse()" :key="step.eventId || step.seq || index" class="decision-item">
+          <article v-for="(step, index) in agentSteps.slice(-80).reverse()" :key="step.eventId || step.seq || index" class="decision-item mc-panel">
             <span class="decision-type" :class="stepTone(step.type)">{{ typeLabel(step.type) }}</span>
             <div>
               <p>{{ stepText(step) }}</p>
@@ -78,15 +78,15 @@
 
       <MemoryPanel v-else-if="activeTab === 'memory'" :key="botId" :botId="botId" />
 
-      <section v-else class="capability-view">
-        <div class="section-copy">
-          <div class="eyebrow">CAPABILITIES</div>
+      <section v-else class="capability-view mc-page">
+        <div class="section-copy mc-section-copy">
+          <div class="eyebrow mc-eyebrow">CAPABILITIES</div>
           <h3>伙伴能力</h3>
           <p>能力状态来自当前伙伴的角色卡，不读取全局目录。</p>
         </div>
-        <div v-if="capabilities.length === 0" class="empty-state">当前伙伴还没有可展示的能力配置。</div>
+        <div v-if="capabilities.length === 0" class="empty-state mc-empty-state">当前伙伴还没有可展示的能力配置。</div>
         <div v-else class="capability-grid">
-          <article v-for="capability in capabilities" :key="capability.id" :class="{ disabled: !capability.enabled }">
+          <article v-for="capability in capabilities" :key="capability.id" :class="['mc-panel', { disabled: !capability.enabled }]">
             <McIcon :name="capability.icon" :size="18" />
             <div>
               <strong>{{ capability.label }}</strong>
@@ -199,47 +199,30 @@ function formatTime(value) {
 </script>
 
 <style scoped>
-.brain-view { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:#0c0e08; color:#e7e3d4; }
-.brain-header { flex:none; padding:16px 20px 0; background:#15170f; border-bottom:2px solid #0c0e08; }
-.brain-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
-.brain-heading h2 { display:flex; align-items:center; gap:7px; margin:0; color:#f2f0df; font-family:var(--mc-font-pixel); font-size:16px; }
-.brain-heading p,.section-copy p { margin:6px 0 0; color:#7e836e; font-size:12px; }
-.brain-state { flex:none; padding:5px 9px; border:2px solid #0d0f0a; background:#272d1d; color:#aab09b; font-size:11px; font-weight:700; }
-.brain-state.ready { background:#243619; color:#b9eca0; }
-.brain-state.error { background:#47221e; color:#ffc0b8; }
-.brain-tabs { display:flex; gap:5px; margin-top:15px; overflow-x:auto; }
-.brain-tabs button { display:inline-flex; align-items:center; gap:6px; padding:9px 13px; border:2px solid #0d0f0a; border-bottom:0; background:#20241a; color:#929985; cursor:pointer; font:700 12px var(--mc-font-body); white-space:nowrap; }
-.brain-tabs button.active { background:#4c7a2a; color:#fff; box-shadow:inset 1px 1px 0 rgba(255,255,255,.2); }
-.brain-content { flex:1; min-width:0; min-height:0; display:flex; overflow:hidden; }
-.overview-view,.decision-view,.capability-view { flex:1; min-height:0; overflow:auto; padding:24px; }
-.section-copy h3 { margin:5px 0 0; color:#e7e3d4; font-size:16px; }
-.eyebrow { color:#8fb66f; font-family:var(--mc-font-pixel); font-size:9px; }
 .overview-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:20px; }
-.overview-card { min-height:112px; display:flex; flex-direction:column; padding:17px; background:#1b1e14; border:2px solid #0c0e08; box-shadow:inset 1px 1px 0 rgba(255,255,255,.05),0 4px 0 rgba(0,0,0,.25); }
-.overview-card span { color:#7e836e; font-size:11px; }
-.overview-card strong { margin-top:10px; color:#f0eddd; font-size:17px; }
-.overview-card small { margin-top:auto; padding-top:12px; color:#8f9682; font-size:11px; line-height:1.5; }
+.overview-card { min-height:112px; display:flex; flex-direction:column; padding:17px; }
+.overview-card span { color:var(--mc-text-muted); font-size:11px; }
+.overview-card strong { margin-top:10px; color:var(--mc-text); font-size:17px; }
+.overview-card small { margin-top:auto; padding-top:12px; color:var(--mc-text-secondary); font-size:11px; line-height:1.5; }
 .decision-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
-.decision-heading > span { padding:5px 8px; background:#20241a; color:#8f9682; font:12px var(--mc-font-mono); }
+.decision-heading > span { padding:5px 8px; border-radius:999px; background:var(--mc-surface-raised); color:var(--mc-text-secondary); font:12px var(--mc-font-mono); }
 .decision-list { display:flex; flex-direction:column; gap:7px; margin-top:18px; }
-.decision-item { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px; padding:11px 12px; background:#15170f; border:1px solid #2a2f23; }
-.decision-type { align-self:start; padding:3px 5px; background:#26331c; color:#9fd47b; text-align:center; font-size:10px; font-weight:700; }
-.decision-type.tool { background:#3b321c; color:#e0c58b; }
-.decision-type.done { background:#1f3b22; color:#a7e38c; }
-.decision-type.error { background:#43231f; color:#efb0a8; }
-.decision-item p { margin:0; color:#cdd2c0; font-size:12px; line-height:1.5; word-break:break-word; }
-.decision-item time { display:block; margin-top:4px; color:#6b6f5e; font:10px var(--mc-font-mono); }
-.empty-state { margin-top:20px; padding:44px 20px; border:2px dashed #343a2b; background:#15170f; color:#8f9682; text-align:center; font-size:12px; }
+.decision-item { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px; padding:11px 12px; }
+.decision-type { align-self:start; padding:3px 5px; border-radius:var(--mc-radius-xs); background:var(--mc-accent-soft); color:var(--mc-accent-strong); text-align:center; font-size:10px; font-weight:700; }
+.decision-type.tool { background:rgba(217,170,76,.1); color:#e4bd6d; }
+.decision-type.done { background:var(--mc-accent-soft); color:var(--mc-accent-strong); }
+.decision-type.error { background:rgba(228,111,101,.11); color:#f1a9a2; }
+.decision-item p { margin:0; color:var(--mc-text-secondary); font-size:12px; line-height:1.5; word-break:break-word; }
+.decision-item time { display:block; margin-top:4px; color:var(--mc-text-muted); font:10px var(--mc-font-mono); }
+.empty-state { margin-top:20px; }
 .capability-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:20px; }
-.capability-grid article { display:flex; align-items:center; gap:12px; padding:15px; background:#20251a; border:2px solid #0c0e08; color:#8fd06c; }
-.capability-grid article.disabled { opacity:.48; color:#8f9682; }
+.capability-grid article { display:flex; align-items:center; gap:12px; padding:15px; color:var(--mc-accent); }
+.capability-grid article.disabled { opacity:.48; color:var(--mc-text-muted); }
 .capability-grid article div { display:flex; flex-direction:column; gap:4px; }
-.capability-grid strong { color:#e7e3d4; font-size:13px; }
+.capability-grid strong { color:var(--mc-text); font-size:13px; }
 .capability-grid span { color:inherit; font-size:11px; }
 @media (max-width:700px) {
-  .brain-header { padding:13px 14px 0; }
   .brain-heading p { max-width:240px; }
-  .overview-view,.decision-view,.capability-view { padding:16px; }
   .overview-grid { grid-template-columns:1fr; }
   .decision-item { grid-template-columns:54px minmax(0,1fr); }
 }

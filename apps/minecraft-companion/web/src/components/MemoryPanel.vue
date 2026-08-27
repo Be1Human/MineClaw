@@ -1,23 +1,23 @@
 <template>
-  <section class="memory-shell">
-    <header class="memory-header">
-      <div>
-        <div class="eyebrow">CHAT MEMORY · 纯聊天记忆</div>
+  <section class="memory-shell mc-page">
+    <header class="memory-header mc-panel">
+      <div class="mc-section-copy">
+        <div class="eyebrow mc-eyebrow">CHAT MEMORY · 纯聊天记忆</div>
         <h1>记忆控制台</h1>
         <p>查看、检索和治理当前伙伴的长期事实；删除为可恢复的软删除。</p>
       </div>
       <div class="header-actions">
-        <button :disabled="!botId || busy" @click="rebuildIndex">重建索引</button>
-        <button :disabled="!botId || busy" @click="exportMarkdown">导出 Markdown</button>
-        <button class="primary" :disabled="!botId || busy" @click="loadFacts">刷新</button>
+        <button class="mc-button" :disabled="!botId || busy" @click="rebuildIndex">重建索引</button>
+        <button class="mc-button" :disabled="!botId || busy" @click="exportMarkdown">导出 Markdown</button>
+        <button class="mc-button primary" :disabled="!botId || busy" @click="loadFacts">刷新</button>
       </div>
     </header>
 
-    <div v-if="!botId" class="empty-state">请先在“游玩”页选择一个伙伴。</div>
+    <div v-if="!botId" class="empty-state mc-empty-state">请先选择一个伙伴。</div>
     <template v-else>
-      <div class="toolbar">
-        <input v-model="query" type="search" placeholder="搜索记忆正文" @keyup.enter="loadFacts" />
-        <select v-model="status" @change="loadFacts">
+      <div class="toolbar mc-toolbar">
+        <input v-model="query" class="mc-field-control" type="search" placeholder="搜索记忆正文" @keyup.enter="loadFacts" />
+        <select v-model="status" class="mc-field-control" @change="loadFacts">
           <option value="active">Active</option>
           <option value="candidate">Candidate</option>
           <option value="superseded">Superseded</option>
@@ -26,17 +26,17 @@
           <option value="expired">Expired</option>
           <option value="">全部状态</option>
         </select>
-        <button :disabled="busy" @click="loadFacts">检索</button>
+        <button class="mc-button" :disabled="busy" @click="loadFacts">检索</button>
         <span class="count">{{ facts.length }} 条</span>
       </div>
 
-      <div v-if="notice" :class="['notice', noticeKind]">{{ notice }}</div>
-      <div v-if="loading" class="empty-state">正在读取记忆…</div>
-      <div v-else-if="facts.length === 0" class="empty-state">
+      <div v-if="notice" :class="['notice', 'mc-notice', noticeKind]">{{ notice }}</div>
+      <div v-if="loading" class="empty-state mc-empty-state">正在读取记忆…</div>
+      <div v-else-if="facts.length === 0" class="empty-state mc-empty-state">
         {{ unavailable ? '伙伴运行时未启动，启动后才能管理其记忆。' : '当前筛选条件下没有记忆。' }}
       </div>
       <div v-else class="fact-grid">
-        <article v-for="fact in facts" :key="fact.id" class="fact-card">
+        <article v-for="fact in facts" :key="fact.id" class="fact-card mc-panel">
           <div class="fact-topline">
             <span :class="['status-chip', `status-${fact.status}`]">{{ fact.status }}</span>
             <span class="kind-chip">{{ kindLabel(fact.kind) }}</span>
@@ -44,7 +44,7 @@
             <time>{{ formatTime(fact.updatedAt) }}</time>
           </div>
 
-          <textarea v-if="editingId === fact.id" v-model="editingText" rows="4" />
+          <textarea v-if="editingId === fact.id" v-model="editingText" class="mc-field-control" rows="4" />
           <p v-else class="fact-text">{{ fact.text }}</p>
 
           <div class="fact-meta">
@@ -55,14 +55,14 @@
 
           <div class="fact-actions">
             <template v-if="editingId === fact.id">
-              <button class="primary" :disabled="busy || !editingText.trim()" @click="saveEdit(fact)">保存</button>
-              <button :disabled="busy" @click="cancelEdit">取消</button>
+              <button class="mc-button primary" :disabled="busy || !editingText.trim()" @click="saveEdit(fact)">保存</button>
+              <button class="mc-button" :disabled="busy" @click="cancelEdit">取消</button>
             </template>
             <template v-else>
-              <button :disabled="busy" @click="showSources(fact)">查看来源</button>
-              <button v-if="fact.status === 'active'" :disabled="busy" @click="startEdit(fact)">编辑</button>
-              <button v-if="fact.status === 'active'" class="danger" :disabled="busy" @click="removeFact(fact)">软删除</button>
-              <button v-if="['superseded', 'deleted'].includes(fact.status)" class="primary" :disabled="busy" @click="restoreFact(fact)">恢复</button>
+              <button class="mc-button" :disabled="busy" @click="showSources(fact)">查看来源</button>
+              <button v-if="fact.status === 'active'" class="mc-button" :disabled="busy" @click="startEdit(fact)">编辑</button>
+              <button v-if="fact.status === 'active'" class="mc-button danger" :disabled="busy" @click="removeFact(fact)">软删除</button>
+              <button v-if="['superseded', 'deleted'].includes(fact.status)" class="mc-button primary" :disabled="busy" @click="restoreFact(fact)">恢复</button>
             </template>
           </div>
 
@@ -271,41 +271,32 @@ function formatTime(value: number): string { return new Date(value).toLocaleStri
 </script>
 
 <style scoped>
-.memory-shell { position:relative; z-index:2; flex:1; min-height:0; overflow:auto; padding:24px; background:#15170f; color:#e7e3d4; }
-.memory-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:20px; background:#20251a; border:3px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(255,255,255,.05), 0 6px 0 rgba(0,0,0,.35); }
-.eyebrow { color:#8fb66f; font-family:var(--mc-font-pixel); font-size:10px; }
-h1 { margin:10px 0 6px; font-family:var(--mc-font-pixel); font-size:18px; color:#f2f0df; }
-p { margin:0; color:#aeb4a0; }
+.memory-shell { position:relative; z-index:2; }
+.memory-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:20px; }
+h1 { margin:8px 0 5px; color:var(--mc-text); font-family:var(--mc-font-body); font-size:18px; }
+p { margin:0; color:var(--mc-text-secondary); }
 .header-actions,.toolbar,.fact-actions,.fact-topline,.fact-meta { display:flex; align-items:center; gap:8px; }
 .header-actions { flex-wrap:wrap; justify-content:flex-end; }
-button,select,input,textarea { font:inherit; color:#e7e3d4; background:#272d1d; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,.06), inset -2px -2px 0 rgba(0,0,0,.35); }
-button { padding:9px 13px; cursor:pointer; font-weight:700; }
-button:disabled { cursor:not-allowed; opacity:.45; }
-button.primary { background:#4c7a2a; border-color:#2b5e16; }
-button.danger { background:#5a2b25; border-color:#2b1512; color:#ffc6be; }
-.toolbar { margin:18px 0; padding:12px; background:#1b1e14; border:2px solid #0c0e08; }
-.toolbar input { flex:1; min-width:180px; padding:10px 12px; background:#0c0e08; }
-.toolbar select { padding:10px; }
-.count { margin-left:auto; color:#8f9682; font-family:var(--mc-font-mono); }
-.notice { margin-bottom:14px; padding:10px 12px; border:2px solid #0d0f0a; }
-.notice.ok { background:#243619; color:#b9eca0; }
-.notice.error { background:#47221e; color:#ffc0b8; }
-.empty-state { padding:48px 20px; text-align:center; color:#8f9682; background:#1b1e14; border:2px dashed #343a2b; }
+.toolbar { margin:18px 0; }
+.toolbar input { flex:1; min-width:180px; }
+.toolbar select { width:auto; min-width:152px; }
+.count { margin-left:auto; color:var(--mc-text-muted); font-family:var(--mc-font-mono); }
+.notice { margin-bottom:14px; }
 .fact-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:14px; }
-.fact-card { padding:16px; background:#20251a; border:2px solid #0c0e08; box-shadow:inset 1px 1px 0 rgba(255,255,255,.05), 0 4px 0 rgba(0,0,0,.28); }
+.fact-card { padding:16px; }
 .fact-topline { flex-wrap:wrap; }
-.fact-topline time { margin-left:auto; color:#737966; font-size:12px; }
-.status-chip,.kind-chip,.scope-chip { padding:4px 7px; font-size:11px; border:1px solid #0c0e08; background:#303729; }
-.status-active { color:#c9f0ad; background:#29421c; }
-.status-deleted,.status-rejected,.status-expired { color:#efb0a8; background:#43231f; }
-.status-superseded { color:#e0c58b; background:#453b20; }
-.fact-text { min-height:48px; margin:15px 0; color:#eceadb; line-height:1.6; white-space:pre-wrap; }
-textarea { width:100%; box-sizing:border-box; margin:14px 0; padding:10px; resize:vertical; background:#0c0e08; line-height:1.5; }
-.fact-meta { flex-wrap:wrap; padding-top:10px; border-top:1px solid #343a2b; color:#8f9682; font-size:12px; }
+.fact-topline time { margin-left:auto; color:var(--mc-text-muted); font-size:12px; }
+.status-chip,.kind-chip,.scope-chip { padding:4px 7px; font-size:11px; border:1px solid var(--mc-border); border-radius:999px; background:var(--mc-surface-raised); }
+.status-active { color:var(--mc-accent-strong); background:var(--mc-accent-soft); }
+.status-deleted,.status-rejected,.status-expired { color:#f1a9a2; background:rgba(228,111,101,.11); }
+.status-superseded { color:#e4bd6d; background:rgba(217,170,76,.1); }
+.fact-text { min-height:48px; margin:15px 0; color:var(--mc-text); line-height:1.6; white-space:pre-wrap; }
+textarea { margin:14px 0; }
+.fact-meta { flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--mc-border); color:var(--mc-text-muted); font-size:12px; }
 .fact-actions { margin-top:13px; flex-wrap:wrap; }
-.sources { margin-top:14px; padding:12px; background:#12150e; border:2px solid #0c0e08; color:#9da58e; }
-.sources-title { margin-bottom:9px; color:#c9d3b8; font-weight:700; }
-blockquote { margin:8px 0; padding:9px 11px; border-left:3px solid #4c7a2a; background:#1a1f14; white-space:pre-wrap; }
-blockquote span { display:block; margin-bottom:5px; color:#6f7863; font-size:11px; }
+.sources { margin-top:14px; padding:12px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); }
+.sources-title { margin-bottom:9px; color:var(--mc-text); font-weight:700; }
+blockquote { margin:8px 0; padding:9px 11px; border-left:2px solid var(--mc-accent); border-radius:0 var(--mc-radius-xs) var(--mc-radius-xs) 0; background:var(--mc-surface); white-space:pre-wrap; }
+blockquote span { display:block; margin-bottom:5px; color:var(--mc-text-muted); font-size:11px; }
 @media (max-width:800px) { .memory-header { flex-direction:column; } .header-actions { justify-content:flex-start; } .fact-grid { grid-template-columns:1fr; } .toolbar { flex-wrap:wrap; } }
 </style>

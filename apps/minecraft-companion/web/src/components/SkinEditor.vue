@@ -4,68 +4,65 @@
   右侧内嵌 McCharacter 实时 3D 预览。保存 emit('save',{skinTexture,skinModel})。
 -->
 <template>
-  <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+  <div class="skin-editor">
     <!-- 左：画布 + 工具 -->
-    <div style="display:flex; flex-direction:column; gap:10px;">
+    <div class="skin-editor-workspace">
       <!-- 预设选择器 -->
-      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-        <span style="font-size:11px; color:#7e836e; font-weight:700;">预设</span>
-        <span v-for="p in presets" :key="p.url" @click="usePreset(p)" :title="p.name"
-          style="cursor:pointer; line-height:0; border:2px solid #0c0e08; box-shadow:inset 1px 1px 0 rgba(0,0,0,0.5);"
-          @mouseenter="(e)=>e.currentTarget.style.borderColor='#cfeeb0'" @mouseleave="(e)=>e.currentTarget.style.borderColor='#0c0e08'">
+      <div class="skin-row">
+        <span class="skin-label">预设</span>
+        <button v-for="p in presets" :key="p.url" class="skin-preset" type="button" @click="usePreset(p)" :title="p.name">
           <McHead :texture="p.url" :size="30" />
-        </span>
+        </button>
       </div>
       <!-- 工具条 -->
-      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+      <div class="skin-row skin-toolbar" aria-label="皮肤编辑工具">
         <button v-for="t in toolList" :key="t.id" @click="tool = t.id" :title="t.name"
-          :style="toolBtnStyle(t.id)"><McIcon :name="t.iconName" :size="14" /></button>
-        <span style="width:1px; height:22px; background:#0c0e08; margin:0 2px;"></span>
-        <button @click="undo" :disabled="!history.length" title="撤销" aria-label="撤销" :style="toolBtnStyle('_undo')"><McIcon name="undo" :size="14" /></button>
+          class="skin-tool mc-button" :class="{ active: tool === t.id }"><McIcon :name="t.iconName" :size="14" /></button>
+        <span class="skin-divider"></span>
+        <button class="skin-tool mc-button" @click="undo" :disabled="!history.length" title="撤销" aria-label="撤销"><McIcon name="undo" :size="14" /></button>
         <input type="color" v-model="color" title="颜色"
-          style="width:34px; height:30px; padding:0; border:2px solid #0c0e08; background:#0c0e08; cursor:pointer;" />
+          class="skin-color" />
       </div>
       <!-- 调色板 -->
-      <div style="display:flex; gap:4px; flex-wrap:wrap; max-width:330px;">
+      <div class="skin-palette" aria-label="皮肤调色板">
         <span v-for="(c, i) in palette" :key="i" @click="color = c"
-          :style="{ width:'18px', height:'18px', background:c, border:'2px solid '+(color===c?'#cfeeb0':'#0c0e08'), cursor:'pointer' }"></span>
+          class="skin-swatch" :class="{ active: color === c }" :style="{ background: c }"></span>
       </div>
       <!-- 编辑画布 -->
       <canvas ref="disp" :width="64*zoom" :height="64*zoom"
-        style="image-rendering:pixelated; background:repeating-conic-gradient(#1a1d12 0% 25%,#22271a 0% 50%) 0 0/16px 16px; border:2px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); cursor:crosshair; touch-action:none;"
+        class="skin-canvas"
         @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @pointerleave="onUp"></canvas>
       <!-- Mojang 取：内联输入 + 拉取 -->
-      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-        <span style="font-size:11px; color:#7e836e; font-weight:700;">Mojang</span>
+      <div class="skin-row">
+        <span class="skin-label">Mojang</span>
         <input v-model="mojangName" @keydown.enter="fromMojang()" placeholder="正版玩家用户名"
-          style="width:150px; padding:7px 9px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:12.5px;" />
-        <button @click="fromMojang()" :disabled="mojangLoading" :style="fileBtnStyle">{{ mojangLoading ? '拉取中…' : '拉取' }}</button>
-        <span style="width:1px; height:22px; background:#0c0e08; margin:0 2px;"></span>
-        <button @click="openSite('https://namemc.com/minecraft-skins')" :style="[linkBtnStyle, { display:'inline-flex', alignItems:'center', gap:'5px' }]" title="NameMC · 找用户名 / 浏览热门皮肤">找用户名 <McIcon name="external-link" :size="12" /></button>
-        <button @click="openSite('https://www.minecraftskins.com')" :style="[linkBtnStyle, { display:'inline-flex', alignItems:'center', gap:'5px' }]" title="皮肤站 · 下载 PNG 再用上传">下载皮肤 <McIcon name="external-link" :size="12" /></button>
+          class="skin-name-input mc-field-control" />
+        <button class="mc-button" @click="fromMojang()" :disabled="mojangLoading">{{ mojangLoading ? '拉取中…' : '拉取' }}</button>
+        <span class="skin-divider"></span>
+        <button class="mc-button skin-link" @click="openSite('https://namemc.com/minecraft-skins')" title="NameMC · 找用户名 / 浏览热门皮肤">找用户名 <McIcon name="external-link" :size="12" /></button>
+        <button class="mc-button skin-link" @click="openSite('https://www.minecraftskins.com')" title="皮肤站 · 下载 PNG 再用上传">下载皮肤 <McIcon name="external-link" :size="12" /></button>
       </div>
       <!-- 最近用户名 -->
-      <div v-if="recentNames.length" style="display:flex; gap:4px; flex-wrap:wrap;">
-        <span v-for="n in recentNames" :key="n" @click="fromMojang(n)" :title="'拉取 '+n"
-          style="cursor:pointer; padding:3px 8px; background:#20241a; border:2px solid #0d0f0a; color:#9aa08c; font-size:11.5px;">{{ n }}</span>
+      <div v-if="recentNames.length" class="skin-row recent-names">
+        <button v-for="n in recentNames" :key="n" class="mc-chip" type="button" @click="fromMojang(n)" :title="'拉取 '+n">{{ n }}</button>
       </div>
 
       <!-- 来源 + 体型 + 保存 -->
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <label :style="fileBtnStyle">上传PNG
-          <input type="file" accept="image/png" @change="onUpload" style="display:none;" />
+      <div class="skin-row skin-actions">
+        <label class="mc-button">上传 PNG
+          <input class="skin-file-input" type="file" accept="image/png" @change="onUpload" />
         </label>
-        <div style="display:flex; gap:4px;">
-          <button @click="model='classic'" :style="modelBtnStyle('classic')">经典</button>
-          <button @click="model='slim'" :style="modelBtnStyle('slim')">纤细</button>
+        <div class="skin-models">
+          <button class="mc-button" :class="{ active: model === 'classic' }" @click="model='classic'">经典</button>
+          <button class="mc-button" :class="{ active: model === 'slim' }" @click="model='slim'">纤细</button>
         </div>
-        <button @click="save" :style="saveBtnStyle">保存</button>
+        <button class="mc-button primary" @click="save">保存</button>
       </div>
-      <div v-if="hint" style="font-size:12px; color:#e6c98a;">{{ hint }}</div>
+      <div v-if="hint" class="skin-hint mc-notice">{{ hint }}</div>
     </div>
 
     <!-- 右：实时 3D 预览 -->
-    <div style="width:200px; height:300px; flex:none; background:#0c0e08; border:2px solid #0c0e08; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5);">
+    <div class="skin-preview mc-panel">
       <McCharacter :texture="previewUrl" :model="model" animation="idle" :autoRotate="false" />
     </div>
   </div>
@@ -127,18 +124,6 @@ function openSite(url) {
 
 // 64×64 离屏纹理画布（真相源）
 let tex, tctx;
-
-function toolBtnStyle(id) {
-  const on = tool.value === id;
-  return `width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;background:${on?'#4c7a2a':'#272d1d'};border:2px solid ${on?'#2b5e16':'#0d0f0a'};box-shadow:inset 1px 1px 0 rgba(255,255,255,0.1);color:${on?'#fff':'#cdd2c0'};font-size:14px;`;
-}
-const fileBtnStyle = 'padding:7px 11px;cursor:pointer;background:#272d1d;border:2px solid #0d0f0a;box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06);color:#cdd2c0;font-weight:700;font-size:12.5px;';
-const linkBtnStyle = 'padding:7px 11px;cursor:pointer;background:#1c2414;border:2px solid #0d0f0a;box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05);color:#9fe27a;font-weight:700;font-size:12.5px;';
-function modelBtnStyle(m) {
-  const on = model.value === m;
-  return `padding:7px 11px;cursor:pointer;background:${on?'#4c7a2a':'#20241a'};border:2px solid ${on?'#2b5e16':'#0d0f0a'};color:${on?'#fff':'#9aa08c'};font-weight:700;font-size:12.5px;`;
-}
-const saveBtnStyle = 'padding:7px 16px;cursor:pointer;background:#4c9a2a;border:2px solid #2b5e16;box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3), 0 3px 0 #214b13;color:#fff;font-weight:700;font-size:12.5px;text-shadow:1px 1px 0 rgba(0,0,0,0.4);';
 
 function hex(r, g, b) { return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join(''); }
 function parseHex(h) {
@@ -302,3 +287,35 @@ onMounted(() => {
 
 watch(() => props.texture, (v) => loadInto(v));
 </script>
+
+<style scoped>
+.skin-editor { display:flex; align-items:flex-start; justify-content:center; gap:18px; flex-wrap:wrap; }
+.skin-editor-workspace { min-width:0; display:flex; flex:1 1 460px; flex-direction:column; gap:11px; }
+.skin-row { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.skin-label { color:var(--mc-text-secondary); font-size:11px; font-weight:700; }
+.skin-preset { display:grid; width:36px; height:36px; place-items:center; padding:2px; overflow:hidden; cursor:pointer; border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); background:var(--mc-bg); color:var(--mc-text); }
+.skin-preset:hover { border-color:rgba(105,201,74,.34); background:var(--mc-accent-soft); }
+.skin-toolbar .skin-tool { width:34px; min-height:34px; padding:0; }
+.skin-toolbar .skin-tool.active,.skin-models .mc-button.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.3); color:var(--mc-accent-strong); }
+.skin-divider { width:1px; height:24px; margin:0 2px; background:var(--mc-border); }
+.skin-color { width:36px; height:34px; padding:3px; cursor:pointer; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); background:var(--mc-bg); }
+.skin-palette { display:flex; max-width:350px; gap:5px; flex-wrap:wrap; }
+.skin-swatch { width:20px; height:20px; cursor:pointer; border:2px solid var(--mc-bg); border-radius:var(--mc-radius-xs); box-shadow:0 0 0 1px var(--mc-border); }
+.skin-swatch.active { border-color:var(--mc-text); box-shadow:0 0 0 1px var(--mc-accent); }
+.skin-canvas { max-width:100%; height:auto; image-rendering:pixelated; background:repeating-conic-gradient(#151d17 0% 25%,#1a241c 0% 50%) 0 0/16px 16px; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); cursor:crosshair; touch-action:none; }
+.skin-name-input { width:180px; }
+.skin-link { color:var(--mc-accent-strong); }
+.recent-names .mc-chip { cursor:pointer; }
+.skin-models { display:flex; gap:4px; }
+.skin-actions { padding-top:4px; }
+.skin-actions label { cursor:pointer; }
+.skin-file-input { display:none; }
+.skin-hint { color:#e4bd6d; }
+.skin-preview { width:220px; height:330px; flex:none; overflow:hidden; background:var(--mc-bg); }
+@media (max-width:700px) {
+  .skin-editor { justify-content:flex-start; }
+  .skin-editor-workspace { flex-basis:100%; }
+  .skin-preview { width:100%; height:280px; }
+  .skin-divider { display:none; }
+}
+</style>
