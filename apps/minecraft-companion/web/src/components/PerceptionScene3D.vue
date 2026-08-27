@@ -2,6 +2,27 @@
   <div class="perception-3d" ref="containerRef">
     <canvas ref="canvasRef"></canvas>
 
+    <div class="world-mode-panel">
+      <div class="world-mode-tabs" role="group" aria-label="世界预览模式">
+        <button :class="{ active: worldMode === 'simple' }" @click="emit('update:worldMode', 'simple')">简略版</button>
+        <button :class="{ active: worldMode === 'authentic' }" @click="emit('update:worldMode', 'authentic')">真实版</button>
+      </div>
+      <div v-if="worldMode === 'authentic'" class="resource-pack-row">
+        <select v-model="selectedPackId" @change="selectCurrentPack">
+          <option value="">选择资源包</option>
+          <option v-for="pack in resourcePacks" :key="pack.id" :value="pack.id">{{ pack.title }} · {{ pack.minecraftVersion }}</option>
+        </select>
+        <label class="pack-import">
+          {{ packImporting ? '导入中…' : '导入 ZIP' }}
+          <input type="file" accept=".zip,application/zip" :disabled="packImporting" @change="importResourcePack" />
+        </label>
+        <button v-if="modeError" class="resync-button" @click="emit('request-resync')">重试</button>
+      </div>
+      <div v-if="worldMode === 'authentic'" class="world-mode-status" :class="visualWorldStatus?.state">
+        {{ modeError || packError || (diagnostics.length ? `缺失素材 ${diagnostics.length} 项，已使用紫黑占位` : '') || visualWorldStatus?.message || '等待真实世界数据' }}
+      </div>
+    </div>
+
     <!-- HUD: 左上角 - 自身状态 -->
     <div class="hud hud-top-left" v-if="worldState && worldState.self">
       <div class="hud-title">BOT 状态</div>
@@ -108,18 +129,34 @@ import { PlayerObject } from 'skinview3d';
 import { chunkKeyOf, blockKey as bkey, takeDirtyChunks, selectEvictions } from '../lib/chunkGrid.js';
 import defaultSkin from '../assets/skins/07-lanyi.png';
 import McIcon from './icons/McIcon.vue';
+import { PerceptionRendererRegistry } from '../lib/authentic/rendererRegistry.js';
+import { AuthenticWorldRenderer } from '../lib/authentic/AuthenticWorldRenderer.js';
+import { ResourcePackClient } from '../lib/authentic/resourcePackClient.js';
 
 const props = defineProps({
   worldState: { type: Object, default: null },
   skinTexture: { type: String, default: '' },
   skinModel: { type: String, default: 'slim' },
   followBot: { type: Boolean, default: true },
+  profileId: { type: String, default: '' },
+  worldMode: { type: String, default: 'simple' },
+  visualWorldStore: { type: Object, default: null },
+  visualWorldRevision: { type: Number, default: 0 },
+  visualWorldStatus: { type: Object, default: () => ({ state: 'idle', message: '' }) },
+  visualWorldConfig: { type: Object, default: null },
 });
-const emit = defineEmits(['update:followBot']);
+const emit = defineEmits(['update:followBot', 'update:worldMode', 'request-resync']);
 
 const containerRef = ref(null);
 const canvasRef = ref(null);
 const totalBlocks = ref(0);
+const resourcePacks = ref([]);
+const selectedPackId = ref('');
+const packImporting = ref(false);
+const packError = ref('');
+const modeError = ref('');
+const diagnostics = ref([]);
+const packClient = new ResourcePackClient();
 
 const isGlobalPlan = computed(() => {
   const m = props.worldState?.navigation?.plannedRoute?.mode;
@@ -135,6 +172,8 @@ const planColor = computed(() => {
 });
 
 let renderer, scene, camera, controls;
+let worldRendererRegistry = null;
+let authenticWorldRenderer = null;
 let animFrameId = null;
 let _lastFrameTs = 0;
 // 相机旋转的流畅度对帧率高度敏感：30fps 平移/转视角天生显顿。
@@ -338,6 +377,98 @@ function getBlockColor(block) {
   return BLOCK_COLORS[block.name] ?? CATEGORY_COLORS[block.category] ?? 0x484f58;
 }
 
+function selectedPackDescriptor() {
+  return resourcePacks.value.find(pack => pack.id === selectedPackId.value) ?? null;
+}
+
+function readPackSelections() {
+  try {
+    const value = JSON.parse(localStorage.getItem('mc.visualResourcePacks.v1') || '{}');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch { return {}; }
+}
+
+function persistPackSelection() {
+  if (!props.profileId) return;
+  const selections = readPackSelections();
+  selections[props.profileId] = selectedPackId.value;
+  try { localStorage.setItem('mc.visualResourcePacks.v1', JSON.stringify(selections)); } catch {}
+}
+
+async function loadResourcePacks() {
+  try {
+    resourcePacks.value = await packClient.list();
+    const saved = readPackSelections()[props.profileId];
+    const gameVersion = props.visualWorldStore?.gameVersion;
+    const preferred = resourcePacks.value.find(pack => pack.id === saved)
+      ?? resourcePacks.value.find(pack => !gameVersion || pack.minecraftVersion === gameVersion)
+      ?? null;
+    selectedPackId.value = preferred?.id ?? '';
+    if (preferred) packClient.select(preferred);
+    packError.value = '';
+  } catch (error) {
+    packError.value = error.message;
+  }
+}
+
+async function selectCurrentPack() {
+  const pack = selectedPackDescriptor();
+  packClient.select(pack);
+  authenticWorldRenderer?.setPack(pack);
+  persistPackSelection();
+  packError.value = '';
+  await activateWorldMode();
+}
+
+async function importResourcePack(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  const gameVersion = props.visualWorldStore?.gameVersion;
+  if (!gameVersion) {
+    packError.value = '真实世界 bootstrap 尚未到达，暂时无法校验游戏版本';
+    return;
+  }
+  packImporting.value = true;
+  packError.value = '';
+  try {
+    const descriptor = await packClient.import(file, gameVersion);
+    await loadResourcePacks();
+    selectedPackId.value = descriptor.id;
+    await selectCurrentPack();
+  } catch (error) {
+    packError.value = error.message;
+  } finally {
+    packImporting.value = false;
+  }
+}
+
+function recordAuthenticDiagnostic(entry) {
+  diagnostics.value.push({ ...entry, at: Date.now() });
+  if (diagnostics.value.length > 20) diagnostics.value.splice(0, diagnostics.value.length - 20);
+}
+
+async function activateWorldMode() {
+  if (!worldRendererRegistry) return;
+  modeError.value = '';
+  if (props.worldMode === 'simple') {
+    await worldRendererRegistry.activate('simple');
+    return;
+  }
+  try {
+    if (!props.visualWorldConfig) throw new Error('真实渲染配置尚未就绪');
+    if (!props.visualWorldStore || props.visualWorldStore.status !== 'ready') throw new Error('真实世界数据尚未就绪');
+    const pack = selectedPackDescriptor();
+    if (!pack) throw new Error('请导入并选择与服务器版本匹配的资源包');
+    authenticWorldRenderer?.setStore(props.visualWorldStore);
+    authenticWorldRenderer?.setPack(pack);
+    await worldRendererRegistry.activate('authentic');
+  } catch (error) {
+    modeError.value = `${error.message}；已保留简略版`;
+    await worldRendererRegistry.activate('simple');
+  }
+}
+
 function initScene() {
   const container = containerRef.value;
   const canvas = canvasRef.value;
@@ -372,6 +503,25 @@ function initScene() {
 
   blockMeshGroup = new THREE.Group();
   scene.add(blockMeshGroup);
+
+  worldRendererRegistry = new PerceptionRendererRegistry({ scene, camera });
+  worldRendererRegistry.register('simple', () => ({
+    activate: () => { blockMeshGroup.visible = true; },
+    deactivate: () => { blockMeshGroup.visible = false; },
+  }));
+  worldRendererRegistry.register('authentic', () => {
+    if (!props.visualWorldConfig) throw new Error('真实渲染配置尚未就绪');
+    authenticWorldRenderer = new AuthenticWorldRenderer({
+      scene,
+      config: props.visualWorldConfig,
+      packClient,
+      onDiagnostic: recordAuthenticDiagnostic,
+    });
+    authenticWorldRenderer.setStore(props.visualWorldStore);
+    authenticWorldRenderer.setPack(selectedPackDescriptor());
+    return authenticWorldRenderer;
+  });
+  void worldRendererRegistry.activate('simple');
 
   createBotMarker();
   animate();
@@ -1186,6 +1336,7 @@ function animate(now) {
   occlusionUniforms.uCamPos.value.copy(camera.position);
   occlusionUniforms.uBotPos.value.copy(botWorldPos);
   processDirtyChunks();
+  worldRendererRegistry?.tick({ now, camera, botPosition: botWorldPos });
 
   renderer.render(scene, camera);
 }
@@ -1249,6 +1400,9 @@ function fmtTime(ts) {
 
 function cleanup() {
   if (animFrameId) cancelAnimationFrame(animFrameId);
+  authenticWorldRenderer?.dispose();
+  authenticWorldRenderer = null;
+  worldRendererRegistry = null;
   botSkinLoadVersion++;
   botSkinTexture?.dispose();
   botSkinTexture = null;
@@ -1313,6 +1467,18 @@ watch(() => props.worldState, (ws) => {
 }, { deep: false });
 watch(() => props.skinTexture, loadBotSkin);
 watch(() => props.skinModel, applyBotSkinModel);
+watch(() => props.worldMode, () => { void activateWorldMode(); });
+watch(() => props.visualWorldRevision, () => {
+  authenticWorldRenderer?.setStore(props.visualWorldStore);
+  if (props.worldMode === 'authentic') void activateWorldMode();
+});
+watch(() => props.visualWorldConfig, () => {
+  if (props.worldMode === 'authentic') void activateWorldMode();
+});
+watch(() => props.profileId, async () => {
+  await loadResourcePacks();
+  await activateWorldMode();
+});
 
 function handleBeforeUnload() { flushSave(); }
 
@@ -1323,6 +1489,7 @@ let _resizeObserver = null;
 onMounted(() => {
   initScene();
   loadWorldBlocks();
+  void loadResourcePacks().then(() => activateWorldMode());
   window.addEventListener('resize', handleResize);
   window.addEventListener('beforeunload', handleBeforeUnload);
   if (props.worldState) updateScene(props.worldState);
@@ -1354,6 +1521,24 @@ onUnmounted(() => {
 <style scoped>
 .perception-3d { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
 .perception-3d canvas { display: block; width: 100%; height: 100%; }
+.world-mode-panel {
+  position: absolute; z-index: 16; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 300px;
+  pointer-events: auto;
+}
+.world-mode-tabs { display: flex; padding: 3px; background: rgba(12,14,8,.92); border: 2px solid #000; box-shadow: 2px 2px 0 rgba(0,0,0,.55); }
+.world-mode-tabs button,.resource-pack-row button,.pack-import {
+  border: 0; padding: 6px 12px; background: transparent; color: #9da48b; font: 10px var(--mc-font-pixel); cursor: pointer;
+}
+.world-mode-tabs button.active { background: #5c8f3a; color: #fff; box-shadow: inset 0 -2px 0 #2f561e; }
+.resource-pack-row { display: flex; gap: 5px; align-items: center; padding: 5px; background: rgba(12,14,8,.9); border: 1px solid #343a2a; }
+.resource-pack-row select { max-width: 190px; padding: 5px 7px; border: 1px solid #4b523d; background: #11150d; color: #e7e3d4; font: 10px var(--mc-font-body); }
+.pack-import { display: inline-flex; background: #2f5f7a; color: #fff; }
+.pack-import input { display: none; }
+.resource-pack-row .resync-button { background: #7a4b2f; color: #fff; }
+.world-mode-status { max-width: 430px; padding: 4px 8px; background: rgba(12,14,8,.86); color: #b8bea8; font: 10px var(--mc-font-body); text-align: center; }
+.world-mode-status.error { color: #ff9b85; }
+.world-mode-status.ready { color: #9ee47b; }
 
 .hud {
   position: absolute;

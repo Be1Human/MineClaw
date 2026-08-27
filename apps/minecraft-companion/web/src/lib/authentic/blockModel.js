@@ -48,6 +48,7 @@ export function bakeMinecraftBlockModel(model, application = {}, options = {}) {
   const materialKeys = [];
   const materialIndex = new Map();
   const geometry = new THREE.BufferGeometry();
+  const faceDirections = [];
   let transparent = false;
 
   for (const element of model?.elements ?? []) {
@@ -75,6 +76,7 @@ export function bakeMinecraftBlockModel(model, application = {}, options = {}) {
       uvs.push(...faceUvs(face.uv, face.rotation));
       indices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2, vertexOffset, vertexOffset + 2, vertexOffset + 3);
       geometry.addGroup(indices.length - 6, 6, slot);
+      faceDirections.push(direction);
     }
   }
 
@@ -86,6 +88,7 @@ export function bakeMinecraftBlockModel(model, application = {}, options = {}) {
   geometry.computeBoundingSphere();
   geometry.userData.materialKeys = materialKeys;
   geometry.userData.transparent = transparent;
+  geometry.userData.faceDirections = faceDirections;
   return { geometry, materialKeys, transparent };
 }
 

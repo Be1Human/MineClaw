@@ -22,6 +22,8 @@ export class VisualWorldStore {
     this.serverResourcePack = null;
     this.sections = new Map();
     this.entities = new Map();
+    this.dirtySections = new Set();
+    this.removedSections = new Set();
     this.queuedBatches = [];
     this.needsResync = false;
     this.resyncReason = null;
@@ -44,6 +46,8 @@ export class VisualWorldStore {
     this.sections = new Map();
     this.entities = new Map((bootstrap.entities ?? []).map(entity => [entity.id, entity]));
     this.queuedBatches = [];
+    this.dirtySections = new Set();
+    this.removedSections = new Set();
     this.needsResync = false;
     this.resyncReason = null;
     for (const section of bootstrap.sections ?? []) this.putSection(section);
@@ -103,6 +107,7 @@ export class VisualWorldStore {
       biomeIndices: toUint16Array(section.biomeIndices),
     };
     this.sections.set(section.key ?? sectionKey(section.chunkX, section.sectionY, section.chunkZ), normalized);
+    this.dirtySections.add(normalized.key ?? sectionKey(normalized.chunkX, normalized.sectionY, normalized.chunkZ));
   }
 
   applyDelta(delta) {
@@ -144,11 +149,16 @@ export class VisualWorldStore {
     section.indices[index] = paletteIndex;
     section.blockLight[index] = delta.blockLight;
     section.skyLight[index] = delta.skyLight;
+    this.dirtySections.add(section.key);
   }
 
   removeColumn(chunkX, chunkZ) {
     for (const [key, section] of this.sections) {
-      if (section.chunkX === chunkX && section.chunkZ === chunkZ) this.sections.delete(key);
+      if (section.chunkX === chunkX && section.chunkZ === chunkZ) {
+        this.sections.delete(key);
+        this.dirtySections.delete(key);
+        this.removedSections.add(key);
+      }
     }
   }
 
@@ -156,6 +166,18 @@ export class VisualWorldStore {
     this.needsResync = true;
     this.resyncReason = reason;
     this.status = 'needs-resync';
+  }
+
+  takeDirtySections() {
+    const dirty = Array.from(this.dirtySections);
+    this.dirtySections.clear();
+    return dirty;
+  }
+
+  takeRemovedSections() {
+    const removed = Array.from(this.removedSections);
+    this.removedSections.clear();
+    return removed;
   }
 }
 

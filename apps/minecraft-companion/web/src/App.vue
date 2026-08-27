@@ -158,7 +158,15 @@
             :worldState="currentWorldState"
             :skinTexture="selectedSkinTexture"
             :skinModel="selectedSkinModel"
+            :profileId="selectedProfile?.id || ''"
+            :worldMode="worldMode"
+            :visualWorldStore="visualWorldStore"
+            :visualWorldRevision="visualWorldRevision"
+            :visualWorldStatus="visualWorldStatus"
+            :visualWorldConfig="visualWorldConfig"
             v-model:followBot="followBot"
+            @update:worldMode="worldMode = $event"
+            @request-resync="requestVisualResync"
           />
         </div>
         <!-- 3D 开关 -->
@@ -456,6 +464,7 @@ import SkinEditor from './components/SkinEditor.vue';
 import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation.js';
 import { CONTROL_TAB_IDS, migrateControlTabs, normalizeControlTab } from './lib/controlNavigation.js';
 import { useProfileTasks } from './lib/profileTasks.js';
+import { VisualWorldStore } from './lib/authentic/visualWorldStore.js';
 
 // 无边框窗口控制（仅 Electron 下显示自定义标题栏按钮）
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -499,11 +508,13 @@ const selectedProfile = ref(null);
 const workspaceViewsByProfile = ref({});
 const brainTabsByProfile = ref({});
 const controlTabsByProfile = ref({});
+const worldModesByProfile = ref({});
 const noProfileWorkspaceView = ref('play');
 const validWorkspaceViews = new Set(workspaceTabs.map((tab) => tab.id));
 const legacyWorkspaceViews = new Set([...validWorkspaceViews, 'memory']);
 const validBrainTabs = new Set(BRAIN_TAB_IDS);
 const validControlTabs = new Set(CONTROL_TAB_IDS);
+const validWorldModes = new Set(['simple', 'authentic']);
 
 function persistTabMap(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
@@ -567,6 +578,20 @@ const ctrlTab = computed({
   },
 });
 
+const worldMode = computed({
+  get() {
+    const profileId = selectedProfile.value?.id;
+    const value = profileId ? worldModesByProfile.value[profileId] : 'simple';
+    return validWorldModes.has(value) ? value : 'simple';
+  },
+  set(value) {
+    const profileId = selectedProfile.value?.id;
+    if (!profileId || !validWorldModes.has(value)) return;
+    worldModesByProfile.value = { ...worldModesByProfile.value, [profileId]: value };
+    persistTabMap('mc.worldModes.v1', worldModesByProfile.value);
+  },
+});
+
 const showCreateForm = ref(false);
 const showSkinEditor = ref(false);
 const messages = ref([]);
@@ -590,6 +615,13 @@ const logsEl = ref(null);
 const activeBots = reactive(new Set());
 const botStatuses = reactive(new Map());
 const worldStates = reactive(new Map());
+const visualWorldStore = ref(null);
+const visualWorldRevision = ref(0);
+const visualWorldStatus = ref({ state: 'idle', message: '' });
+const visualWorldConfig = ref(null);
+let subscribedVisualBotId = null;
+let visualSubscriptionRequest = 0;
+let visualResyncPending = false;
 const {
   tasks: v2Tasks,
   state: v2TaskState,
@@ -615,7 +647,7 @@ const perceptionTelemetry = computed(() => {
     ? `${Math.round(position.x)},${Math.round(position.y)},${Math.round(position.z)}`
     : '—';
   return {
-    mode: state ? (show3D.value ? '3D' : 'LIVE') : 'STANDBY',
+    mode: state ? (show3D.value ? (worldMode.value === 'authentic' ? 'REAL' : 'SIMPLE') : 'LIVE') : 'STANDBY',
     position: positionText,
     entities: Array.isArray(state?.entities) ? state.entities.length : '—',
     blocks: Array.isArray(state?.blocks) ? state.blocks.length : '—',
@@ -702,6 +734,9 @@ socket.on('disconnect', () => {
   wsConnected.value = false;
   pendingChatSettle?.({ accepted: false });
   pendingChatSettle = null;
+  subscribedVisualBotId = null;
+  visualWorldStore.value = null;
+  visualWorldStatus.value = { state: 'idle', message: 'Hub 已断开' };
 });
 
 socket.on('bot:status', (data) => {
@@ -736,6 +771,86 @@ socket.on('bot:v2:worldState', (data) => {
   // Map.set 仍触发 currentWorldState 重算+重渲染（按引用变化），只是不再深响应内部。
   worldStates.set(data.botId, markRaw(data.worldState));
 });
+socket.on('bot:v2:visualWorld:bootstrap', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.applyBootstrap(data.bootstrap);
+  visualWorldRevision.value += 1;
+  visualResyncPending = false;
+  visualWorldStatus.value = ok
+    ? { state: 'ready', message: `真实世界 · ${data.bootstrap.gameVersion} · ${data.bootstrap.sections.length} 区段` }
+    : { state: 'error', message: `视觉世界重建失败：${visualWorldStore.value.resyncReason}` };
+});
+socket.on('bot:v2:visualWorld:delta', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.receiveBatch(data.batch);
+  visualWorldRevision.value += 1;
+  if (!ok) requestVisualResync();
+});
+
+async function ensureVisualWorldConfig() {
+  if (visualWorldConfig.value) return visualWorldConfig.value;
+  const response = await fetch('/api/visual-world/config');
+  if (!response.ok) throw new Error(`视觉配置加载失败 (${response.status})`);
+  visualWorldConfig.value = await response.json();
+  return visualWorldConfig.value;
+}
+
+function stopVisualSubscription({ clear = true } = {}) {
+  visualSubscriptionRequest += 1;
+  if (subscribedVisualBotId && socket.connected) {
+    socket.emit('bot:v2:visualWorld:unsubscribe', { botId: subscribedVisualBotId });
+  }
+  subscribedVisualBotId = null;
+  visualResyncPending = false;
+  if (clear) {
+    visualWorldStore.value = null;
+    visualWorldRevision.value += 1;
+  }
+}
+
+async function syncVisualSubscription() {
+  const botId = selectedProfile.value?.id ?? '';
+  const shouldSubscribe = Boolean(botId && wsConnected.value && inGame.value && show3D.value && worldMode.value === 'authentic');
+  if (!shouldSubscribe) {
+    if (subscribedVisualBotId) stopVisualSubscription();
+    return;
+  }
+  if (subscribedVisualBotId === botId && visualWorldStore.value) return;
+  stopVisualSubscription();
+  const request = ++visualSubscriptionRequest;
+  try {
+    const config = await ensureVisualWorldConfig();
+    if (request !== visualSubscriptionRequest) return;
+    visualWorldStore.value = markRaw(new VisualWorldStore(config));
+    subscribedVisualBotId = botId;
+    visualWorldStatus.value = { state: 'loading', message: '正在构建真实世界首帧…' };
+    socket.emit('bot:v2:visualWorld:subscribe', { botId }, result => {
+      if (request !== visualSubscriptionRequest || result?.ok) return;
+      subscribedVisualBotId = null;
+      visualWorldStore.value = null;
+      visualWorldStatus.value = {
+        state: 'error',
+        message: result?.reason === 'visual_world_unavailable' ? 'Bot 尚未进入可视世界' : '真实世界订阅失败',
+      };
+    });
+  } catch (error) {
+    if (request !== visualSubscriptionRequest) return;
+    subscribedVisualBotId = null;
+    visualWorldStore.value = null;
+    visualWorldStatus.value = { state: 'error', message: error.message };
+  }
+}
+
+function requestVisualResync() {
+  if (!subscribedVisualBotId || visualResyncPending || !socket.connected) return;
+  visualResyncPending = true;
+  visualWorldStatus.value = { state: 'loading', message: '检测到序列缺口，正在重建世界…' };
+  socket.emit('bot:v2:visualWorld:resync', { botId: subscribedVisualBotId }, result => {
+    if (result?.ok) return;
+    visualResyncPending = false;
+    visualWorldStatus.value = { state: 'error', message: '真实世界重建失败' };
+  });
+}
 socket.on('bot:agentLoop', (data) => {
   if (selectedProfile.value && data.botId === selectedProfile.value.id) {
     agentLoopSteps.value.push({ ...data, ts: Date.now() });
@@ -771,7 +886,14 @@ const v2TaskPoll = setInterval(() => { void refreshV2Tasks(); }, 2000);
 onUnmounted(() => {
   clearInterval(v2AlertPoll);
   clearInterval(v2TaskPoll);
+  stopVisualSubscription();
 });
+
+watch(
+  [() => selectedProfile.value?.id, inGame, show3D, worldMode, wsConnected],
+  () => { void syncVisualSubscription(); },
+  { flush: 'post' },
+);
 
 watch(
   () => selectedProfile.value?.id,
@@ -868,6 +990,7 @@ async function loadProfiles() {
   try {
     workspaceViewsByProfile.value = readTabMap('mc.workspaceTabs.v1', legacyWorkspaceViews);
     brainTabsByProfile.value = readTabMap('mc.brainTabs.v1', validBrainTabs);
+    worldModesByProfile.value = readTabMap('mc.worldModes.v1', validWorldModes);
     const storedControlTabs = JSON.parse(localStorage.getItem('mc.controlTabs.v1') || '{}');
     const controlMigration = migrateControlTabs(storedControlTabs);
     controlTabsByProfile.value = controlMigration.controlTabs;
