@@ -9,7 +9,7 @@
         :class="{ active: activeSection === item.id }"
         @click="activeSection = item.id"
       >
-        <span class="snav-icon">{{ item.icon }}</span>
+        <McIcon class="snav-icon" :name="item.iconName" :size="14" />
         {{ item.label }}
       </button>
     </nav>
@@ -19,7 +19,7 @@
 
       <!-- 伙伴配置 -->
       <div v-if="activeSection === 'bot'" class="settings-section">
-        <h3>🤖 伙伴基本信息</h3>
+        <h3 class="icon-heading"><McIcon name="bot" :size="16" />伙伴基本信息</h3>
         <p class="desc">Bot 的身份与性格设定，影响 AI 大脑的决策风格</p>
         <div class="form-grid">
           <div class="form-field">
@@ -57,8 +57,8 @@
           <button class="btn btn-primary" @click="saveBot">保存更改</button>
           <button class="btn btn-ghost" @click="loadForm">重置</button>
         </div>
-        <div v-if="savedMsg" class="save-ok">✅ {{ savedMsg }}</div>
-        <div v-if="errorMsg" class="save-error">❌ {{ errorMsg }}</div>
+        <div v-if="savedMsg" class="save-ok"><McIcon name="success" :size="13" />{{ savedMsg }}</div>
+        <div v-if="errorMsg" class="save-error"><McIcon name="error" :size="13" />{{ errorMsg }}</div>
       </div>
 
       <!-- FEAT-CROSS-12 · 四部分角色卡 -->
@@ -242,7 +242,7 @@
 
       <!-- Hermes AI -->
       <div v-if="activeSection === 'hermes'" class="settings-section">
-        <h3>🧠 Hermes AI 配置</h3>
+        <h3 class="icon-heading"><McIcon name="brain" :size="16" />Hermes AI 配置</h3>
         <p class="desc">AI 大脑的运行参数与记忆设置</p>
 
         <div class="hermes-status-bar">
@@ -290,15 +290,15 @@
         <div class="separator"></div>
         <p class="desc">快速操作</p>
         <div class="quick-actions">
-          <button class="qa-btn">🔄 重启 Bridge</button>
-          <button class="qa-btn" @click="clearMemoryConfirm">🗑 清除记忆</button>
-          <button class="qa-btn">📦 导出技能包</button>
+          <button class="qa-btn icon-button-label"><McIcon name="refresh" :size="14" />重启 Bridge</button>
+          <button class="qa-btn icon-button-label" @click="clearMemoryConfirm"><McIcon name="trash" :size="14" />清除记忆</button>
+          <button class="qa-btn icon-button-label"><McIcon name="package" :size="14" />导出技能包</button>
         </div>
       </div>
 
       <!-- Global LLM Agent configurations -->
       <div v-if="activeSection === 'llm-configs'" class="settings-section">
-        <h3>🔑 LLM Agent 配置</h3>
+        <h3 class="icon-heading"><McIcon name="key" :size="16" />LLM Agent 配置</h3>
         <p class="desc">全局管理模型连接；角色只选择使用哪一个 Agent。</p>
         <div v-if="llmConfigs.length === 0" class="warn-box">还没有可选 Agent 配置。新建一个配置后即可分配给任意角色。</div>
         <div v-for="config in llmConfigs" :key="config.id" class="provider-box">
@@ -349,8 +349,8 @@
           <button class="btn btn-primary" @click="saveLlmConfig" :disabled="savingLlm">保存配置</button>
         </div>
         <div v-if="llmTestMsg" class="test-result" :class="{ ok: llmTestOk, fail: !llmTestOk }">{{ llmTestMsg }}</div>
-        <div v-if="savedMsg" class="save-ok">✅ {{ savedMsg }}</div>
-        <div v-if="errorMsg" class="save-error">❌ {{ errorMsg }}</div>
+        <div v-if="savedMsg" class="save-ok"><McIcon name="success" :size="13" />{{ savedMsg }}</div>
+        <div v-if="errorMsg" class="save-error"><McIcon name="error" :size="13" />{{ errorMsg }}</div>
       </div>
 
       <!-- FEAT-WEBUI-15 · Minecraft 桌面角色 -->
@@ -389,13 +389,13 @@
           <button class="btn btn-primary" :disabled="savingDesktopPet || (desktopPet.enabled && !desktopPet.profileId)" @click="saveDesktopPet">{{ savingDesktopPet ? '保存中…' : '保存并立即应用' }}</button>
           <button class="btn btn-ghost" @click="loadDesktopPet">重置</button>
         </div>
-        <div v-if="savedMsg" class="save-ok">✅ {{ savedMsg }}</div>
-        <div v-if="errorMsg" class="save-error">❌ {{ errorMsg }}</div>
+        <div v-if="savedMsg" class="save-ok"><McIcon name="success" :size="13" />{{ savedMsg }}</div>
+        <div v-if="errorMsg" class="save-error"><McIcon name="error" :size="13" />{{ errorMsg }}</div>
       </div>
 
       <!-- 高级 -->
       <div v-if="activeSection === 'advanced'" class="settings-section">
-        <h3>🔧 高级 / 调试</h3>
+        <h3 class="icon-heading"><McIcon name="tool" :size="16" />高级 / 调试</h3>
         <p class="desc">开发者选项，谨慎修改</p>
         <div class="toggle-row">
           <div>
@@ -407,8 +407,8 @@
         <div class="form-actions">
           <button class="btn btn-primary" :disabled="!selectedProfile" @click="saveMemorySettings">保存记忆设置</button>
         </div>
-        <div v-if="savedMsg" class="save-ok">✅ {{ savedMsg }}</div>
-        <div v-if="errorMsg" class="save-error">❌ {{ errorMsg }}</div>
+        <div v-if="savedMsg" class="save-ok"><McIcon name="success" :size="13" />{{ savedMsg }}</div>
+        <div v-if="errorMsg" class="save-error"><McIcon name="error" :size="13" />{{ errorMsg }}</div>
         <div class="separator"></div>
         <div class="toggle-row">
           <div><div class="toggle-label">详细日志</div><div class="toggle-desc">输出工具调用详情</div></div>
@@ -432,7 +432,7 @@
         </div>
         <div class="separator"></div>
         <div class="quick-actions">
-          <button class="qa-btn danger">⚠️ 强制停止所有 Bot</button>
+          <button class="qa-btn danger icon-button-label"><McIcon name="warning" :size="14" />强制停止所有 Bot</button>
         </div>
       </div>
 
@@ -442,6 +442,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   selectedProfile: { type: Object, default: null },
@@ -477,16 +478,16 @@ const selectedPresetId = ref('');
 const serverPresetForm = reactive({ id: '', name: '', host: '', port: 25565, version: '1.21', auth: 'offline', skinSyncMode: 'skinsrestorer' });
 
 const profileNavItems = [
-  { id: 'bot', icon: '🤖', label: '伙伴配置' },
-  { id: 'character-card', icon: '🪪', label: '角色卡' },
-  { id: 'server', icon: '🌐', label: '服务器连接' },
+  { id: 'bot', iconName: 'bot', label: '伙伴配置' },
+  { id: 'character-card', iconName: 'id-card', label: '角色卡' },
+  { id: 'server', iconName: 'server', label: '服务器连接' },
 ];
 const globalNavItems = [
-  { id: 'llm-configs', icon: '🔑', label: 'LLM Agent 配置' },
-  { id: 'servers', icon: '🌐', label: '服务器配置' },
-  { id: 'hermes', icon: '🧠', label: 'Hermes AI' },
-  { id: 'desktop-pet', icon: '🧍', label: '桌面角色' },
-  { id: 'advanced', icon: '🔧', label: '高级 / 调试' },
+  { id: 'llm-configs', iconName: 'key', label: 'LLM Agent 配置' },
+  { id: 'servers', iconName: 'server', label: '服务器配置' },
+  { id: 'hermes', iconName: 'brain', label: 'Hermes AI' },
+  { id: 'desktop-pet', iconName: 'character', label: '桌面角色' },
+  { id: 'advanced', iconName: 'tool', label: '高级 / 调试' },
 ];
 const navItems = props.scope === 'global' ? globalNavItems : profileNavItems;
 
@@ -1010,11 +1011,12 @@ watch(() => props.initialSection, section => {
 }
 .snav-item:hover { color: #e7e3d4; background: #15170f; }
 .snav-item.active { color: #e7e3d4; background: #1b1e14; }
-.snav-icon { font-size: 13px; flex-shrink: 0; }
+.snav-icon { flex-shrink: 0; }
 
 /* Content */
 .settings-content { flex: 1; overflow-y: auto; padding: 24px 28px; }
 .settings-section h3 { font-size: 15px; color: #e7e3d4; margin-bottom: 4px; }
+.icon-heading { display: flex; align-items: center; gap: 7px; }
 .desc { font-size: 12px; color: #7e836e; margin-bottom: 14px; }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1088,13 +1090,15 @@ watch(() => props.initialSection, section => {
 .qa-btn:hover { color: #e7e3d4; border-color: #7e836e; }
 .qa-btn.active { color: #7cc24e; border-color: #7cc24e44; background: #1b2e14; }
 .qa-btn.danger { color: #d8503c; border-color: #d8503c33; }
+.icon-button-label { display: inline-flex; align-items: center; gap: 6px; }
 
 .form-actions { display: flex; gap: 8px; margin-top: 16px; }
 .btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 12px; cursor: pointer; font-weight: 500; }
 .btn-primary { background: #4c7a2a; color: #fff; }
 .btn-ghost { background: transparent; border: 1px solid #3a4030; color: #7e836e; }
-.save-ok { margin-top: 8px; font-size: 11px; color: #5d9c3c; }
-.save-error { margin-top: 8px; font-size: 11px; color: #d8503c; }
+.save-ok, .save-error { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; }
+.save-ok { color: #5d9c3c; }
+.save-error { color: #d8503c; }
 .warn-box {
   margin-bottom: 12px; padding: 9px 12px; border: 1px solid #b8893a;
   background: #2c2410; color: #e6c98a; font-size: 12px;

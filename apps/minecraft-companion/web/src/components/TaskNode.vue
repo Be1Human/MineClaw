@@ -15,7 +15,9 @@
       <span v-if="task.parentId" class="subtask-label">子步骤</span>
     </button>
     <!-- FEAT-WEBUI-08 · 当前能力（NPC 行为，实时） -->
-    <div class="task-phase" v-if="task.progress && task.progress.phase">⚙ {{ task.progress.phase }}</div>
+    <div class="task-phase" v-if="task.progress && task.progress.phase">
+      <McIcon name="tool" :size="13" /> {{ task.progress.phase }}
+    </div>
     <!-- Progress bar / 进度文字（采集 have/count、合成步骤等） -->
     <div class="progress-bar-wrap" v-if="progressText !== ''">
       <div class="progress-track" v-if="progressValue !== null">
@@ -39,6 +41,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   task: { type: Object, required: true },

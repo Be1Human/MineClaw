@@ -1,13 +1,13 @@
 <template>
   <div class="v2-panel">
     <div class="panel-header">
-      <span class="panel-title">⚡ v2.0 运行时</span>
+      <span class="panel-title"><McIcon name="activity" :size="16" /> v2.0 运行时</span>
       <span class="tick-badge">tick #{{ status.tick ?? '...' }}</span>
     </div>
 
     <!-- World State -->
     <div class="section" v-if="status.world">
-      <div class="section-title">🌍 世界状态</div>
+      <div class="section-title"><McIcon name="world" :size="13" /> 世界状态</div>
       <div class="info-grid">
         <div class="info-item">
           <span class="label">血量</span>
@@ -19,26 +19,32 @@
         </div>
         <div class="info-item">
           <span class="label">时间</span>
-          <span class="value">{{ status.world.environment?.isDay ? '☀️ 白天' : '🌙 夜晚' }}</span>
+          <span class="value value-with-icon">
+            <McIcon :name="status.world.environment?.isDay ? 'day' : 'night'" :size="13" />
+            {{ status.world.environment?.isDay ? '白天' : '夜晚' }}
+          </span>
         </div>
       </div>
     </div>
 
-    <!-- 固化技能（FEAT-CROSS-07 R10）：fast 节点 + ⚡置信度 -->
+    <!-- 固化技能（FEAT-CROSS-07 R10）：fast 节点与置信度 -->
     <div class="section" v-if="status.learnedStrategies?.length">
-      <div class="section-title">🧠 固化技能</div>
+      <div class="section-title"><McIcon name="brain" :size="13" /> 固化技能</div>
       <div v-for="s in status.learnedStrategies" :key="s.id" class="strategy-item" :class="'strat-' + s.state">
         <span class="strategy-name">{{ s.name }}</span>
-        <span class="strategy-conf">⚡{{ Math.round((s.confidence ?? 0) * 100) }}%</span>
-        <span class="strategy-state">{{ stateLabel(s.state) }}<template v-if="s.ownerVerdict === 'rejected'"> · 主人禁用</template></span>
+        <span class="strategy-conf"><McIcon name="lightning" :size="12" />{{ Math.round((s.confidence ?? 0) * 100) }}%</span>
+        <span class="strategy-state">
+          <McIcon :name="stateMeta(s.state).iconName" :size="12" />
+          {{ stateMeta(s.state).label }}<template v-if="s.ownerVerdict === 'rejected'"> · 主人禁用</template>
+        </span>
       </div>
     </div>
 
     <!-- Supervisor -->
     <div class="section" v-if="status.supervisor">
-      <div class="section-title">🛡 Supervisor</div>
+      <div class="section-title"><McIcon name="shield" :size="13" /> Supervisor</div>
       <div v-if="status.supervisor.suspendedByDanger?.length" class="alert-row">
-        ⚠️ 危险暂停: {{ status.supervisor.suspendedByDanger.join(', ') }}
+        <McIcon name="warning" :size="13" /> 危险暂停: {{ status.supervisor.suspendedByDanger.join(', ') }}
       </div>
       <div v-if="status.supervisor.recentDiagnoses?.length" class="diag-row">
         诊断: {{ status.supervisor.recentDiagnoses[status.supervisor.recentDiagnoses.length - 1]?.category }}
@@ -48,6 +54,8 @@
 </template>
 
 <script setup>
+import McIcon from './icons/McIcon.vue';
+
 defineProps({
   status: {
     type: Object,
@@ -55,8 +63,13 @@ defineProps({
   }
 });
 
-function stateLabel(state) {
-  return { candidate: '🟡候选', trusted: '🟢可信', blacklisted: '⛔拉黑', disabled: '🚫禁用' }[state] || state;
+function stateMeta(state) {
+  return {
+    candidate: { iconName: 'status-dot', label: '候选' },
+    trusted: { iconName: 'success', label: '可信' },
+    blacklisted: { iconName: 'blocked', label: '拉黑' },
+    disabled: { iconName: 'disabled', label: '禁用' },
+  }[state] || { iconName: 'unknown', label: state };
 }
 </script>
 
@@ -77,7 +90,7 @@ function stateLabel(state) {
   margin-bottom: 12px;
 }
 
-.panel-title { font-weight: 600; font-size: 14px; }
+.panel-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
 
 .tick-badge {
   background: #20241a;
@@ -90,21 +103,22 @@ function stateLabel(state) {
 }
 
 .section { margin-bottom: 10px; }
-.section-title { color: #7d8590; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.section-title { display: flex; align-items: center; gap: 5px; color: #7d8590; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 
 .info-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .info-item { display: flex; flex-direction: column; min-width: 80px; }
 .label { color: #7d8590; font-size: 11px; }
 .value { font-weight: 500; }
+.value-with-icon { display: inline-flex; align-items: center; gap: 4px; }
 
 .strategy-item { display: flex; gap: 8px; align-items: center; padding: 3px 8px; border-radius: 4px; margin-bottom: 2px; background: #20241a; }
 .strategy-name { flex: 1; font-weight: 500; }
-.strategy-conf { font-family: var(--mc-font-mono); font-size: 12px; color: #7cc24e; }
-.strategy-state { font-size: 11px; color: #7d8590; }
+.strategy-conf { display: inline-flex; align-items: center; gap: 2px; font-family: var(--mc-font-mono); font-size: 12px; color: #7cc24e; }
+.strategy-state { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: #7d8590; }
 .strat-trusted { border-left: 3px solid #4c7a2a; }
 .strat-candidate { border-left: 3px solid #e3b341; }
 .strat-blacklisted, .strat-disabled { border-left: 3px solid #7e836e; opacity: 0.6; }
 
-.alert-row { color: #e3b341; padding: 4px 0; }
+.alert-row { display: flex; align-items: center; gap: 5px; color: #e3b341; padding: 4px 0; }
 .diag-row { color: #7d8590; font-size: 11px; padding: 2px 0; }
 </style>

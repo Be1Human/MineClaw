@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MineClaw Pixel Icon Catalog</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0c0e08; color: #e7e3d4; }
+    main { max-width: 1180px; margin: 0 auto; padding: 28px; }
+    h1 { margin: 0; font: 700 20px/1.4 monospace; letter-spacing: .06em; }
+    p { color: #9aa08c; margin: 8px 0 22px; }
+    .catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 10px; }
+    .card { border: 2px solid #303829; background: #15170f; padding: 12px; min-height: 116px; }
+    .card strong { display: block; color: #cdd2c0; font: 600 12px/1.4 monospace; word-break: break-all; }
+    .sizes { display: flex; align-items: end; gap: 12px; min-height: 62px; padding-top: 12px; color: #9dcc7d; }
+    .sample { display: grid; justify-items: center; gap: 5px; }
+    .sample span { color: #69705f; font: 10px/1 monospace; }
+    svg { display: block; overflow: visible; shape-rendering: crispEdges; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MINECLAW · PIXEL ICON CATALOG</h1>
+    <p id="summary">正在读取图标注册表…</p>
+    <section id="catalog" class="catalog" aria-label="MineClaw 图标目录"></section>
+  </main>
+  <script type="module">
+    import { iconDefinitions, iconNames } from '/apps/minecraft-companion/web/src/icons/iconDefinitions.js';
+
+    const sizes = [12, 16, 20, 24];
+    const namespace = 'http://www.w3.org/2000/svg';
+    const catalog = document.querySelector('#catalog');
+
+    for (const name of iconNames) {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.dataset.icon = name;
+      const title = document.createElement('strong');
+      title.textContent = name;
+      const row = document.createElement('div');
+      row.className = 'sizes';
+
+      for (const size of sizes) {
+        const sample = document.createElement('div');
+        sample.className = 'sample';
+        const svg = document.createElementNS(namespace, 'svg');
+        svg.setAttribute('viewBox', iconDefinitions[name].viewBox);
+        svg.setAttribute('width', size);
+        svg.setAttribute('height', size);
+        svg.setAttribute('aria-hidden', 'true');
+        for (const layer of iconDefinitions[name].layers) {
+          const path = document.createElementNS(namespace, 'path');
+          path.setAttribute('d', layer.d);
+          path.setAttribute('fill', layer.tone === 'accent' ? '#e0a52f' : 'currentColor');
+          if (layer.fillRule) path.setAttribute('fill-rule', layer.fillRule);
+          svg.append(path);
+        }
+        const label = document.createElement('span');
+        label.textContent = `${size}px`;
+        sample.append(svg, label);
+        row.append(sample);
+      }
+      card.append(title, row);
+      catalog.append(card);
+    }
+
+    document.querySelector('#summary').textContent = `${iconNames.length} 个语义名 · 16×16 整数网格 · 12/16/20/24px 实际渲染`;
+  </script>
+</body>
+</html>

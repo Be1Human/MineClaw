@@ -3,7 +3,7 @@
     <!-- 頭部狀態條 -->
     <div class="brain-header">
       <div class="brain-title-row">
-        <h2>🧠 Hermes 大脑</h2>
+        <h2><McIcon name="brain" :size="16" /> Hermes 大脑</h2>
         <div class="brain-model-badge" :class="{ alive: status.alive }">
           <span class="model-dot"></span>
           <span class="model-name">{{ status.model || '未配置' }}</span>
@@ -20,7 +20,7 @@
       <!-- 1. 记忆 -->
       <div class="brain-panel">
         <div class="panel-title">
-          <span>💾 记忆</span>
+          <span class="panel-label"><McIcon name="memory" :size="14" /> 记忆</span>
           <span class="panel-count">{{ memories.length }} 条</span>
         </div>
         <div class="panel-body">
@@ -42,7 +42,7 @@
       <!-- 2. 技能 -->
       <div class="brain-panel">
         <div class="panel-title">
-          <span>🛠 技能</span>
+          <span class="panel-label"><McIcon name="skill" :size="14" /> 技能</span>
           <span class="panel-count">{{ skills.length }} 个</span>
         </div>
         <div class="panel-body">
@@ -58,7 +58,7 @@
       <!-- 3. 实时决策流 -->
       <div class="brain-panel">
         <div class="panel-title">
-          <span>⚡ 实时决策流</span>
+          <span class="panel-label"><McIcon name="activity" :size="14" /> 实时决策流</span>
           <span class="panel-count" :class="{ live: agentSteps.length > 0 }">
             {{ agentSteps.length > 0 ? '● 活跃' : '空闲' }}
           </span>
@@ -76,7 +76,7 @@
       <!-- 4. 会话历史 -->
       <div class="brain-panel">
         <div class="panel-title">
-          <span>📜 会话历史</span>
+          <span class="panel-label"><McIcon name="history" :size="14" /> 会话历史</span>
           <span class="panel-count">{{ sessions.length }} 次</span>
         </div>
         <div class="panel-body">
@@ -97,6 +97,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   agentSteps: { type: Array, default: () => [] },
@@ -163,7 +164,7 @@ onUnmounted(() => clearInterval(timer));
   background: #15170f; flex-shrink: 0;
 }
 .brain-title-row { display: flex; align-items: center; gap: 12px; }
-.brain-title-row h2 { font-size: 15px; color: #e7e3d4; }
+.brain-title-row h2 { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; color: #e7e3d4; }
 .brain-subtitle { font-size: 11px; color: #7e836e; margin-top: 3px; }
 
 .brain-model-badge {
@@ -201,6 +202,7 @@ onUnmounted(() => clearInterval(timer));
   border-bottom: 1px solid #20241a;
   background: #0c0e08; flex-shrink: 0;
 }
+.panel-label { display: inline-flex; align-items: center; gap: 5px; }
 .panel-count { font-size: 10px; color: #7e836e; font-weight: 400; }
 .panel-count.live { color: #5d9c3c; }
 

@@ -19,9 +19,9 @@
       <!-- 工具条 -->
       <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
         <button v-for="t in toolList" :key="t.id" @click="tool = t.id" :title="t.name"
-          :style="toolBtnStyle(t.id)">{{ t.icon }}</button>
+          :style="toolBtnStyle(t.id)"><McIcon :name="t.iconName" :size="14" /></button>
         <span style="width:1px; height:22px; background:#0c0e08; margin:0 2px;"></span>
-        <button @click="undo" :disabled="!history.length" title="撤销" :style="toolBtnStyle('_undo')">↶</button>
+        <button @click="undo" :disabled="!history.length" title="撤销" aria-label="撤销" :style="toolBtnStyle('_undo')"><McIcon name="undo" :size="14" /></button>
         <input type="color" v-model="color" title="颜色"
           style="width:34px; height:30px; padding:0; border:2px solid #0c0e08; background:#0c0e08; cursor:pointer;" />
       </div>
@@ -41,8 +41,8 @@
           style="width:150px; padding:7px 9px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:12.5px;" />
         <button @click="fromMojang()" :disabled="mojangLoading" :style="fileBtnStyle">{{ mojangLoading ? '拉取中…' : '拉取' }}</button>
         <span style="width:1px; height:22px; background:#0c0e08; margin:0 2px;"></span>
-        <button @click="openSite('https://namemc.com/minecraft-skins')" :style="linkBtnStyle" title="NameMC · 找用户名 / 浏览热门皮肤">找用户名 ↗</button>
-        <button @click="openSite('https://www.minecraftskins.com')" :style="linkBtnStyle" title="皮肤站 · 下载 PNG 再用上传">下载皮肤 ↗</button>
+        <button @click="openSite('https://namemc.com/minecraft-skins')" :style="[linkBtnStyle, { display:'inline-flex', alignItems:'center', gap:'5px' }]" title="NameMC · 找用户名 / 浏览热门皮肤">找用户名 <McIcon name="external-link" :size="12" /></button>
+        <button @click="openSite('https://www.minecraftskins.com')" :style="[linkBtnStyle, { display:'inline-flex', alignItems:'center', gap:'5px' }]" title="皮肤站 · 下载 PNG 再用上传">下载皮肤 <McIcon name="external-link" :size="12" /></button>
       </div>
       <!-- 最近用户名 -->
       <div v-if="recentNames.length" style="display:flex; gap:4px; flex-wrap:wrap;">
@@ -76,6 +76,7 @@ import { ref, onMounted, watch } from 'vue';
 import { loadSkinToCanvas, inferModelType } from 'skinview-utils';
 import McCharacter from './McCharacter.vue';
 import McHead from './McHead.vue';
+import McIcon from './icons/McIcon.vue';
 import defaultSkin from '../assets/skins/07-lanyi.png';
 
 const props = defineProps({
@@ -94,10 +95,10 @@ const hint = ref('');
 const history = ref([]); // ImageData 快照栈
 
 const toolList = [
-  { id: 'pen', name: '画笔', icon: '✎' },
-  { id: 'fill', name: '填充', icon: '▣' },
-  { id: 'pick', name: '吸色', icon: '⊙' },
-  { id: 'erase', name: '橡皮', icon: '⌫' },
+  { id: 'pen', name: '画笔', iconName: 'pen' },
+  { id: 'fill', name: '填充', iconName: 'fill' },
+  { id: 'pick', name: '吸色', iconName: 'eyedropper' },
+  { id: 'erase', name: '橡皮', iconName: 'erase' },
 ];
 const palette = ['#e2b48c','#4a3426','#5c9c3c','#3c4870','#3a322e','#d8503c','#e0a52f','#7cc24e',
   '#ffffff','#000000','#8a8a8a','#cdd2c0','#5b8cff','#22c55e','#a07e62','#5b5560'];
@@ -288,7 +289,7 @@ async function fromMojang(nameArg) {
 
 function save() {
   emit('save', { skinTexture: tex.toDataURL('image/png'), skinModel: model.value });
-  hint.value = '已保存 ✓';
+  hint.value = '已保存';
 }
 
 onMounted(() => {

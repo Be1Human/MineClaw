@@ -1,7 +1,7 @@
 <template>
   <div class="critic-panel">
     <div class="panel-header">
-      <span class="panel-title">&#9878; Critic 评测</span>
+      <span class="panel-title"><McIcon name="critic" :size="16" /> Critic 评测</span>
       <span class="panel-count">{{ verdicts.length }} 条</span>
     </div>
     <div v-if="verdicts.length === 0" class="panel-empty">暂无评测记录</div>
@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import { defineProps } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   verdicts: {
@@ -77,6 +77,9 @@ function formatTime(ts) {
 }
 
 .panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 600;
   font-size: 14px;
 }

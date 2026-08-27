@@ -1,7 +1,7 @@
 <template>
   <div class="task-tree">
     <div v-if="showHeader" class="tree-header">
-      <span class="tree-title">&#128203; 任务树</span>
+      <span class="tree-title"><McIcon name="task" :size="16" /> 任务树</span>
       <span class="tree-count">{{ rootTasks.length }} 进行中</span>
       <span v-if="archivedCount > 0" class="tree-archived" :title="'已结束 ' + archivedCount + ' 个（已存档，不在此展示）'">归档 {{ archivedCount }}</span>
     </div>
@@ -15,6 +15,7 @@
 <script setup>
 import { computed } from 'vue';
 import TaskNode from './TaskNode.vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   tasks: {
@@ -55,6 +56,9 @@ function childrenOf(parentId) {
 }
 
 .tree-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 600;
   font-size: 14px;
 }

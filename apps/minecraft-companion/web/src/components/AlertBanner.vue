@@ -2,7 +2,7 @@
   <div v-if="hasAlerts" class="alert-banner-wrap">
     <!-- Danger banner -->
     <div class="alert-banner" v-if="alerts.suspendedByDanger && alerts.suspendedByDanger.length > 0">
-      <span class="alert-icon">&#9888;</span>
+      <McIcon class="alert-icon" name="warning" :size="16" />
       <span class="alert-text">
         危险暂停中：{{ alerts.suspendedByDanger.join('、') }}
       </span>
@@ -24,7 +24,8 @@
 </template>
 
 <script setup>
-import { computed, defineProps } from 'vue';
+import { computed } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   alerts: {
@@ -58,7 +59,6 @@ const hasAlerts = computed(() => {
 }
 
 .alert-icon {
-  font-size: 16px;
   color: #d8503c;
   flex-shrink: 0;
 }

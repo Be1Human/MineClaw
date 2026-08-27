@@ -6,14 +6,14 @@
     <div class="hud hud-top-left" v-if="worldState && worldState.self">
       <div class="hud-title">BOT 状态</div>
       <div class="hud-row">
-        <span class="hud-icon health">&#9829;</span>
+        <McIcon class="hud-icon health" name="health" :size="14" />
         <span class="hud-value">{{ worldState.self.health }}/{{ worldState.self.maxHealth }}</span>
         <div class="hud-bar">
           <div class="hud-bar-fill health" :style="{ width: (worldState.self.health / worldState.self.maxHealth * 100) + '%' }"></div>
         </div>
       </div>
       <div class="hud-row">
-        <span class="hud-icon food">&#127830;</span>
+        <McIcon class="hud-icon food" name="food" :size="14" />
         <span class="hud-value">{{ worldState.self.food }}/20</span>
         <div class="hud-bar">
           <div class="hud-bar-fill food" :style="{ width: (worldState.self.food / 20 * 100) + '%' }"></div>
@@ -39,14 +39,14 @@
       <div class="hud-row" v-if="worldState.navigation && worldState.navigation.hasGoal">
         <span class="hud-label nav-label">NAV</span>
         <span class="hud-value nav-value" v-if="worldState.navigation.goalPosition">
-          &#10132; {{ fmtPos(worldState.navigation.goalPosition) }}
+          <McIcon name="goal" :size="12" /> {{ fmtPos(worldState.navigation.goalPosition) }}
         </span>
         <span class="hud-value nav-value" v-else>导航中...</span>
       </div>
       <div class="hud-row" v-if="worldState.navigation && worldState.navigation.plannedRoute">
         <span class="hud-label nav-label" :style="{ color: planColor }">PLAN</span>
         <span class="hud-value nav-value plan-rainbow" v-if="isGlobalPlan">
-          🌈 {{ worldState.navigation.plannedRoute.mode }} ·
+          <McIcon name="route" :size="12" /> {{ worldState.navigation.plannedRoute.mode }} ·
           {{ worldState.navigation.plannedRoute.points.length }} 点
         </span>
         <span class="hud-value nav-value" v-else :style="{ color: planColor }">
@@ -83,7 +83,7 @@
 
     <!-- HUD: 左下角 - 威胁警报 -->
     <div class="hud hud-bottom-left" v-if="worldState && worldState.threats.length > 0">
-      <div class="hud-title threat-title">&#9888; 威胁警报</div>
+      <div class="hud-title threat-title"><McIcon name="warning" :size="12" /> 威胁警报</div>
       <div v-for="(t, i) in worldState.threats.slice(0, 5)" :key="i"
            class="threat-item" :class="'severity-' + t.severity">
         <span class="threat-severity">{{ t.severity.toUpperCase() }}</span>
@@ -93,7 +93,7 @@
 
     <!-- 无数据状态 -->
     <div class="no-data-overlay" v-if="!worldState">
-      <div class="no-data-icon">&#128065;</div>
+      <McIcon class="no-data-icon" name="eye" :size="56" />
       <div class="no-data-text">等待感知数据...</div>
       <div class="no-data-hint">Bot 上线后将实时渲染三维感知空间</div>
     </div>
@@ -107,6 +107,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PlayerObject } from 'skinview3d';
 import { chunkKeyOf, blockKey as bkey, takeDirtyChunks, selectEvictions } from '../lib/chunkGrid.js';
 import defaultSkin from '../assets/skins/07-lanyi.png';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   worldState: { type: Object, default: null },
@@ -1373,7 +1374,7 @@ onUnmounted(() => {
 }
 
 .hud-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #cdd2c0; }
-.hud-icon { font-size: 14px; width: 18px; text-align: center; }
+.hud-icon { width: 18px; flex-shrink: 0; }
 .hud-icon.health { color: #d8503c; }
 .hud-icon.food { color: #e0a52f; }
 
@@ -1386,7 +1387,7 @@ onUnmounted(() => {
 .hud-value.threat { color: #d8503c; font-weight: 700; }
 .hud-value.mono { font-family: var(--mc-font-mono); font-size: 11px; }
 .nav-label { color: #00e5ff; }
-.nav-value { color: #00e5ff; }
+.nav-value { display: inline-flex; align-items: center; gap: 4px; color: #00e5ff; }
 .plan-rainbow {
   background: linear-gradient(90deg, #ff0040, #ff8c00, #ffd700, #00e676, #00b0ff, #7c4dff, #ff4081);
   background-size: 200% 100%;
@@ -1410,7 +1411,7 @@ onUnmounted(() => {
 .hud-top-right { top: 12px; right: 12px; min-width: 140px; }
 .hud-bottom-left { bottom: 12px; left: 12px; max-width: 300px; }
 
-.threat-title { color: #d8503c !important; border-bottom-color: rgba(248, 81, 73, 0.3) !important; }
+.threat-title { display: flex; align-items: center; gap: 5px; color: #d8503c !important; border-bottom-color: rgba(248, 81, 73, 0.3) !important; }
 .threat-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
 .threat-severity { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.5px; }
 .severity-critical .threat-severity { background: #d8503c; color: #fff; }
@@ -1424,7 +1425,7 @@ onUnmounted(() => {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: rgba(10, 14, 20, 0.9); z-index: 20;
 }
-.no-data-icon { font-size: 56px; opacity: 0.3; margin-bottom: 12px; }
+.no-data-icon { color: #7e836e; opacity: 0.3; margin-bottom: 12px; }
 .no-data-text { font-size: 16px; color: #7e836e; font-weight: 500; }
 .no-data-hint { font-size: 12px; color: #6b6f5e; margin-top: 6px; }
 </style>

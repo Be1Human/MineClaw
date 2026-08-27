@@ -10,7 +10,7 @@
     <div v-if="!inv" class="inv-empty">暂无背包数据（bot 未上线或未感知）</div>
     <template v-else>
       <div class="inv-head">
-        <span>🎒 背包</span>
+        <span class="inv-title"><McIcon name="backpack" :size="16" /> 背包</span>
         <span class="inv-meta">{{ inv.items?.length || 0 }} 占用 · {{ inv.freeSlots ?? '?' }} 空格</span>
       </div>
 
@@ -62,6 +62,7 @@
 
 <script setup>
 import { computed, reactive } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   worldState: { type: Object, default: null },
@@ -129,6 +130,7 @@ function catColor(name) {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #e7e3d4;
 }
+.inv-title { display: inline-flex; align-items: center; gap: 6px; }
 .inv-meta { color: #7e836e; font-weight: 400; font-size: 11px; }
 .inv-held { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .held-label { font-size: 11px; color: #7e836e; }

@@ -1,7 +1,7 @@
 <template>
   <div class="agent-loop-panel">
     <div v-if="steps.length === 0" class="empty-state">
-      <div class="empty-icon">🧠</div>
+      <McIcon class="empty-icon" name="brain" :size="32" />
       <p>等待轨迹更新...</p>
     </div>
     <div v-else class="step-list" ref="stepListEl">
@@ -11,7 +11,7 @@
         class="step-item"
         :class="norm(step.type)"
       >
-        <div class="step-icon">{{ getIcon(step.type) }}</div>
+        <McIcon class="step-icon" :name="getIconName(step.type)" :size="16" />
         <div class="step-content">
           <div class="step-header">
             <span class="step-type">{{ getLabel(step.type) }}</span>
@@ -29,6 +29,7 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue';
+import McIcon from './icons/McIcon.vue';
 
 const props = defineProps({
   steps: { type: Array, default: () => [] }
@@ -60,13 +61,13 @@ function norm(type) {
   return 'other';
 }
 
-function getIcon(type) {
+function getIconName(type) {
   const map = {
-    turn_start: '▶', thinking: '💭', tool_call: '🔧', tool_result: '✅',
-    tool_error: '❌', turn_end: '🏁', gather: '⛏', craft: '🔨',
-    task: '📋', door: '🚪', stuck: '🪤', critic: '⚖',
+    turn_start: 'play', thinking: 'thinking', tool_call: 'tool', tool_result: 'success',
+    tool_error: 'error', turn_end: 'finish', gather: 'gather', craft: 'craft',
+    task: 'task', door: 'door', stuck: 'stuck', critic: 'critic',
   };
-  return map[norm(type)] || '·';
+  return map[norm(type)] || 'activity';
 }
 
 function getLabel(type) {
@@ -85,10 +86,10 @@ function getBody(step) {
     case 'l7.thought': return d.thought || '';
     case 'l7.turn_finished': return d.message || '';
     case 'l7.tool_error': return d.error || '';
-    case 'gather.progress': return `${d.material} ${d.have}/${d.count}${d.done ? ' ✓' : ''}`;
+    case 'gather.progress': return `${d.material} ${d.have}/${d.count}${d.done ? ' · 完成' : ''}`;
     case 'provision.step': return `${d.target}：${d.step}`;
     case 'provision.subtask': return `派生 ${d.kind} ${d.material || d.item || ''}`;
-    case 'provision.done': return `${d.item}×${d.count} ✓`;
+    case 'provision.done': return `${d.item}×${d.count} · 完成`;
     case 'atomic.craft.success': return `${d.item}×${d.count}`;
     case 'atomic.craft.fail': return `${d.item} 失败：${d.error || ''}`;
     case 'task.created': return `新建 ${d.kind || ''}`;
@@ -142,7 +143,7 @@ function formatTime(ts) {
   justify-content: center;
   color: #6b6f5e;
 }
-.empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+.empty-icon { margin-bottom: 8px; color: #9a78c4; opacity: 0.5; }
 
 .step-list {
   flex: 1;
@@ -173,7 +174,7 @@ function formatTime(ts) {
 .step-item.critic { background: #1b1e14; border-left: 2px solid #b59ad6; }
 .step-item.other { background: #15170f; border-left: 2px solid #3a4030; }
 
-.step-icon { flex-shrink: 0; width: 16px; text-align: center; }
+.step-icon { flex-shrink: 0; width: 16px; color: #9aa38b; }
 .step-content { flex: 1; min-width: 0; }
 .step-header { display: flex; justify-content: space-between; align-items: center; }
 .step-type { font-weight: 600; color: #e7e3d4; font-size: 10px; text-transform: uppercase; }
