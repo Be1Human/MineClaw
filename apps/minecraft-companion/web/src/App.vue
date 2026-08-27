@@ -200,78 +200,78 @@
       </main>
 
       <!-- ---------- RIGHT · 控制面板 ---------- -->
-      <aside class="play-control" style="display:flex; flex-direction:column; min-height:0; overflow-y:auto; padding:16px; background:#1b1e14;">
+      <aside class="play-control partner-inspector">
 
         <template v-if="selectedProfile">
         <!-- header -->
-        <div style="display:flex; align-items:flex-start; gap:12px;">
-          <div style="position:relative; flex:none; width:50px; height:50px; background:#0f110a; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
+        <div class="inspector-header">
+          <div class="inspector-avatar">
             <McHead :texture="selectedSkinTexture" :size="44" />
           </div>
-          <div style="flex:1; min-width:0;">
-            <div style="font-weight:900; font-size:19px; color:#f0eddd; text-shadow:1px 1px 0 #0c0e08;">{{ selectedProfile.name }}</div>
-            <div style="display:flex; align-items:center; gap:7px; margin-top:4px;">
-              <span :style="{ width:'9px', height:'9px', background: statusDot(selectedProfile.id), boxShadow:'1px 1px 0 rgba(0,0,0,0.4)' }"></span>
-              <span style="font-size:12.5px; color:#7e836e;">{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</span>
+          <div class="inspector-identity">
+            <div class="inspector-name">{{ selectedProfile.name }}</div>
+            <div class="inspector-presence">
+              <span :style="{ background: statusDot(selectedProfile.id) }"></span>
+              <small>{{ getStatusLabel(currentFullStatus?.status, currentFullStatus) }}</small>
             </div>
           </div>
-          <div style="display:flex; gap:8px;">
-            <button v-if="!inGame" @click="joinGame" :disabled="!brainReady" style="padding:9px 16px; cursor:pointer; background:#4c9a2a; border:2px solid #2b5e16; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3), 0 3px 0 #214b13; color:#fff; font-weight:700; font-size:13.5px; text-shadow:1px 1px 0 rgba(0,0,0,0.4); white-space:nowrap;">进游戏</button>
-            <button v-else @click="leaveGame" style="padding:9px 16px; cursor:pointer; background:#3a2420; border:2px solid #1a0f0d; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.35); color:#f0b4b4; font-weight:700; font-size:13.5px; white-space:nowrap;">退游戏</button>
-            <button @click="deleteProfile(selectedProfile.id)" style="padding:9px 14px; cursor:pointer; background:#3a2420; border:2px solid #1a0f0d; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.35); color:#d99; font-weight:700; font-size:13.5px; white-space:nowrap;">删除</button>
+          <div class="inspector-actions">
+            <button v-if="!inGame" class="inspector-button primary" @click="joinGame" :disabled="!brainReady">进游戏</button>
+            <button v-else class="inspector-button danger" @click="leaveGame">退游戏</button>
+            <button class="inspector-button ghost danger" @click="deleteProfile(selectedProfile.id)" aria-label="删除伙伴"><McIcon name="trash" :size="13" /></button>
           </div>
         </div>
 
         <!-- HUD vitals -->
-        <div v-if="inGame" style="margin-top:14px; padding:13px 14px; background:#0f110a; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); display:flex; flex-direction:column; gap:11px;">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <span style="width:34px; flex:none; font-family:var(--mc-font-pixel); font-size:9px; color:#ff6b6b; text-shadow:1px 1px 0 #000;">HP</span>
-            <div style="flex:1; display:flex; gap:3px;">
+        <div v-if="inGame" class="inspector-vitals">
+          <div class="vital-row health">
+            <span class="vital-label">HP</span>
+            <div class="vital-cells">
               <McIcon v-for="(c, i) in hpCells" :key="i" name="health" :size="16" :style="{ color: c.on ? '#ff4d4d' : '#5a1f1c', '--mc-icon-accent': c.on ? '#ff8a8a' : '#3a1512' }" />
             </div>
-            <span style="flex:none; font-family:var(--mc-font-mono); font-size:17px; color:#cdd2c0;">{{ hpLabel }}</span>
+            <span class="vital-value">{{ hpLabel }}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <span style="width:34px; flex:none; font-family:var(--mc-font-pixel); font-size:9px; color:#e0a52f; text-shadow:1px 1px 0 #000;">FD</span>
-            <div style="flex:1; display:flex; gap:3px;">
+          <div class="vital-row food">
+            <span class="vital-label">FD</span>
+            <div class="vital-cells">
               <span v-for="(c, i) in fdCells" :key="i" style="position:relative; flex:none; width:16px; height:15px; display:inline-block;">
                 <span :style="{ position:'absolute', right:0, bottom:0, width:'12px', height:'12px', borderRadius:'7px 7px 6px 3px', background: c.on ? '#a9772f' : '#3a2a1c', boxShadow:'inset -2px -2px 0 rgba(0,0,0,0.35), 0 0 0 1px #000' }"></span>
                 <span :style="{ position:'absolute', left:0, top:'3px', width:'7px', height:'5px', borderRadius:'3px', background: c.on ? '#cdd2c0' : '#2a2018', boxShadow:'0 0 0 1px #000' }"></span>
               </span>
             </div>
-            <span style="flex:none; font-family:var(--mc-font-mono); font-size:17px; color:#cdd2c0;">{{ fdLabel }}</span>
+            <span class="vital-value">{{ fdLabel }}</span>
           </div>
         </div>
 
         <!-- chips -->
-        <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
-          <div style="display:flex; align-items:center; gap:7px; padding:7px 11px; background:#20241a; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05);">
-            <span style="font-size:11px; color:#7e836e;">连接</span>
-            <span :style="{ display:'flex', alignItems:'center', justifyContent:'center', width:'14px', height:'14px', background: connOk ? '#1d3a20' : '#3a201d', color: connOk ? '#8ee06a' : '#ff8a8a' }"><McIcon :name="connOk ? 'connected' : 'disconnected'" :size="10" /></span>
-            <span :style="{ fontSize:'12px', fontWeight:700, color: connOk ? '#8ee06a' : '#ff8a8a' }">{{ connOk ? '已接' : '未接' }}</span>
+        <div class="inspector-chips">
+          <div class="status-chip" :class="{ positive: connOk, negative: !connOk }">
+            <span>连接</span>
+            <McIcon :name="connOk ? 'connected' : 'disconnected'" :size="10" />
+            <strong>{{ connOk ? '已接' : '未接' }}</strong>
           </div>
-          <div style="display:flex; align-items:center; gap:7px; padding:7px 11px; background:#20241a; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05);">
-            <span style="font-size:11px; color:#7e836e;">动作</span><span style="font-size:12px; font-weight:700; color:#c4c8b6;">{{ currentFullStatus?.currentBehavior || '空闲' }}</span>
+          <div class="status-chip">
+            <span>动作</span><strong>{{ currentFullStatus?.currentBehavior || '空闲' }}</strong>
           </div>
-          <div style="display:flex; align-items:center; gap:7px; padding:7px 11px; background:#20241a; border:2px solid #0d0f0a; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.05);">
-            <span style="font-size:11px; color:#7e836e;">活动</span><span style="font-size:12px; font-weight:700; color:#c4c8b6;">{{ currentFullStatus?.lastActivity || '—' }}</span>
+          <div class="status-chip activity-chip">
+            <span>活动</span><strong>{{ currentFullStatus?.lastActivity || '—' }}</strong>
           </div>
         </div>
 
         <!-- problem -->
-        <div v-if="inGame && !connOk && currentFullStatus?.serverAddress" style="margin-top:10px; display:flex; align-items:center; gap:9px; padding:9px 12px; background:#2c2410; border:2px solid #5a4410; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.06);">
-          <span style="display:flex; align-items:center; justify-content:center; flex:none; width:16px; height:16px; background:#e0a52f; color:#1c1606;"><McIcon name="warning" :size="12" /></span>
-          <span style="font-size:11.5px; color:#e6c98a;">问题 · 服务器</span>
-          <span style="font-family:var(--mc-font-mono); font-size:15px; color:#f0c259; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ currentFullStatus.serverAddress }}</span>
+        <div v-if="inGame && !connOk && currentFullStatus?.serverAddress" class="inspector-problem">
+          <McIcon name="warning" :size="12" />
+          <span>问题 · 服务器</span>
+          <strong>{{ currentFullStatus.serverAddress }}</strong>
         </div>
 
         <!-- tabs -->
-        <div style="margin-top:16px; display:flex; gap:5px; flex-wrap:wrap;">
-          <div v-for="t in tabs" :key="t.id" class="control-tab" :class="{ active: ctrlTab === t.id }" @click="ctrlTab = t.id" :style="tabStyle(t.id)">{{ t.name }}</div>
-        </div>
+        <nav class="control-tabs" aria-label="伙伴详情">
+          <button v-for="t in tabs" :key="t.id" class="control-tab" :class="{ active: ctrlTab === t.id }" @click="ctrlTab = t.id">{{ t.name }}</button>
+        </nav>
 
         <!-- content -->
-        <div style="margin-top:16px; display:flex; flex-direction:column; gap:16px; flex:1; min-height:0;">
+        <div class="inspector-content">
 
           <!-- 角色交流：状态与聊天合并 -->
           <div v-if="ctrlTab === 'status'" class="interaction-panel">
@@ -305,27 +305,23 @@
 
             <div class="chat-panel interaction-chat">
               <div ref="messagesEl" class="interaction-messages">
-                <div v-if="chatHistoryLoading" style="text-align:center; color:#7e836e; font-size:12.5px; padding:24px 0;">正在加载最近聊天记录…</div>
-                <div v-else-if="messages.length === 0" style="text-align:center; color:#7e836e; font-size:12.5px; padding:24px 0;">还没有聊天记录，直接和伙伴说句话吧</div>
-                <div v-for="(msg, i) in messages" :key="i" :style="{ display:'flex', flexDirection:'column', alignItems: msg.self ? 'flex-end' : 'flex-start' }">
-                  <div v-if="msg.thinking" @click="msg.thinkExpanded = !msg.thinkExpanded"
-                    style="max-width:88%; margin-bottom:3px; padding:5px 10px; background:#171a26; border:2px dashed #4a4060; opacity:0.7; cursor:pointer; font-style:italic;">
-                    <McIcon name="thinking" :size="10" style="color:#a78bd0; margin-right:6px;" />
-                    <span style="font-size:9px; color:#6e7681;">{{ msg.thinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
-                    <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: msg.thinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: msg.thinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: msg.thinkExpanded ? 'visible':'hidden' }">{{ msg.thinking }}</div>
+                <div v-if="chatHistoryLoading" class="chat-state">正在加载最近聊天记录…</div>
+                <div v-else-if="messages.length === 0" class="chat-state">还没有聊天记录，直接和伙伴说句话吧</div>
+                <div v-for="(msg, i) in messages" :key="i" class="chat-message" :class="{ self: msg.self, error: msg.error }">
+                  <div v-if="msg.thinking" class="thinking-card" @click="msg.thinkExpanded = !msg.thinkExpanded">
+                    <span class="thinking-label"><McIcon name="thinking" :size="10" />思考过程 · {{ msg.thinkExpanded ? '收起' : '展开' }}</span>
+                    <div class="thinking-copy" :class="{ expanded: msg.thinkExpanded }">{{ msg.thinking }}</div>
                   </div>
-                  <div :style="{ maxWidth:'88%', padding:'7px 12px', background: msg.error ? '#34201d' : (msg.self ? '#243016' : '#20241a'), border: msg.error ? '2px solid #713a31' : '2px solid #0c0e08', boxShadow:'inset 1px 1px 0 rgba(255,255,255,0.05)' }">
-                    <div :style="{ fontSize:'10px', marginBottom:'2px', color: msg.error ? '#e68b7c' : (msg.self ? '#9fe27a' : '#8aa86a'), fontWeight:700 }">{{ msg.sender }}</div>
-                    <div :style="{ fontSize:'13px', color: msg.error ? '#f0b0a5' : '#e7e3d4', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }">{{ msg.message }}</div>
+                  <div class="message-bubble">
+                    <div class="message-sender">{{ msg.sender }}</div>
+                    <div class="message-copy">{{ msg.message }}</div>
                   </div>
-                  <div style="font-size:10px; color:#6b6f5e; margin-top:2px;">{{ formatTime(msg.timestamp) }}</div>
+                  <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
                 </div>
               </div>
-              <div v-if="liveThinking" @click="liveThinkExpanded = !liveThinkExpanded"
-                style="margin:6px 0; padding:5px 10px; background:#14160f; border:2px solid #2f2a40; opacity:0.65; cursor:pointer; font-style:italic;">
-                <span style="display:inline-flex; align-items:center; gap:5px; font-size:10px; color:#a78bd0; margin-right:6px;"><McIcon name="thinking" :size="10" />正在想</span>
-                <span style="font-size:9px; color:#6e7681;">{{ liveThinkExpanded ? '收起 ▴' : '展开 ▾' }}</span>
-                <div :style="{ fontSize:'12px', color:'#b0a8c8', lineHeight:1.45, marginTop:'2px', whiteSpace:'pre-wrap', wordBreak:'break-word', display: liveThinkExpanded ? 'block':'-webkit-box', WebkitLineClamp: liveThinkExpanded ? 'unset':'2', WebkitBoxOrient:'vertical', overflow: liveThinkExpanded ? 'visible':'hidden' }">{{ liveThinking }}</div>
+              <div v-if="liveThinking" class="thinking-card live" @click="liveThinkExpanded = !liveThinkExpanded">
+                <span class="thinking-label"><McIcon name="thinking" :size="10" />正在思考 · {{ liveThinkExpanded ? '收起' : '展开' }}</span>
+                <div class="thinking-copy" :class="{ expanded: liveThinkExpanded }">{{ liveThinking }}</div>
               </div>
               <ChatBox @send="sendChat" />
             </div>
@@ -347,12 +343,12 @@
           </div>
 
           <!-- 日志 -->
-          <div v-else-if="ctrlTab === 'logs'" ref="logsEl" style="flex:1; min-height:300px; overflow-y:auto; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); padding:8px; font-family:var(--mc-font-mono);">
-            <div v-if="logs.length === 0" style="color:#6b6f5e; font-size:14px;">暂无运行日志</div>
-            <div v-for="(log, i) in logs" :key="i" style="display:flex; gap:8px; font-size:14px; line-height:1.5; padding:1px 0;">
-              <span style="color:#6b6f5e; flex:none;">{{ formatTime(log.timestamp) }}</span>
-              <span :style="{ flex:'none', color: log.level === 'error' ? '#ff8a8a' : log.level === 'warn' ? '#e0a52f' : '#5d9c3c' }">{{ log.level }}</span>
-              <span style="color:#bcc0ab; word-break:break-word;">{{ log.message }}</span>
+          <div v-else-if="ctrlTab === 'logs'" ref="logsEl" class="inspector-logs">
+            <div v-if="logs.length === 0" class="inspector-logs-empty">暂无运行日志</div>
+            <div v-for="(log, i) in logs" :key="i" class="inspector-log-row">
+              <span>{{ formatTime(log.timestamp) }}</span>
+              <strong :class="`level-${log.level}`">{{ log.level }}</strong>
+              <p>{{ log.message }}</p>
             </div>
           </div>
 
@@ -360,10 +356,10 @@
         </template>
 
         <!-- 未选中伙伴 -->
-        <div v-else style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:#7e836e;">
-          <div style="width:46px; height:46px; background:#5d9c3c; border:2px solid #0c0e08; box-shadow:inset -5px -5px 0 rgba(0,0,0,0.18);"></div>
-          <div style="font-weight:700; font-size:15px; color:#cdd2c0;">选择一个伙伴</div>
-          <div style="font-size:12.5px;">在左侧挑一个伙伴，或点 + 创建</div>
+        <div v-else class="inspector-empty">
+          <div class="inspector-empty-mark"></div>
+          <strong>选择一个伙伴</strong>
+          <span>在左侧挑一个伙伴，或点 + 创建</span>
         </div>
       </aside>
       </template>
@@ -452,21 +448,6 @@ const legend = [
   { c: '#14b8a6', t: '导航路径' },
 ];
 const inputStyle = 'padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;';
-
-function tabStyle(id) {
-  const active = ctrlTab.value === id;
-  return {
-    padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
-    fontFamily: "var(--mc-font-body)", fontWeight: 700, fontSize: '13px',
-    color: active ? '#fff' : '#9aa08c',
-    background: active ? '#4c7a2a' : '#20241a',
-    border: '2px solid ' + (active ? '#2b5e16' : '#0d0f0a'),
-    textShadow: active ? '1px 1px 0 rgba(0,0,0,0.4)' : 'none',
-    boxShadow: active
-      ? 'inset 1px 1px 0 rgba(255,255,255,0.25), inset -2px -2px 0 rgba(0,0,0,0.3)'
-      : 'inset 1px 1px 0 rgba(255,255,255,0.05), inset -2px -2px 0 rgba(0,0,0,0.35)',
-  };
-}
 
 const wsConnected = ref(false);
 const profiles = ref([]);
@@ -1071,125 +1052,144 @@ onMounted(() => { loadProfiles(); });
 .legend-swatch { width:8px; height:8px; flex:none; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
 @keyframes perceptionScan { 0% { transform:scale(.24); opacity:0; } 14% { opacity:.65; } 78% { opacity:.12; } 100% { transform:scale(1); opacity:0; } }
 @keyframes scanPixel { 0%,100% { transform:scale(.86); opacity:.75; } 50% { transform:scale(1); opacity:1; } }
-.interaction-panel {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  gap: 12px;
-}
-.interaction-summary {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  flex: 0 0 auto;
-  gap: 12px;
-  padding: 8px;
-  background: #15180f;
-  border: 2px solid #0c0e08;
-  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.05);
-}
-.interaction-avatar {
-  position: relative;
-  min-height: 130px;
-  overflow: hidden;
-  background: repeating-conic-gradient(#16190f 0% 25%, #1c2013 0% 50%) 0 0 / 20px 20px, #1a1d12;
-  border: 2px solid #0c0e08;
-}
-.interaction-status-badge {
-  position: absolute;
-  z-index: 2;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 6px;
-  background: #11140c;
-  border: 2px solid #0c0e08;
-  color: #7e836e;
-  font-family: var(--mc-font-pixel);
-  font-size: 6px;
-}
-.interaction-character { height: 130px; }
-.interaction-summary-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-}
-.interaction-summary-title { color: #e7e3d4; font-size: 13px; font-weight: 900; }
-.interaction-summary-state { margin-top: 2px; color: #8ee06a; font-size: 11px; }
-.interaction-summary-detail { display: flex; min-width: 0; gap: 8px; font-size: 11px; }
-.interaction-summary-detail span { flex: 0 0 auto; color: #7e836e; }
-.interaction-summary-detail strong { overflow: hidden; color: #c4c8b6; text-overflow: ellipsis; white-space: nowrap; }
-.interaction-skin-button {
-  align-self: flex-start;
-  padding: 4px 9px;
-  cursor: pointer;
-  background: #272d1d;
-  border: 2px solid #0d0f0a;
-  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.06);
-  color: #cdd2c0;
-  font: 700 11px var(--mc-font-body);
-}
-.chat-panel {
-  overflow: hidden;
-  padding: 8px;
-  background: #11140c;
-  border: 2px solid #0c0e08;
-  box-shadow:
-    inset 2px 2px 0 rgba(255,255,255,0.05),
-    inset -2px -2px 0 rgba(0,0,0,0.45);
-}
-.interaction-chat { display: flex; flex: 1; min-height: 280px; flex-direction: column; }
-.interaction-messages {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  padding: 4px;
+.partner-inspector { display:flex; min-height:0; flex-direction:column; overflow:hidden; padding:16px; background:var(--mc-surface); }
+.inspector-header { display:flex; flex:none; align-items:center; gap:11px; }
+.inspector-avatar { display:flex; width:50px; height:50px; flex:none; align-items:center; justify-content:center; overflow:hidden; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); }
+.inspector-identity { min-width:0; flex:1; }
+.inspector-name { overflow:hidden; color:var(--mc-text); font-size:18px; font-weight:900; text-overflow:ellipsis; white-space:nowrap; }
+.inspector-presence { display:flex; align-items:center; gap:7px; margin-top:4px; }
+.inspector-presence > span { width:7px; height:7px; flex:none; border-radius:50%; box-shadow:0 0 8px currentColor; }
+.inspector-presence small { overflow:hidden; color:var(--mc-text-muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.inspector-actions { display:flex; flex:none; gap:6px; }
+.inspector-button { min-height:34px; padding:7px 12px; cursor:pointer; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); font-size:12px; font-weight:800; white-space:nowrap; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }
+.inspector-button.primary { background:var(--mc-accent); border-color:transparent; color:#081007; }
+.inspector-button.primary:hover:not(:disabled) { background:var(--mc-accent-strong); }
+.inspector-button.ghost { display:grid; width:34px; padding:0; place-items:center; background:transparent; color:var(--mc-text-muted); }
+.inspector-button.danger:hover { background:rgba(228,111,101,.1); border-color:rgba(228,111,101,.28); color:var(--mc-danger); }
+.inspector-button:disabled { cursor:not-allowed; opacity:.35; }
+.inspector-vitals { display:flex; flex:none; flex-direction:column; gap:9px; margin-top:12px; padding:11px 12px; background:var(--mc-bg); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
+.vital-row { display:flex; align-items:center; gap:10px; }
+.vital-label { width:28px; flex:none; color:var(--mc-danger); font:9px var(--mc-font-pixel); }
+.vital-row.food .vital-label { color:var(--mc-warning); }
+.vital-cells { display:flex; flex:1; gap:3px; }
+.vital-value { flex:none; color:var(--mc-text-secondary); font:16px var(--mc-font-mono); }
+.inspector-chips { display:flex; flex:none; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.status-chip { display:flex; min-width:0; align-items:center; gap:6px; padding:6px 9px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
+.status-chip > span { flex:none; color:var(--mc-text-muted); font-size:10px; }
+.status-chip strong { overflow:hidden; color:var(--mc-text-secondary); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.status-chip.positive { color:var(--mc-accent-strong); }
+.status-chip.negative { color:var(--mc-danger); }
+.status-chip.positive strong,.status-chip.negative strong { color:currentColor; }
+.activity-chip { flex:1; }
+.inspector-problem { display:flex; flex:none; align-items:center; gap:8px; margin-top:9px; padding:8px 10px; background:rgba(217,170,76,.07); border:1px solid rgba(217,170,76,.2); border-radius:var(--mc-radius-xs); color:var(--mc-warning); }
+.inspector-problem span { flex:none; font-size:11px; }
+.inspector-problem strong { overflow:hidden; font:13px var(--mc-font-mono); text-overflow:ellipsis; white-space:nowrap; }
+.control-tabs { display:flex; flex:none; gap:3px; margin-top:14px; padding-bottom:8px; border-bottom:1px solid var(--mc-border); }
+.control-tab { position:relative; min-height:32px; flex:1; padding:6px 8px; cursor:pointer; background:transparent; border:0; border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font-size:11px; font-weight:700; white-space:nowrap; transition:background var(--mc-duration-fast),color var(--mc-duration-fast); }
+.control-tab:hover { background:rgba(255,255,255,.025); color:var(--mc-text-secondary); }
+.control-tab.active { background:var(--mc-accent-soft); color:var(--mc-accent-strong); }
+.control-tab.active::after { position:absolute; right:12px; bottom:-9px; left:12px; height:2px; background:var(--mc-accent); content:''; }
+.inspector-content { display:flex; min-height:0; flex:1; flex-direction:column; gap:12px; padding-top:12px; }
+.interaction-panel { display:flex; min-height:0; flex:1; flex-direction:column; gap:10px; }
+.interaction-summary { display:grid; grid-template-columns:130px minmax(0,1fr); flex:0 0 auto; gap:12px; padding:8px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
+.interaction-avatar { position:relative; min-height:126px; overflow:hidden; background:linear-gradient(135deg,rgba(105,201,74,.035),transparent),repeating-conic-gradient(#101611 0% 25%,#141b16 0% 50%) 0 0 / 18px 18px; border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
+.interaction-status-badge { position:absolute; z-index:2; top:7px; right:7px; display:flex; align-items:center; gap:5px; padding:4px 6px; background:rgba(7,11,8,.84); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font:10px var(--mc-font-mono); letter-spacing:.06em; }
+.interaction-status-badge > span:first-child { border-radius:50%; }
+.interaction-character { height:126px; }
+.interaction-summary-copy { display:flex; min-width:0; flex-direction:column; justify-content:center; gap:7px; }
+.interaction-summary-title { color:var(--mc-text); font-size:13px; font-weight:800; }
+.interaction-summary-state { margin-top:2px; color:var(--mc-accent-strong); font-size:11px; }
+.interaction-summary-detail { display:flex; min-width:0; gap:8px; font-size:11px; }
+.interaction-summary-detail span { flex:0 0 auto; color:var(--mc-text-muted); }
+.interaction-summary-detail strong { overflow:hidden; color:var(--mc-text-secondary); text-overflow:ellipsis; white-space:nowrap; }
+.interaction-skin-button { align-self:flex-start; min-height:28px; padding:5px 9px; cursor:pointer; background:transparent; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); color:var(--mc-text-secondary); font-size:10px; font-weight:700; }
+.interaction-skin-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
+.chat-panel { overflow:hidden; padding:10px; background:var(--mc-bg-elevated); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
+.interaction-chat { display:flex; min-height:250px; flex:1; flex-direction:column; }
+.interaction-messages { display:flex; min-height:0; flex:1; flex-direction:column; gap:10px; overflow-y:auto; padding:2px 3px 8px; }
+.chat-state { padding:24px 0; color:var(--mc-text-muted); font-size:11px; text-align:center; }
+.chat-message { display:flex; align-items:flex-start; flex-direction:column; }
+.chat-message.self { align-items:flex-end; }
+.message-bubble { max-width:88%; padding:8px 10px; background:var(--mc-surface-raised); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm) var(--mc-radius-sm) var(--mc-radius-sm) 2px; }
+.chat-message.self .message-bubble { background:rgba(105,201,74,.12); border-color:rgba(105,201,74,.2); border-radius:var(--mc-radius-sm) var(--mc-radius-sm) 2px var(--mc-radius-sm); }
+.chat-message.error .message-bubble { background:rgba(228,111,101,.09); border-color:rgba(228,111,101,.24); }
+.message-sender { margin-bottom:3px; color:#91b986; font-size:9px; font-weight:800; }
+.chat-message.self .message-sender { color:var(--mc-accent-strong); }
+.chat-message.error .message-sender { color:var(--mc-danger); }
+.message-copy { color:var(--mc-text); font-size:12px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+.chat-message.error .message-copy { color:#e8b0aa; }
+.message-time { margin-top:3px; color:#515c53; font:11px var(--mc-font-mono); }
+.thinking-card { max-width:88%; margin-bottom:4px; padding:7px 9px; cursor:pointer; background:rgba(126,105,165,.07); border:1px solid rgba(150,127,195,.16); border-radius:var(--mc-radius-xs); }
+.thinking-card.live { max-width:none; margin:6px 0; }
+.thinking-label { display:inline-flex; align-items:center; gap:5px; color:#9a88b7; font-size:9px; }
+.thinking-copy { display:-webkit-box; margin-top:4px; overflow:hidden; color:#9087a1; font-size:11px; line-height:1.45; white-space:pre-wrap; word-break:break-word; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.thinking-copy.expanded { display:block; overflow:visible; }
+.inspector-logs { min-height:260px; flex:1; overflow-y:auto; padding:10px; background:var(--mc-bg); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); font-family:var(--mc-font-mono); }
+.inspector-logs-empty { color:var(--mc-text-muted); font-size:13px; }
+.inspector-log-row { display:flex; gap:8px; padding:3px 0; color:var(--mc-text-muted); font-size:13px; line-height:1.45; }
+.inspector-log-row > span,.inspector-log-row > strong { flex:none; }
+.inspector-log-row strong { color:var(--mc-accent); font-weight:400; }
+.inspector-log-row .level-error { color:var(--mc-danger); }
+.inspector-log-row .level-warn { color:var(--mc-warning); }
+.inspector-log-row p { margin:0; color:var(--mc-text-secondary); word-break:break-word; }
+.inspector-empty { display:flex; min-height:0; flex:1; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:var(--mc-text-muted); text-align:center; }
+.inspector-empty-mark { width:42px; height:42px; background:radial-gradient(circle,var(--mc-accent) 0 16%,transparent 17%),radial-gradient(circle,transparent 0 48%,rgba(105,201,74,.28) 49% 51%,transparent 52%); border-radius:50%; }
+.inspector-empty strong { color:var(--mc-text-secondary); font-size:14px; }
+.inspector-empty span { font-size:11px; }
+
+@media (max-width:1100px) {
+  .partner-workspace-shell { grid-template-columns:200px minmax(0,1fr) 350px; }
+  .workspace-partner { min-width:130px; }
+  .interaction-summary { grid-template-columns:110px minmax(0,1fr); }
 }
 
-@media (max-width: 1000px) {
-  .partner-workspace-shell { grid-template-columns: 220px minmax(0, 1fr) 360px; }
-  .workspace-partner { min-width: 130px; }
+@media (max-width:860px) {
+  .partner-workspace-shell { grid-template-columns:74px minmax(0,1fr); }
+  .partner-sidebar { padding:12px 8px; }
+  .partner-sidebar-header { justify-content:center; padding:0; }
+  .section-eyebrow,.partner-sidebar-title,.partner-list-summary,.partner-count { display:none; }
+  .partner-list-item { justify-content:center; padding:7px 5px; }
+  .partner-workspace-bar { grid-column:2; gap:10px; padding:8px 10px; }
+  .workspace-partner { min-width:0; }
+  .workspace-partner-copy span { display:none; }
+  .workspace-partner-copy strong { max-width:94px; font-size:12px; }
+  .partner-workspace-tab { min-height:32px; padding:6px 10px; font-size:12px; }
+  .partner-workspace-panel { grid-column:2; }
+  .play-stage { display:none; }
+  .play-control { grid-column:2; }
+  .partner-inspector { padding:14px; }
 }
 
-@media (max-width: 760px) {
-  .partner-workspace-shell { grid-template-columns: 86px minmax(0, 1fr); }
-  .partner-sidebar { padding: 10px !important; }
-  .partner-sidebar > div:first-child { justify-content: center !important; }
-  .partner-sidebar > div:first-child > span,
-  .partner-sidebar > div:nth-child(2),
-  .partner-list-summary,
-  .partner-count { display: none !important; }
-  .partner-list-item { justify-content: center; padding: 8px 6px !important; }
-  .partner-workspace-bar { grid-column: 2; gap: 10px; padding: 8px 10px; }
-  .workspace-partner { min-width: 0; }
-  .workspace-partner-copy span { display: none; }
-  .workspace-partner-copy strong { max-width: 94px; font-size: 12px; }
-  .partner-workspace-tab { min-height: 32px; padding: 6px 10px; font-size: 12px; }
-  .partner-workspace-panel { grid-column: 2; }
-  .play-stage { display: none; }
-  .play-control { grid-column: 2; }
-}
-
-@media (max-width: 640px) {
-  .app-topbar {
-    gap: 12px !important;
-    height: 54px !important;
-    padding: 0 14px !important;
-    overflow: hidden;
-  }
-  .app-brand { flex: 0 0 auto; gap: 8px !important; }
-  .app-brand-logo { width: 34px; height: 34px; }
-  .app-brand-name { font-size: 12px !important; white-space: nowrap; }
-  .app-header-spacer, .app-hub-status { display: none !important; }
-  .interaction-summary { grid-template-columns: 96px minmax(0, 1fr); gap: 8px; }
-  .interaction-avatar, .interaction-character { min-height: 102px; height: 102px; }
-  .interaction-chat { min-height: 260px; }
+@media (max-width:640px) {
+  .app-topbar { height:54px; padding:0 12px; overflow:hidden; }
+  .app-brand { flex:0 0 auto; gap:8px; }
+  .app-brand-logo { width:32px; height:32px; }
+  .app-brand-name { font-size:11px; }
+  .app-brand-edition,.app-hub-status { display:none; }
+  .global-settings-layer { inset:54px 0 0; }
+  .partner-workspace-shell { grid-template-columns:64px minmax(0,1fr); }
+  .partner-sidebar { padding:10px 6px; }
+  .partner-avatar { width:40px; height:40px; }
+  .partner-workspace-bar { min-height:54px; }
+  .workspace-partner { display:none; }
+  .partner-workspace-tabs { width:100%; }
+  .partner-workspace-tab { flex:1; padding:6px 7px; }
+  .partner-inspector { padding:11px; }
+  .inspector-header { gap:8px; }
+  .inspector-avatar { width:46px; height:46px; }
+  .inspector-name { font-size:16px; }
+  .inspector-button { padding:6px 9px; }
+  .inspector-button.ghost { width:32px; }
+  .inspector-chips { margin-top:9px; }
+  .status-chip { padding:5px 7px; }
+  .control-tabs { margin-top:10px; }
+  .control-tab { padding:5px 4px; font-size:10px; }
+  .inspector-content { padding-top:9px; }
+  .interaction-summary { grid-template-columns:96px minmax(0,1fr); gap:8px; padding:7px; }
+  .interaction-avatar,.interaction-character { min-height:106px; height:106px; }
+  .interaction-summary-copy { gap:5px; }
+  .interaction-summary-title { font-size:12px; }
+  .interaction-summary-detail { font-size:10px; }
+  .interaction-chat { min-height:230px; }
 }
 </style>

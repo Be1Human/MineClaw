@@ -6,11 +6,10 @@
   把高频按键事件挡在小组件内。
 -->
 <template>
-  <div style="display:flex; gap:6px; margin-top:6px;">
+  <div class="chat-composer">
     <input v-model="text" @keydown.enter="emitSend" placeholder="跟伙伴说点什么…"
-      style="flex:1; padding:9px 11px; background:#0c0e08; border:2px solid #000; box-shadow:inset 2px 2px 0 rgba(0,0,0,0.5); color:#e7e3d4; font-family:var(--mc-font-body); font-size:13px;" />
-    <button @click="emitSend" :disabled="!text.trim() || sending"
-      style="padding:9px 16px; cursor:pointer; background:#4c9a2a; border:2px solid #2b5e16; box-shadow:inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3), 0 3px 0 #214b13; color:#fff; font-weight:700; font-size:13px;">发送</button>
+      aria-label="聊天消息" />
+    <button @click="emitSend" :disabled="!text.trim() || sending">{{ sending ? '发送中' : '发送' }}</button>
   </div>
 </template>
 
@@ -32,3 +31,17 @@ function emitSend() {
   });
 }
 </script>
+
+<style scoped>
+.chat-composer { display:flex; flex:none; gap:8px; padding-top:10px; border-top:1px solid var(--mc-border); }
+.chat-composer input { min-width:0; min-height:40px; flex:1; padding:9px 12px; background:var(--mc-bg); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text); font-size:12px; transition:border-color var(--mc-duration-fast),box-shadow var(--mc-duration-fast); }
+.chat-composer input::placeholder { color:var(--mc-text-muted); }
+.chat-composer input:focus { border-color:rgba(105,201,74,.55); outline:0; box-shadow:0 0 0 3px rgba(105,201,74,.09); }
+.chat-composer button { min-width:64px; min-height:40px; padding:8px 14px; cursor:pointer; background:var(--mc-accent); border:1px solid transparent; border-radius:var(--mc-radius-sm); color:#081007; font-size:12px; font-weight:800; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }
+.chat-composer button:hover:not(:disabled) { background:var(--mc-accent-strong); }
+.chat-composer button:disabled { cursor:not-allowed; opacity:.38; }
+@media (max-width:420px) {
+  .chat-composer { gap:6px; }
+  .chat-composer button { min-width:58px; padding:8px 10px; }
+}
+</style>

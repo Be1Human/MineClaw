@@ -42,3 +42,23 @@ test('感知空态使用四层局部扫描环且不伪造世界数据', () => {
   assert.match(appSource, /v-if="currentWorldState && show3D" class="perception-scene"/);
   assert.doesNotMatch(appSource, /setInterval\([^)]*scan|requestAnimationFrame\([^)]*scan/i);
 });
+
+test('伙伴检查器使用正式信息层级并保留交流功能入口', () => {
+  assert.match(appSource, /class="play-control partner-inspector"/);
+  assert.match(appSource, /class="inspector-header"/);
+  assert.match(appSource, /class="inspector-chips"/);
+  assert.match(appSource, /<nav class="control-tabs" aria-label="伙伴详情">/);
+  assert.match(appSource, /class="interaction-summary"/);
+  assert.match(appSource, /class="chat-panel interaction-chat"/);
+  assert.match(appSource, /<ChatBox @send="sendChat"/);
+  assert.doesNotMatch(appSource, /:style="tabStyle\(t\.id\)"/);
+});
+
+test('窄屏折叠感知舞台并为伙伴交流保留完整主列', () => {
+  assert.match(appSource, /@media \(max-width:860px\)/);
+  assert.match(appSource, /\.play-stage \{ display:none; \}/);
+  assert.match(appSource, /\.play-control \{ grid-column:2; \}/);
+  assert.match(appSource, /@media \(max-width:640px\)/);
+  assert.match(appSource, /grid-template-columns:64px minmax\(0,1fr\)/);
+  assert.match(appSource, /\.workspace-partner \{ display:none; \}/);
+});
