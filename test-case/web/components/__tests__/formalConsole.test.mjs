@@ -164,6 +164,8 @@ test('BUG-WEBUI-21 | 桌面折叠伙伴栏为头像框保留完整几何并锁�
   assert.match(appSource, /@media \(min-width:861px\) \{[\s\S]*?\.sidebar-collapsed \.partner-sidebar \{ --partner-sidebar-inline-padding:10px; \}/);
   assert.match(appSource, /\.sidebar-collapsed \.partner-list \{ align-items:center; padding-right:0; overflow-x:hidden; \}/);
   assert.match(appSource, /\.sidebar-collapsed \.partner-list-item \{ width:52px; flex:none; padding:4px; \}/);
+  assert.match(appSource, /\.sidebar-collapsed \.sidebar-tool\.primary-tool \{ width:36px; flex:none; justify-content:center; padding:0; \}/);
+  assert.match(appSource, /@media \(max-width:860px\)[\s\S]*?\.sidebar-tool\.primary-tool \{ width:36px; flex:none; justify-content:center; padding:0; \}/);
 
   const collapsedSidebarWidth = 72;
   const collapsedSidebarPadding = 10;
