@@ -66,6 +66,8 @@ test('轨迹工作台包含三段式视图、五页签、完整复制和窄屏�
   assert.match(source, /interactionSessionId: turnId/);
   assert.match(source, /displayedEvents/);
   assert.match(source, /scrollLedgerTop/);
+  assert.match(source, /\.event-row \{ width:min\(100%,360px\);/);
+  assert.match(source, /@media \(max-width:850px\)[\s\S]*\.event-row \{ width:100%; \}/);
   assert.match(source, /following\.value = el\.scrollTop < 72/);
   assert.ok(source.indexOf('v-for="event in displayedEvents"') < source.indexOf("loadingOlder ? '加载中…' : '加载更早事件'"));
 });
