@@ -40,6 +40,7 @@
     "test:benchmark": "node --import tsx/esm --import ../../scripts/register-test-module-resolver.mjs --test ../../test-case/benchmark-framework/engineering/**/*.test.ts",
     "brand:sync": "node scripts/brandAssets.mjs --sync",
     "brand:check": "node scripts/brandAssets.mjs --check",
+    "resource-pack:sync": "node scripts/syncBuiltinOpenBlockPack.mjs",
     "electron:native:prepare": "node scripts/electronNative.mjs --prepare",
     "electron:native:check": "node scripts/electronNative.mjs --check",
     "test:electron-startup": "node --test ../../test-case/integration/scripts/electronStartupContract.test.mjs",
@@ -89,6 +90,10 @@
       {
         "from": "build/icon.png",
         "to": "brand/mineclaw-mark.png"
+      },
+      {
+        "from": "builtin-packs/mineclaw-open-blocks.zip",
+        "to": "resource-packs/mineclaw-open-blocks.zip"
       }
     ],
     "asarUnpack": [

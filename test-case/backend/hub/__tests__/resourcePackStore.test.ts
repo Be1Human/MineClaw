@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { strToU8, zipSync } from 'fflate';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { strToU8, unzipSync, zipSync } from 'fflate';
 import { ResourcePackStore } from '../../../../apps/minecraft-companion/src/hub/resourcePacks/resourcePackStore.js';
 import { ResourcePackError, type ResourcePackLimits } from '../../../../apps/minecraft-companion/src/hub/resourcePacks/types.js';
 import { createHubServer } from '../../../../apps/minecraft-companion/src/hub/server.js';
+import { seedBuiltinResourcePack } from '../../../../apps/minecraft-companion/src/hub/resourcePacks/builtinResourcePack.js';
 import type { AddressInfo } from 'node:net';
 
 const LIMITS: ResourcePackLimits = {
@@ -17,6 +19,18 @@ const LIMITS: ResourcePackLimits = {
   maxCompressionRatio: 200,
   maxImageDimension: 4096,
 };
+const BUILTIN_LIMITS: ResourcePackLimits = {
+  maxPackBytes: 64 * 1024 * 1024,
+  maxPackEntries: 20_000,
+  maxPackFileBytes: 16 * 1024 * 1024,
+  maxExpandedPackBytes: 256 * 1024 * 1024,
+  maxCompressionRatio: 500,
+  maxImageDimension: 4096,
+};
+const BUILTIN_PACK_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../apps/minecraft-companion/builtin-packs/mineclaw-open-blocks.zip',
+);
 
 function pngHeader(width = 16, height = 16): Uint8Array {
   const bytes = new Uint8Array(24);
@@ -138,6 +152,65 @@ test('FEAT-WEBUI-27-001 | HTTP 导入接口不暴露原始 ZIP 且只提供缓�
   } finally {
     await hub.botManager.stopAll();
     if (hub.httpServer.listening) await new Promise<void>(resolve => hub.httpServer.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('FEAT-WEBUI-27-005 | 内置开源方块包自动播种且重复启动幂等', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mineclaw-builtin-pack-'));
+  try {
+    const store = new ResourcePackStore(dir, () => BUILTIN_LIMITS);
+    const packagedEntries = Object.keys(unzipSync(readFileSync(BUILTIN_PACK_PATH)));
+    assert.ok(packagedEntries.every(path => (
+      path === 'pack.mcmeta'
+      || path === 'LICENSE.txt'
+      || path === 'MINECLAW-PROVENANCE.json'
+      || path.startsWith('assets/minecraft/blockstates/')
+      || path.startsWith('assets/minecraft/models/block/')
+      || path.startsWith('assets/minecraft/textures/block/')
+    )), '内置 ZIP 不得包含声音、音乐、GUI、字体、实体、物品或世界文件');
+    store.import({
+      archive: testPack({ declaredVersion: '1.21', license: 'MIT' }),
+      fileName: 'mineclaw-open-blocks.zip',
+      minecraftVersion: '1.21',
+      source: 'mineclaw-original',
+      licenseId: 'MIT',
+      distributable: true,
+    });
+    const first = seedBuiltinResourcePack(store, BUILTIN_PACK_PATH);
+    const second = seedBuiltinResourcePack(store, BUILTIN_PACK_PATH);
+    assert.equal(first.id, second.id);
+    assert.equal(store.list().length, 1, '升级内置包后应清理同名旧缓存');
+    assert.equal(first.source, 'mineclaw-original');
+    assert.equal(first.licenseId, 'MIT');
+    assert.equal(first.distributable, true);
+    assert.equal(first.minecraftVersion, '1.21');
+    assert.ok(store.readFile(first.id, 'assets/minecraft/textures/block/stone.png'));
+    assert.match(new TextDecoder().decode(store.readFile(first.id, 'MINECLAW-PROVENANCE.json')!), /Love-and-Tolerance/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('FEAT-WEBUI-27-005 | Hub 启动后资源包 API 直接提供内置包', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mineclaw-builtin-pack-api-'));
+  const hub = createHubServer({
+    host: '127.0.0.1', port: 0, dataDir: join(dir, 'data'), builtinResourcePackPath: BUILTIN_PACK_PATH,
+  });
+  try {
+    await hub.listen();
+    const port = (hub.httpServer.address() as AddressInfo).port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/resource-packs`);
+    assert.equal(response.status, 200);
+    const payload = await response.json() as { packs: Array<{ source: string; licenseId: string }> };
+    assert.equal(payload.packs.length, 1);
+    assert.deepEqual(payload.packs[0] && {
+      source: payload.packs[0].source,
+      licenseId: payload.packs[0].licenseId,
+    }, { source: 'mineclaw-original', licenseId: 'MIT' });
+  } finally {
+    await hub.botManager.stopAll();
+    if (hub.httpServer.listening) await new Promise<void>(done => hub.httpServer.close(() => done()));
     rmSync(dir, { recursive: true, force: true });
   }
 });

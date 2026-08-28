@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createHubServer } from './hub/server.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -30,6 +32,7 @@ const config = {
   port: parseInt(process.env.HUB_PORT ?? '3000', 10),
   host: process.env.HUB_HOST ?? '0.0.0.0',
   dataDir: process.env.DATA_DIR ?? './data',
+  builtinResourcePackPath: resolve(dirname(fileURLToPath(import.meta.url)), '../builtin-packs/mineclaw-open-blocks.zip'),
 };
 
 const defaultLlm = {

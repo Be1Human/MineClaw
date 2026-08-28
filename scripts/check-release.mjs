@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 import { readdir, readFile, lstat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const maxFileBytes = 10 * 1024 * 1024;
 const allowedFixtureDatabase = 'test-case/fixtures/memory/chat-memory-testOwner.db';
+const builtinPackPath = 'apps/minecraft-companion/builtin-packs/mineclaw-open-blocks.zip';
+const builtinPackManifestPath = 'apps/minecraft-companion/builtin-packs/mineclaw-open-blocks.manifest.json';
 
 const blockedDirectoryNames = new Set([
   '.agentmem',
@@ -149,6 +152,22 @@ for (const file of files) {
       violations.push(`${rule.label} detected: ${relativePath}`);
     }
   }
+}
+
+try {
+  const [archive, manifestBytes] = await Promise.all([
+    readFile(path.join(root, builtinPackPath)),
+    readFile(path.join(root, builtinPackManifestPath)),
+  ]);
+  const manifest = JSON.parse(manifestBytes.toString('utf8'));
+  const actualSha256 = createHash('sha256').update(archive).digest('hex');
+  if (manifest.sha256 !== actualSha256) violations.push(`built-in resource pack checksum mismatch: ${builtinPackPath}`);
+  if (manifest.license !== 'MIT') violations.push(`built-in resource pack license must be MIT: ${builtinPackManifestPath}`);
+  if (!/^[a-f0-9]{40}$/.test(manifest.sourceCommit ?? '')) {
+    violations.push(`built-in resource pack must pin an upstream commit: ${builtinPackManifestPath}`);
+  }
+} catch (error) {
+  violations.push(`built-in resource pack provenance check failed: ${error instanceof Error ? error.message : String(error)}`);
 }
 
 if (violations.length > 0) {

@@ -5,6 +5,7 @@ import { ResourcePackClient } from '../../apps/minecraft-companion/web/src/lib/a
 import { bakeMinecraftBlockModel } from '../../apps/minecraft-companion/web/src/lib/authentic/blockModel.js';
 import { buildSectionMeshPayload } from '../../apps/minecraft-companion/web/src/lib/authentic/sectionMeshWorker.js';
 import { AuthenticWorldRenderer } from '../../apps/minecraft-companion/web/src/lib/authentic/AuthenticWorldRenderer.js';
+import { selectPreferredResourcePack } from '../../apps/minecraft-companion/web/src/lib/authentic/resourcePackSelection.js';
 import * as THREE from 'three';
 
 test('FEAT-WEBUI-27-003 | RendererRegistry 原子切换，失败保留旧渲染器且 50 次切换不重复实例', async () => {
@@ -69,6 +70,32 @@ test('FEAT-WEBUI-27-003 | Worker 合并 section 材质桶并剔除相邻完整�
   assert.equal(result.meshes.length, 1);
   assert.equal(result.meshes[0].indices.length, 60, '两方块共 10 个外露面，应为 20 个三角形');
   assert.equal(result.meshes[0].positions.length / 3, 40);
+});
+
+test('FEAT-WEBUI-27-005 | 无手工选择时优先内置包，已保存的兼容选择仍优先', () => {
+  const imported = { id: 'imported', source: 'local-import', minecraftVersion: '1.21' };
+  const builtin = { id: 'builtin', source: 'mineclaw-original', minecraftVersion: '1.21' };
+  const wrongVersion = { id: 'old', source: 'mineclaw-original', minecraftVersion: '1.20.6' };
+  assert.equal(selectPreferredResourcePack([imported, wrongVersion, builtin], { gameVersion: '1.21' }), builtin);
+  assert.equal(selectPreferredResourcePack([builtin, imported], { savedId: 'imported', gameVersion: '1.21' }), imported);
+  assert.equal(selectPreferredResourcePack([wrongVersion], { savedId: 'old', gameVersion: '1.21' }), null);
+});
+
+test('FEAT-WEBUI-27-005 | blockstate/model 缺失时使用贴图基础方块回退', async () => {
+  const requests = [];
+  const client = new ResourcePackClient({
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url: String(url), method: options.method ?? 'GET' });
+      if (options.method === 'HEAD' && String(url).endsWith('/textures/block/stone.png')) return new Response(null, { status: 200 });
+      return new Response('missing', { status: 404 });
+    },
+  });
+  client.select({ id: 'pack-1234567890abcdef', source: 'mineclaw-original', minecraftVersion: '1.21' });
+  const resolved = await client.resolvePaletteState({ stateId: 1, name: 'stone', properties: {} });
+  assert.equal(resolved.fallback, true);
+  assert.deepEqual(resolved.missing, []);
+  assert.deepEqual(resolved.models[0].materialKeys, ['minecraft:block/stone']);
+  assert.ok(requests.some(request => request.method === 'HEAD'));
 });
 
 test('FEAT-WEBUI-27-004 | Profile/session 切换使旧 Worker 结果失效，同 section key 可启动新世代首帧', async () => {
