@@ -1407,6 +1407,11 @@ onMounted(() => { loadProfiles(); });
 .sidebar-collapsed .partner-list-item { justify-content:center; padding:7px 5px; }
 .sidebar-collapsed .partner-sidebar-footer { justify-content:center; flex-direction:column; align-items:center; }
 .sidebar-collapsed .sidebar-tool.primary-tool { width:36px; flex:none; padding:0; }
+@media (min-width:861px) {
+  .sidebar-collapsed .partner-sidebar { --partner-sidebar-inline-padding:10px; }
+  .sidebar-collapsed .partner-list { align-items:center; padding-right:0; overflow-x:hidden; }
+  .sidebar-collapsed .partner-list-item { width:52px; flex:none; padding:4px; }
+}
 .partner-workspace-bar { display:flex; grid-column:2; grid-row:1; min-width:0; align-items:center; background:rgba(12,18,14,.88); border:1px solid var(--mc-border); border-bottom:0; border-radius:var(--mc-radius-sm) var(--mc-radius-sm) 0 0; }
 .partner-workspace-tabs { display:flex; width:100%; min-width:0; height:100%; align-items:stretch; overflow-x:auto; scrollbar-width:none; }
 .partner-workspace-tabs::-webkit-scrollbar { display:none; }

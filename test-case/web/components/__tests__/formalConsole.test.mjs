@@ -160,6 +160,23 @@ test('BUG-WEBUI-16 | 伙伴栏各断点共享同一横向边界变量', () => {
   assert.doesNotMatch(appSource, /\.partner-sidebar-footer \{[^}]*margin:0 -14px/);
 });
 
+test('BUG-WEBUI-21 | 桌面折叠伙伴栏为头像框保留完整几何并锁定中心轴', () => {
+  assert.match(appSource, /@media \(min-width:861px\) \{[\s\S]*?\.sidebar-collapsed \.partner-sidebar \{ --partner-sidebar-inline-padding:10px; \}/);
+  assert.match(appSource, /\.sidebar-collapsed \.partner-list \{ align-items:center; padding-right:0; overflow-x:hidden; \}/);
+  assert.match(appSource, /\.sidebar-collapsed \.partner-list-item \{ width:52px; flex:none; padding:4px; \}/);
+
+  const collapsedSidebarWidth = 72;
+  const collapsedSidebarPadding = 10;
+  const itemWidth = collapsedSidebarWidth - collapsedSidebarPadding * 2;
+  const itemPadding = 4;
+  const itemBorder = 1;
+  const avatarWidth = 42;
+  const presenceOverflow = 3;
+  assert.equal(itemWidth, 52);
+  assert.equal(itemWidth - itemPadding * 2 - itemBorder * 2, avatarWidth);
+  assert.ok(itemBorder + itemPadding + avatarWidth + presenceOverflow < itemWidth);
+});
+
 test('BUG-WEBUI-17 | 检查器按钮显式重置并提供完整危险常态', () => {
   assert.match(appSource, /\.inspector-button \{[^}]*appearance:none;[^}]*background:transparent;[^}]*color:var\(--mc-text-secondary\)/);
   assert.match(appSource, /\.inspector-button\.primary \{[^}]*background:var\(--mc-accent\)/);
