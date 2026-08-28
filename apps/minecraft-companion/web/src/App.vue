@@ -379,7 +379,7 @@
               <div ref="messagesEl" class="interaction-messages">
                 <div v-if="chatHistoryLoading" class="chat-state">正在加载最近聊天记录…</div>
                 <div v-else-if="filteredMessages.length === 0" class="chat-state chat-empty-state"><McIcon name="chat" :size="24" /><span>暂无聊天记录</span></div>
-                <div v-for="(msg, i) in filteredMessages" :key="i" class="chat-message" :class="{ self: msg.self, error: msg.error }">
+                <div v-for="(msg, i) in filteredMessages" :key="i" class="chat-message" :class="{ self: msg.side === 'viewer', error: msg.error }">
                   <div v-if="msg.thinking" class="thinking-card" @click="msg.thinkExpanded = !msg.thinkExpanded">
                     <span class="thinking-label"><McIcon name="thinking" :size="10" />思考过程 · {{ msg.thinkExpanded ? '收起' : '展开' }}</span>
                     <div class="thinking-copy" :class="{ expanded: msg.thinkExpanded }">{{ msg.thinking }}</div>
@@ -514,6 +514,7 @@ import McIcon from './components/icons/McIcon.vue';
 import SkinEditor from './components/SkinEditor.vue';
 import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation.js';
 import { CONTROL_TAB_IDS, migrateControlTabs, normalizeControlTab } from './lib/controlNavigation.js';
+import { filterChatMessages, projectChatMessage } from './lib/chatPresentation.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 import { VisualWorldStore } from './lib/authentic/visualWorldStore.js';
 import {
@@ -762,10 +763,7 @@ const personalityLabel = computed(() => {
   return '—';
 });
 const filteredMessages = computed(() => {
-  if (chatFilter.value === 'self') return messages.value.filter((message) => message.self);
-  if (chatFilter.value === 'partner') return messages.value.filter((message) => !message.self && !message.error);
-  if (chatFilter.value === 'error') return messages.value.filter((message) => message.error);
-  return messages.value;
+  return filterChatMessages(messages.value, chatFilter.value);
 });
 
 const form = ref({
@@ -870,12 +868,10 @@ socket.on('bot:fullStatus', (data) => {
 });
 socket.on('bot:chat', (data) => {
   if (selectedProfile.value && data.botId === selectedProfile.value.id) {
-    const profile = selectedProfile.value;
-    messages.value.push({
-      sender: data.sender, message: data.message, timestamp: data.timestamp,
-      self: data.sender === (profile.characterCard?.character?.identity?.name || profile.name),
+    messages.value.push(projectChatMessage({
+      role: data.role, sender: data.sender, message: data.message, timestamp: data.timestamp,
       thinking: data.thinking || '', turnId: data.turnId || '', thinkExpanded: false,
-    });
+    }, selectedProfile.value));
     scrollBottom(messagesEl);
   }
 });
@@ -1066,26 +1062,24 @@ async function loadChatHistory(profile) {
     if (!response.ok) throw new Error(`聊天记录加载失败 (${response.status})`);
     const data = await response.json();
     if (requestId !== chatHistoryRequestId || selectedProfile.value?.id !== profileId) return;
-    messages.value = (data.messages ?? []).map(message => ({
+    messages.value = (data.messages ?? []).map(message => projectChatMessage({
       id: message.id,
-      sender: message.role === 'bot'
-        ? (profile.characterCard?.character?.identity?.name || profile.name)
-        : (profile.characterCard?.relationship?.userPersona?.name || profile.ownerUsername || '我'),
-      message: message.content,
+      role: message.role,
+      content: message.content,
       timestamp: message.timestamp,
-      self: message.role === 'bot',
       thinking: '',
       turnId: '',
       thinkExpanded: false,
-    }));
+    }, profile));
     if (messages.value.length === 0 && profile.characterCard?.world?.greeting) {
-      messages.value.push({
+      messages.value.push(projectChatMessage({
         id: `greeting-${profileId}`,
+        role: 'bot',
         sender: profile.characterCard.character?.identity?.name || profile.name,
         message: profile.characterCard.world.greeting,
         timestamp: profile.createdAt || Date.now(),
-        self: true, thinking: '', turnId: '', thinkExpanded: false,
-      });
+        thinking: '', turnId: '', thinkExpanded: false,
+      }, profile));
     }
     nextTick(() => scrollBottom(messagesEl));
   } catch (error) {
@@ -1288,10 +1282,10 @@ function handleWorldConnectionAction() {
 
 function appendChatSubmitError(message, botId) {
   if (!selectedProfile.value || selectedProfile.value.id !== botId) return;
-  messages.value.push({
-    sender: '发送失败', message, timestamp: Date.now(), self: false, error: true,
+  messages.value.push(projectChatMessage({
+    role: 'system', sender: '发送失败', message, timestamp: Date.now(), error: true,
     thinking: '', turnId: '', thinkExpanded: false,
-  });
+  }, selectedProfile.value));
   scrollBottom(messagesEl);
 }
 
@@ -1357,7 +1351,7 @@ onMounted(() => { loadProfiles(); });
 .global-settings-layer { position:absolute; z-index:20; inset:60px 0 0; display:flex; min-width:0; min-height:0; background:var(--mc-bg); }
 .partner-workspace-shell { position:relative; z-index:2; display:grid; grid-template-columns:clamp(220px,16.63vw,278px) minmax(0,1fr) clamp(340px,24.88vw,416px); grid-template-rows:50px minmax(0,1fr); column-gap:14px; flex:1; min-height:0; padding:14px 14px 14px 0; transition:grid-template-columns var(--mc-duration-normal); }
 .partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px minmax(0,1fr) clamp(340px,24.88vw,416px); }
-.partner-sidebar { display:flex; grid-column:1; grid-row:1 / 3; min-height:0; flex-direction:column; margin-top:-14px; margin-bottom:-14px; padding:18px 14px 0; background:rgba(13,19,15,.98); border-right:1px solid var(--mc-border); }
+.partner-sidebar { --partner-sidebar-inline-padding:14px; display:flex; grid-column:1; grid-row:1 / 3; min-height:0; flex-direction:column; margin-top:-14px; margin-bottom:-14px; padding:18px var(--partner-sidebar-inline-padding) 0; background:rgba(13,19,15,.98); border-right:1px solid var(--mc-border); }
 .partner-sidebar-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:0 4px; }
 .partner-sidebar-heading { color:var(--mc-text-secondary); font-size:var(--mc-type-body); font-weight:800; }
 .icon-button { width:30px; height:30px; }
@@ -1375,7 +1369,7 @@ onMounted(() => { loadProfiles(); });
 .partner-list-item.active .partner-list-summary small { color:#91b986; }
 .partner-list-empty { padding:10px 5px; color:var(--mc-text-muted); font-size:var(--mc-type-secondary); line-height:1.6; }
 .partner-sidebar-fill { flex:1; }
-.partner-sidebar-footer { display:flex; flex:none; gap:6px; margin:0 -14px; padding:10px 10px; border-top:1px solid var(--mc-border); }
+.partner-sidebar-footer { display:flex; flex:none; gap:6px; margin:0 calc(-1 * var(--partner-sidebar-inline-padding)); padding:10px 10px; border-top:1px solid var(--mc-border); }
 .sidebar-tool { display:flex; min-height:36px; align-items:center; justify-content:center; gap:8px; cursor:pointer; background:transparent; border:1px solid transparent; border-radius:var(--mc-radius-xs); color:var(--mc-text-muted); font-size:var(--mc-type-body); font-weight:700; }
 .sidebar-tool:hover,.sidebar-tool.active { background:var(--mc-surface-hover); border-color:var(--mc-border); color:var(--mc-text-secondary); }
 .sidebar-tool.primary-tool { flex:1; justify-content:flex-start; padding:0 10px; }
@@ -1431,13 +1425,14 @@ onMounted(() => { loadProfiles(); });
 .inspector-presence > span { width:7px; height:7px; flex:none; border-radius:50%; box-shadow:0 0 8px currentColor; }
 .inspector-presence small { overflow:hidden; color:var(--mc-text-muted); font-size:var(--mc-type-meta); text-overflow:ellipsis; white-space:nowrap; }
 .inspector-actions { display:flex; flex:none; gap:6px; }
-.inspector-button { min-height:34px; padding:7px 12px; cursor:pointer; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); font-size:var(--mc-type-body); font-weight:800; white-space:nowrap; transition:background var(--mc-duration-fast),opacity var(--mc-duration-fast); }
+.inspector-button { min-height:34px; padding:7px 12px; appearance:none; cursor:pointer; background:transparent; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:var(--mc-type-body); font-weight:800; white-space:nowrap; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast),color var(--mc-duration-fast),opacity var(--mc-duration-fast); }
 .inspector-button.primary { background:var(--mc-accent); border-color:transparent; color:#081007; }
-.inspector-button:disabled { cursor:not-allowed; filter:saturate(.35); opacity:.48; }
 .inspector-button.primary:hover:not(:disabled) { background:var(--mc-accent-strong); }
 .inspector-button.ghost { display:grid; width:34px; padding:0; place-items:center; background:transparent; color:var(--mc-text-muted); }
-.inspector-button.danger:hover { background:rgba(228,111,101,.1); border-color:rgba(228,111,101,.28); color:var(--mc-danger); }
-.inspector-button:disabled { cursor:not-allowed; opacity:.35; }
+.inspector-button.danger { background:rgba(228,111,101,.09); border-color:rgba(228,111,101,.28); color:var(--mc-danger); }
+.inspector-button.danger:hover:not(:disabled) { background:rgba(228,111,101,.14); border-color:rgba(228,111,101,.4); }
+.inspector-button.danger:active:not(:disabled) { background:rgba(228,111,101,.2); border-color:rgba(228,111,101,.52); }
+.inspector-button:disabled { cursor:not-allowed; filter:saturate(.35); opacity:.35; }
 .inspector-vitals { display:flex; flex:none; flex-direction:column; gap:9px; margin-top:12px; padding:11px 12px; background:var(--mc-bg); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }
 .vital-row { display:flex; align-items:center; gap:10px; }
 .vital-label { width:28px; flex:none; color:var(--mc-danger); font:9px var(--mc-font-pixel); }
@@ -1623,7 +1618,7 @@ onMounted(() => { loadProfiles(); });
 
 @media (max-width:860px) {
   .partner-workspace-shell,.partner-workspace-shell.sidebar-collapsed { grid-template-columns:74px minmax(0,1fr); grid-template-rows:54px minmax(0,1fr); column-gap:0; padding:0; }
-  .partner-sidebar { padding:12px 8px; }
+  .partner-sidebar { --partner-sidebar-inline-padding:8px; padding:12px var(--partner-sidebar-inline-padding); }
   .partner-sidebar-header { justify-content:center; padding:0; }
   .partner-sidebar-heading,.partner-list-summary,.partner-sidebar-footer span { display:none; }
   .partner-list-item { justify-content:center; padding:7px 5px; }
@@ -1653,7 +1648,7 @@ onMounted(() => { loadProfiles(); });
   .app-hub-menu { display:none; }
   .global-settings-layer { inset:54px 0 0; }
   .partner-workspace-shell,.partner-workspace-shell.sidebar-collapsed { grid-template-columns:64px minmax(0,1fr); }
-  .partner-sidebar { padding:10px 6px; }
+  .partner-sidebar { --partner-sidebar-inline-padding:6px; padding:10px var(--partner-sidebar-inline-padding); }
   .partner-avatar { width:40px; height:40px; }
   .partner-workspace-bar { min-height:54px; }
   .partner-workspace-tabs { width:100%; }

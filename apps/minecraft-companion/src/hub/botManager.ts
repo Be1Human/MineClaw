@@ -83,6 +83,7 @@ export class BotManager {
         description: profile.personality.description,
         prompt: profile.personality.prompt ?? profile.personality.description,
       },
+      ownerUsername: profile.ownerUsername,
       characterCard,
       memory: {
         semanticSearch: profile.memory?.semanticSearch ?? true,

@@ -108,6 +108,10 @@ test('伙伴检查器使用正式信息层级并保留交流功能入口', () =>
   assert.match(appSource, /v-for="\(msg, i\) in filteredMessages"/);
   assert.match(appSource, /class="chat-panel interaction-chat"/);
   assert.match(appSource, /<ChatBox @send="sendChat"/);
+  assert.match(appSource, /msg\.side === 'viewer'/);
+  assert.match(appSource, /projectChatMessage/);
+  assert.doesNotMatch(appSource, /self:\s*data\.sender ===/);
+  assert.doesNotMatch(appSource, /self:\s*message\.role === 'bot'/);
   assert.match(chatBoxSource, /<McIcon name="send"/);
   assert.doesNotMatch(appSource, /:style="tabStyle\(t\.id\)"/);
 });
@@ -129,6 +133,24 @@ test('窄屏折叠感知舞台并为伙伴交流保留完整主列', () => {
   assert.match(appSource, /class="world-preview-tabs inspector-world-preview-tabs"/);
   assert.match(appSource, /\.inspector-world-preview \{ display:flex;/);
   assert.match(appSource, /\.partner-workspace-shell:not\(\.is-play-workspace\) \.play-control \{ display:none; \}/);
+});
+
+test('BUG-WEBUI-16 | 伙伴栏各断点共享同一横向边界变量', () => {
+  assert.match(appSource, /\.partner-sidebar \{ --partner-sidebar-inline-padding:14px;/);
+  assert.match(appSource, /padding:18px var\(--partner-sidebar-inline-padding\) 0/);
+  assert.match(appSource, /\.partner-sidebar-footer \{[^}]*margin:0 calc\(-1 \* var\(--partner-sidebar-inline-padding\)\)/);
+  assert.match(appSource, /@media \(max-width:860px\)[\s\S]*?--partner-sidebar-inline-padding:8px/);
+  assert.match(appSource, /@media \(max-width:640px\)[\s\S]*?--partner-sidebar-inline-padding:6px/);
+  assert.doesNotMatch(appSource, /\.partner-sidebar-footer \{[^}]*margin:0 -14px/);
+});
+
+test('BUG-WEBUI-17 | 检查器按钮显式重置并提供完整危险常态', () => {
+  assert.match(appSource, /\.inspector-button \{[^}]*appearance:none;[^}]*background:transparent;[^}]*color:var\(--mc-text-secondary\)/);
+  assert.match(appSource, /\.inspector-button\.primary \{[^}]*background:var\(--mc-accent\)/);
+  assert.match(appSource, /\.inspector-button\.ghost \{[^}]*background:transparent;[^}]*color:var\(--mc-text-muted\)/);
+  assert.match(appSource, /\.inspector-button\.danger \{[^}]*background:rgba\(228,111,101,\.09\);[^}]*border-color:rgba\(228,111,101,\.28\);[^}]*color:var\(--mc-danger\)/);
+  assert.match(appSource, /\.inspector-button\.danger:hover:not\(:disabled\)/);
+  assert.match(appSource, /\.inspector-button\.danger:active:not\(:disabled\)/);
 });
 
 test('正式版位图素材全部接入真实消费点', () => {

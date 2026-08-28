@@ -7,7 +7,11 @@
  * 喂入 v2 总线事件（经 runtime.onEvent），只有命中 speech.committed 才回调 UI。
  */
 
+export type ChatRole = 'owner' | 'bot' | 'system' | 'external';
+
 export interface ChatMeta {
+  /** 消息业务角色；来源处确定，Hub 与 Web 只透传和消费。 */
+  role?: ChatRole;
   /** 本轮 turn 标识（同一轮多次 say 共享） */
   turnId?: string;
   /** 本轮截至当前累积的思考（多行 join），无则 undefined */

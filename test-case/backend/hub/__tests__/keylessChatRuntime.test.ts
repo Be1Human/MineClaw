@@ -39,10 +39,12 @@ test('BUG-CROSS-79 | keyless runtime explains failure and hot configuration take
   const profile = hub.profileStore.create(profileInput('KeylessFriend'));
 
   const botReplies: string[] = [];
+  const observedChatRoles: Array<{ sender: string; message: string; role: string | undefined }> = [];
   const replyWaiters: Array<(message: string) => void> = [];
   const previousOnChat = hub.botManager.onChat;
   hub.botManager.onChat = (botId, sender, message, meta) => {
     previousOnChat?.(botId, sender, message, meta);
+    if (botId === profile.id) observedChatRoles.push({ sender, message, role: meta?.role });
     if (botId !== profile.id || sender !== profile.name) return;
     botReplies.push(message);
     replyWaiters.splice(0).forEach(resolve => resolve(message));
@@ -79,6 +81,8 @@ test('BUG-CROSS-79 | keyless runtime explains failure and hot configuration take
     const history = hub.botManager.getRecentChatMessages(profile.id, 20) ?? [];
     assert.ok(history.some(message => message.role === 'owner' && message.content === '你好'));
     assert.ok(history.some(message => message.role === 'bot' && /尚未配置 AI Agent/.test(message.content)));
+    assert.ok(observedChatRoles.some(event => event.message === '你好' && event.role === 'owner'));
+    assert.ok(observedChatRoles.some(event => /尚未配置 AI Agent/.test(event.message) && event.role === 'bot'));
     assert.ok(botReplies.length >= 2);
   } finally {
     await hub.botManager.stopAll();
@@ -114,7 +118,16 @@ test('BUG-CROSS-79 | socket acknowledgement distinguishes accepted and rejected 
     });
     assert.equal((await submit({ botId: 'missing-profile', message: 'hello' })).error.code, 'PROFILE_NOT_FOUND');
     assert.equal((await submit({ botId: broken.id, message: 'hello' })).error.code, 'RUNTIME_UNAVAILABLE');
+    const ownerEvent = new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timed out waiting for owner chat event')), 5_000);
+      client!.on('bot:chat', (event: any) => {
+        if (event.botId !== keyless.id || event.message !== 'hello') return;
+        clearTimeout(timer);
+        resolve(event);
+      });
+    });
     assert.deepEqual(await submit({ botId: keyless.id, message: 'hello' }), { ok: true, accepted: true });
+    assert.equal((await ownerEvent).role, 'owner');
   } finally {
     client?.close();
     await hub.botManager.stopAll();

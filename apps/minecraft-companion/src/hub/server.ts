@@ -187,6 +187,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     // FEAT-WEBUI-09 · 透传 turnId + 该轮思考，供 UI 聊天面板分轨呈现
     io.emit('bot:chat', {
       botId, sender, message, timestamp: Date.now(),
+      role: meta?.role ?? 'external',
       turnId: meta?.turnId, thinking: meta?.thinking,
     });
     writeLogLine(botId, 'chat', `${sender}: ${message}`);

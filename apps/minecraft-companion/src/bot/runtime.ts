@@ -6,7 +6,7 @@ import type { SpatialEntry } from './v2/infra/memory.js';
 import type { Task } from './v2/task/taskRuntime.js';
 import type { TerrainBlockEntry } from './v2/capability/worldScanCapability.js';
 import { installDigTracer } from './v2/infra/digTracer.js';
-import { SpeechThinkingCorrelator, type ChatMeta } from './v2/decision/speechThinkingCorrelator.js';
+import { SpeechThinkingCorrelator, type ChatMeta, type ChatRole } from './v2/decision/speechThinkingCorrelator.js';
 import { join } from 'node:path';
 import { CompanionCore, type CompanionCoreState, type InitiativePolicy } from './v2/companion/companionCore.js';
 import type { ChatMessage, FactKind, FactStatus, MemoryFact } from './v2/infra/chatMemory.js';
@@ -267,6 +267,8 @@ export interface BotRuntimeConfig {
     description: string;
     prompt: string;
   };
+  /** 主人在 Minecraft 中的真实用户名，用于游戏聊天来源分类。 */
+  ownerUsername?: string;
   characterCard?: CharacterCardV1;
   /** FEAT-MEM-09 · Profile 级纯聊天记忆配置。 */
   memory?: {
@@ -668,7 +670,7 @@ export class BotRuntime {
     });
     // FEAT-WEBUI-09 · 每次起 v2 都新建关联器（重连后思考状态清零）
     this.speechCorrelator = new SpeechThinkingCorrelator((text, meta) => {
-      if (text) this.onChat?.(this.config.personality.name, text, meta);
+      if (text) this.onChat?.(this.config.personality.name, text, { ...meta, role: 'bot' });
     });
     const ownerName = this.config.characterCard?.relationship.userPersona.name || process.env.V2_OWNER || 'qxy';
     const ownerAliases = (process.env.V2_OWNER_ALIASES || 'cloudboyboy').split(',').map(s => s.trim()).filter(Boolean);
@@ -845,7 +847,7 @@ export class BotRuntime {
       this.startCompanionBrain();
     }
     this.lastActivity = `和 ${sender} 聊天`;
-    this.onChat?.(sender, message);
+    this.onChat?.(sender, message, { role: 'owner' });
     this.log('info', `[chat:web] ${sender}: "${message}"`);
     // 把网页消息送进 v2 MainBrain（直聊 · 跳过 AddressDetector）
     this.v2?.injectOwnerChat(message);
@@ -858,7 +860,7 @@ export class BotRuntime {
     this.conn.events.on('chat', (event) => {
       const { sender, message } = event.data as { sender: string; message: string };
       if (sender === this.config.personality.name) return;
-      this.onChat?.(sender, message);
+      this.onChat?.(sender, message, { role: this.resolveGameChatRole(sender) });
       this.log('info', `[chat:game] ${sender}: "${message}"`);
     });
 
@@ -876,6 +878,19 @@ export class BotRuntime {
         this.lastActivity = '连接丢失';
       }
     });
+  }
+
+  private resolveGameChatRole(sender: string): ChatRole {
+    const normalized = sender.trim().toLocaleLowerCase();
+    const configuredOwners = [
+      this.config.ownerUsername,
+      this.config.characterCard?.relationship.userPersona.name,
+      process.env.V2_OWNER,
+      ...(process.env.V2_OWNER_ALIASES || '').split(','),
+    ]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map(value => value.trim().toLocaleLowerCase());
+    return configuredOwners.includes(normalized) ? 'owner' : 'external';
   }
 
   private setStatus(status: BotStatus): void {
