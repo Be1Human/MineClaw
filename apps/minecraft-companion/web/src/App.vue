@@ -190,13 +190,26 @@
 
         <!-- empty state -->
         <div v-if="!worldPreviewPresentation.shouldMountScene" class="perception-empty">
-          <div class="scan-field" aria-hidden="true">
-            <span class="scan-crosshair horizontal"></span>
-            <span class="scan-crosshair vertical"></span>
-            <span class="scan-ring ring-one"></span>
-            <span class="scan-ring ring-two"></span>
-            <span class="scan-ring ring-three"></span>
-            <span class="scan-ring ring-four"></span>
+          <div class="scan-field" :aria-label="`实体雷达，当前显示 ${radarProjection.total} 个实体`">
+            <span class="scan-crosshair horizontal" aria-hidden="true"></span>
+            <span class="scan-crosshair vertical" aria-hidden="true"></span>
+            <span class="scan-ring ring-one" aria-hidden="true"></span>
+            <span class="scan-ring ring-two" aria-hidden="true"></span>
+            <span class="scan-ring ring-three" aria-hidden="true"></span>
+            <span class="scan-ring ring-four" aria-hidden="true"></span>
+            <button
+              v-for="marker in radarProjection.markers"
+              :key="marker.id"
+              type="button"
+              class="radar-entity-marker"
+              :class="[`is-${marker.category}`, { 'is-edge': marker.edge }]"
+              :style="{ left: `${marker.xPercent}%`, top: `${marker.yPercent}%` }"
+              :title="marker.description"
+              :aria-label="marker.description"
+            >
+              <span class="radar-entity-dot" aria-hidden="true"></span>
+              <span class="radar-entity-tooltip" aria-hidden="true">{{ marker.name }} · {{ marker.distance.toFixed(1) }} 格</span>
+            </button>
             <div class="scan-core">
               <McHead :texture="selectedSkinTexture" :size="24" />
             </div>
@@ -225,6 +238,10 @@
             <span>MODE: {{ perceptionTelemetry.mode }}</span>
             <span>POS: {{ perceptionTelemetry.position }}</span>
             <span>ENTITY: {{ perceptionTelemetry.entities }}</span>
+            <template v-if="worldPreviewMode === 'radar'">
+              <span>VISIBLE: {{ radarProjection.total }}</span>
+              <span>RANGE: {{ radarProjection.rangeLabel }}</span>
+            </template>
             <span>BLOCK: {{ perceptionTelemetry.blocks }}</span>
           </div>
         </div>
@@ -515,6 +532,7 @@ import SkinEditor from './components/SkinEditor.vue';
 import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation.js';
 import { CONTROL_TAB_IDS, migrateControlTabs, normalizeControlTab } from './lib/controlNavigation.js';
 import { filterChatMessages, projectChatMessage } from './lib/chatPresentation.js';
+import { projectRadarEntities } from './lib/radarEntityProjection.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 import { VisualWorldStore } from './lib/authentic/visualWorldStore.js';
 import {
@@ -554,9 +572,11 @@ const tabs = [
 ];
 const radarLegend = [
   { type: 'beacon', label: '伙伴信标' },
-  { type: 'range', label: '感知范围' },
-  { type: 'medium', label: '中等强度' },
-  { type: 'edge', label: '边缘感知' },
+  { type: 'player', label: '玩家' },
+  { type: 'hostile', label: '敌对生物' },
+  { type: 'living', label: '普通生物' },
+  { type: 'item', label: '掉落物' },
+  { type: 'other', label: '其他实体' },
 ];
 const worldPreviewModeOptions = [
   { id: 'radar', label: '雷达', icon: 'compass' },
@@ -824,6 +844,12 @@ const worldPreviewPresentation = computed(() => projectWorldPreview({
   hasWorldState: Boolean(currentWorldState.value),
   pendingAction: currentWorldConnectionAction.value,
 }));
+const radarProjection = computed(() => {
+  if (worldPreviewMode.value !== 'radar' || !worldPreviewPresentation.value.connected) {
+    return projectRadarEntities(null);
+  }
+  return projectRadarEntities(currentWorldState.value);
+});
 
 const hpCells = computed(() => {
   const h = currentFullStatus.value?.health;
@@ -1533,17 +1559,34 @@ onMounted(() => { loadProfiles(); });
 .scan-core::before { width:94px; }
 .scan-core::after { height:94px; }
 .scan-core .mc-head { position:relative; z-index:3; }
+.radar-entity-marker { position:absolute; z-index:4; width:18px; height:18px; padding:0; cursor:help; appearance:none; color:inherit; background:transparent; border:0; transform:translate(-50%,-50%); }
+.radar-entity-dot { position:absolute; inset:4px; background:#aeb8ad; border:1px solid rgba(235,245,232,.76); border-radius:50%; box-shadow:0 0 8px rgba(174,184,173,.48); }
+.radar-entity-marker.is-player .radar-entity-dot { inset:3px; background:#7bc8ff; border-color:#e7f7ff; border-radius:2px; box-shadow:0 0 10px rgba(94,188,255,.76); }
+.radar-entity-marker.is-hostile .radar-entity-dot { inset:3px; background:#ed6f67; border-color:#ffd5cf; border-radius:1px; box-shadow:0 0 11px rgba(237,86,77,.8); transform:rotate(45deg); animation:radarThreatPulse 1.7s ease-in-out infinite; }
+.radar-entity-marker.is-passive .radar-entity-dot { background:#7bd45a; border-color:#d9ffd0; box-shadow:0 0 8px rgba(105,201,74,.62); }
+.radar-entity-marker.is-neutral .radar-entity-dot { background:#58d2c7; border-color:#d5fffb; box-shadow:0 0 8px rgba(80,207,196,.62); }
+.radar-entity-marker.is-item .radar-entity-dot { inset:5px; background:#e4bd50; border-color:#fff0ad; box-shadow:0 0 9px rgba(228,189,80,.72); }
+.radar-entity-marker.is-edge .radar-entity-dot { outline:1px solid rgba(255,255,255,.32); outline-offset:2px; }
+.radar-entity-tooltip { position:absolute; bottom:21px; left:50%; display:none; min-width:max-content; padding:4px 6px; pointer-events:none; background:rgba(7,12,8,.96); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-xs); color:var(--mc-text-secondary); font:9px/1.2 var(--mc-font-mono); transform:translateX(-50%); white-space:nowrap; }
+.radar-entity-marker:hover,.radar-entity-marker:focus-visible { z-index:5; outline:none; }
+.radar-entity-marker:hover .radar-entity-tooltip,.radar-entity-marker:focus-visible .radar-entity-tooltip { display:block; }
+.radar-entity-marker:focus-visible .radar-entity-dot { outline:2px solid #fff; outline-offset:3px; }
 .perception-legend { right:auto; bottom:20px; left:20px; display:grid; width:260px; grid-template-columns:minmax(0,1fr) 1fr; gap:14px; padding:13px 14px; }
-.radar-legend-list { display:flex; flex-direction:column; gap:9px; }
+.radar-legend-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 10px; }
 .radar-legend-item { display:flex; align-items:center; gap:9px; color:var(--mc-text-muted); font-size:10px; }
 .radar-legend-item > span { width:12px; height:12px; flex:none; border:1px solid var(--mc-accent); border-radius:50%; }
 .radar-legend-item > span.beacon { width:9px; height:9px; margin:1.5px; background:var(--mc-accent); box-shadow:0 0 8px rgba(105,201,74,.5); }
-.radar-legend-item > span.medium,.radar-legend-item > span.edge { border-style:dashed; }
-.radar-legend-item > span.edge { border-color:rgba(105,201,74,.42); }
+.radar-legend-item > span.player { background:#7bc8ff; border-color:#e7f7ff; border-radius:2px; }
+.radar-legend-item > span.hostile { width:9px; height:9px; margin:1.5px; background:#ed6f67; border-color:#ffd5cf; border-radius:1px; transform:rotate(45deg); }
+.radar-legend-item > span.living { background:#7bd45a; border-color:#d9ffd0; }
+.radar-legend-item > span.item { width:8px; height:8px; margin:2px; background:#e4bd50; border-color:#fff0ad; }
+.radar-legend-item > span.other { background:#aeb8ad; border-color:rgba(235,245,232,.76); }
 .radar-legend-item strong { color:var(--mc-text-muted); font-size:10px; font-weight:600; }
 .radar-telemetry { display:flex; min-width:0; flex-direction:column; justify-content:center; gap:7px; padding-left:13px; border-left:1px solid rgba(105,201,74,.28); color:#6da16a; font:9px/1.25 var(--mc-font-mono); }
 @keyframes radarPulse { 0% { transform:scale(.6); opacity:0; } 14% { opacity:.75; } 100% { transform:scale(5.5); opacity:0; } }
 @keyframes radarSweep { to { transform:rotate(360deg); } }
+@keyframes radarThreatPulse { 0%,100% { opacity:.72; transform:rotate(45deg) scale(.82); } 50% { opacity:1; transform:rotate(45deg) scale(1.18); } }
+@media (prefers-reduced-motion:reduce) { .radar-entity-marker.is-hostile .radar-entity-dot { animation:none; } }
 
 .partner-inspector { gap:12px; padding:0; background:transparent; }
 .partner-hero-card { flex:none; padding:14px; background:rgba(14,21,16,.96); border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); }

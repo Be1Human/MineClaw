@@ -83,6 +83,14 @@ test('感知空态使用四层局部扫描环且不伪造世界数据', () => {
   assert.equal((appSource.match(/class="scan-ring /g) || []).length, 4);
   assert.match(appSource, /@keyframes radarPulse/);
   assert.match(appSource, /@keyframes radarSweep/);
+  assert.match(appSource, /import \{ projectRadarEntities \} from '\.\/lib\/radarEntityProjection\.js'/);
+  assert.match(appSource, /const radarProjection = computed/);
+  assert.match(appSource, /v-for="marker in radarProjection\.markers"/);
+  assert.match(appSource, /:style="\{ left: `\$\{marker\.xPercent\}%`, top: `\$\{marker\.yPercent\}%` \}"/);
+  assert.match(appSource, /:aria-label="marker\.description"/);
+  assert.match(appSource, /VISIBLE: \{\{ radarProjection\.total \}\}/);
+  assert.match(appSource, /RANGE: \{\{ radarProjection\.rangeLabel \}\}/);
+  assert.match(appSource, /\{ type: 'other', label: '其他实体' \}/);
   assert.match(appSource, /class="perception-stage-heading"/);
   assert.match(appSource, /class="perception-primary-action"/);
   assert.match(appSource, /class="world-preview-tabs" role="group" aria-label="世界预览模式"/);
