@@ -143,6 +143,14 @@ test('窄屏折叠感知舞台并为伙伴交流保留完整主列', () => {
   assert.match(appSource, /\.partner-workspace-shell:not\(\.is-play-workspace\) \.play-control \{ display:none; \}/);
 });
 
+test('BUG-WEBUI-19 | 世界连接动作在桌面与窄屏都只有一个可见入口', () => {
+  assert.equal((appSource.match(/@click="handleWorldConnectionAction"/g) || []).length, 2);
+  assert.match(appSource, /class="perception-primary-action"/);
+  assert.match(appSource, /class="inspector-button inspector-world-connection-action"/);
+  assert.match(appSource, /\.inspector-world-connection-action \{ display:none; \}/);
+  assert.match(appSource, /@media \(max-width:860px\)[\s\S]*?\.play-stage \{ display:none; \}[\s\S]*?\.inspector-world-connection-action \{ display:inline-flex; \}/);
+});
+
 test('BUG-WEBUI-16 | 伙伴栏各断点共享同一横向边界变量', () => {
   assert.match(appSource, /\.partner-sidebar \{ --partner-sidebar-inline-padding:14px;/);
   assert.match(appSource, /padding:18px var\(--partner-sidebar-inline-padding\) 0/);

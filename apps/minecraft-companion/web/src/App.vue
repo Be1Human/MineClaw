@@ -266,7 +266,7 @@
             </div>
             <div class="inspector-actions">
               <button
-                class="inspector-button"
+                class="inspector-button inspector-world-connection-action"
                 :class="worldPreviewPresentation.action === 'disconnect' ? 'danger' : 'primary'"
                 :disabled="!worldPreviewPresentation.canAct"
                 @click="handleWorldConnectionAction"
@@ -1451,6 +1451,7 @@ onMounted(() => { loadProfiles(); });
 .inspector-presence > span { width:7px; height:7px; flex:none; border-radius:50%; box-shadow:0 0 8px currentColor; }
 .inspector-presence small { overflow:hidden; color:var(--mc-text-muted); font-size:var(--mc-type-meta); text-overflow:ellipsis; white-space:nowrap; }
 .inspector-actions { display:flex; flex:none; gap:6px; }
+.inspector-world-connection-action { display:none; }
 .inspector-button { min-height:34px; padding:7px 12px; appearance:none; cursor:pointer; background:transparent; border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:var(--mc-type-body); font-weight:800; white-space:nowrap; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast),color var(--mc-duration-fast),opacity var(--mc-duration-fast); }
 .inspector-button.primary { background:var(--mc-accent); border-color:transparent; color:#081007; }
 .inspector-button.primary:hover:not(:disabled) { background:var(--mc-accent-strong); }
@@ -1674,6 +1675,7 @@ onMounted(() => { loadProfiles(); });
   .play-stage { display:none; }
   .play-control { grid-column:2; grid-row:2; padding:12px; }
   .partner-workspace-shell:not(.is-play-workspace) .play-control { display:none; }
+  .inspector-world-connection-action { display:inline-flex; }
   .inspector-world-preview { display:flex; flex-direction:column; gap:8px; margin-top:9px; padding:9px; background:rgba(255,255,255,.025); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
   .inspector-world-preview-heading { display:flex; align-items:center; justify-content:space-between; color:var(--mc-text-muted); font-size:10px; }
   .inspector-world-preview-heading strong { color:var(--mc-accent-strong); font-size:10px; }
