@@ -865,6 +865,122 @@ function processDirtyChunks() {
   for (const ck of batch) rebuildChunk(ck);
 }
 
+function normalizeEntitySkinSource(source) {
+  if (typeof source !== 'string' || !source.trim()) return defaultSkin;
+  return source.trim().replace(/^http:\/\/textures\.minecraft\.net\//i, 'https://textures.minecraft.net/');
+}
+
+function createPlayerEntityVisual(group, entity) {
+  const player = new PlayerObject();
+  player.name = 'serverSkinPlayer';
+  player.backEquipment = null;
+  player.skin.visible = false;
+  player.scale.setScalar(0.05);
+  player.position.y = 0.8125;
+  group.add(player);
+  group.userData.playerSkin = {
+    entityId: entity.id,
+    player,
+    skinTexture: null,
+    skinKey: '',
+    skinLoadVersion: 0,
+    removed: false,
+  };
+
+  const label = createTextSprite(entity.name, 0x60a5fa);
+  label.position.y = 2.1;
+  group.add(label);
+
+  const baseRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.4, 0.7, 24),
+    new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.4, side: THREE.DoubleSide }),
+  );
+  baseRing.rotation.x = -Math.PI / 2;
+  baseRing.position.y = 0.02;
+  group.add(baseRing);
+
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.08, 6, 8),
+    new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.15, depthWrite: false }),
+  );
+  beam.position.y = 4.8;
+  group.add(beam);
+}
+
+function loadPlayerEntitySkinSource(state, source, modelType, loadVersion, allowFallback) {
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    const current = entityMeshes.get(state.entityId)?.userData.playerSkin;
+    if (state.removed || current !== state || loadVersion !== state.skinLoadVersion) return;
+
+    const nextTexture = new THREE.CanvasTexture(image);
+    nextTexture.magFilter = THREE.NearestFilter;
+    nextTexture.minFilter = THREE.NearestFilter;
+    nextTexture.generateMipmaps = false;
+    nextTexture.colorSpace = THREE.SRGBColorSpace;
+    nextTexture.needsUpdate = true;
+
+    const previousTexture = state.skinTexture;
+    state.skinTexture = nextTexture;
+    state.player.skin.map = nextTexture;
+    state.player.skin.modelType = modelType;
+    state.player.skin.visible = true;
+    previousTexture?.dispose();
+  };
+  image.onerror = () => {
+    const current = entityMeshes.get(state.entityId)?.userData.playerSkin;
+    if (state.removed || current !== state || loadVersion !== state.skinLoadVersion) return;
+    if (allowFallback) loadPlayerEntitySkinSource(state, defaultSkin, 'slim', loadVersion, false);
+  };
+  image.src = source;
+}
+
+function updatePlayerEntitySkin(group, entity) {
+  const state = group.userData.playerSkin;
+  if (!state) return;
+  const source = normalizeEntitySkinSource(entity.skinUrl);
+  const modelType = entity.skinModel === 'slim' ? 'slim' : (source === defaultSkin ? 'slim' : 'default');
+  const skinKey = `${source}\u0000${modelType}`;
+  if (state.skinKey === skinKey) return;
+
+  state.skinKey = skinKey;
+  const loadVersion = ++state.skinLoadVersion;
+  loadPlayerEntitySkinSource(state, source, modelType, loadVersion, source !== defaultSkin);
+}
+
+function disposeEntityGroup(group) {
+  const playerSkin = group.userData.playerSkin;
+  if (playerSkin) {
+    playerSkin.removed = true;
+    playerSkin.skinLoadVersion += 1;
+    playerSkin.skinTexture?.dispose();
+    playerSkin.skinTexture = null;
+    playerSkin.player.skin.map = null;
+  }
+
+  const disposedGeometries = new Set();
+  const disposedMaterials = new Set();
+  const disposedTextures = new Set();
+  group.traverse(child => {
+    if (child.geometry && !disposedGeometries.has(child.geometry)) {
+      disposedGeometries.add(child.geometry);
+      child.geometry.dispose();
+    }
+    const materials = Array.isArray(child.material) ? child.material : (child.material ? [child.material] : []);
+    for (const material of materials) {
+      if (material.map && !disposedTextures.has(material.map)) {
+        disposedTextures.add(material.map);
+        material.map.dispose();
+      }
+      if (!disposedMaterials.has(material)) {
+        disposedMaterials.add(material);
+        material.dispose();
+      }
+    }
+  });
+}
+
 function updateEntities(entities) {
   const currentIds = new Set();
 
@@ -878,58 +994,8 @@ function updateEntities(entities) {
       group = new THREE.Group();
 
       if (entity.category === 'player') {
-        // ── 玩家：MC 风格方块人 ──
-        const bodyMat = new THREE.MeshPhongMaterial({ color: 0x3b82f6, emissive: 0x3b82f6, emissiveIntensity: 0.3 });
-        const skinMat = new THREE.MeshPhongMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.2 });
-
-        // 头 (0.5×0.5×0.5)
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), skinMat);
-        head.position.y = 1.55;
-        group.add(head);
-        // 身体 (0.5×0.75×0.3)
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.3), bodyMat);
-        body.position.y = 1.0;
-        group.add(body);
-        // 左臂
-        const armMat = new THREE.MeshPhongMaterial({ color: 0x2563eb, emissive: 0x2563eb, emissiveIntensity: 0.2 });
-        const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.25), armMat);
-        lArm.position.set(-0.35, 1.0, 0);
-        group.add(lArm);
-        // 右臂
-        const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.25), armMat);
-        rArm.position.set(0.35, 1.0, 0);
-        group.add(rArm);
-        // 左腿
-        const legMat = new THREE.MeshPhongMaterial({ color: 0x1e3a5f, emissive: 0x1e3a5f, emissiveIntensity: 0.1 });
-        const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.7, 0.25), legMat);
-        lLeg.position.set(-0.13, 0.35, 0);
-        group.add(lLeg);
-        // 右腿
-        const rLeg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.7, 0.25), legMat);
-        rLeg.position.set(0.13, 0.35, 0);
-        group.add(rLeg);
-
-        // 名字标签 (头顶上方)
-        const label = createTextSprite(entity.name, 0x60a5fa);
-        label.position.y = 2.1;
-        group.add(label);
-
-        // 脚底发光环
-        const baseRing = new THREE.Mesh(
-          new THREE.RingGeometry(0.4, 0.7, 24),
-          new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.4, side: THREE.DoubleSide }),
-        );
-        baseRing.rotation.x = -Math.PI / 2;
-        baseRing.position.y = 0.02;
-        group.add(baseRing);
-
-        // 头顶光柱
-        const beam = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.08, 0.08, 6, 8),
-          new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.15, depthWrite: false }),
-        );
-        beam.position.y = 4.8;
-        group.add(beam);
+        // ── 服务器玩家：player_info 真实皮肤；缺失/失败时回退唯一蓝衣 ──
+        createPlayerEntityVisual(group, entity);
 
       } else if (entity.category === 'hostile') {
         // ── 敌对生物：红色菱形 + 警示环 ──
@@ -986,6 +1052,8 @@ function updateEntities(entities) {
       entityMeshes.set(key, group);
     }
 
+    if (entity.category === 'player') updatePlayerEntitySkin(group, entity);
+
     // 所有实体统一以脚底为基准（position.y = 地面 y）
     group.position.set(entity.position.x, entity.position.y, entity.position.z);
     // 玩家/生物跟随 yaw 旋转
@@ -997,13 +1065,7 @@ function updateEntities(entities) {
   for (const [key, group] of entityMeshes) {
     if (!currentIds.has(key)) {
       scene.remove(group);
-      group.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (child.material.map) child.material.map.dispose();
-          child.material.dispose();
-        }
-      });
+      disposeEntityGroup(group);
       entityMeshes.delete(key);
     }
   }
@@ -1431,7 +1493,7 @@ function cleanup() {
   worldBlockMap.clear();
   for (const [, group] of entityMeshes) {
     scene?.remove(group);
-    group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) { if (c.material.map) c.material.map.dispose(); c.material.dispose(); } });
+    disposeEntityGroup(group);
   }
   entityMeshes.clear();
   for (const ring of threatRings) { scene?.remove(ring); ring.geometry.dispose(); ring.material.dispose(); }

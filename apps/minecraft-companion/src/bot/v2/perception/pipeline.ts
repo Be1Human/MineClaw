@@ -124,6 +124,8 @@ export class PerceptionPipeline {
         distance: dist3(selfPos, e.position),
         category: categorize(e),
         yaw: e.yaw,
+        ...(e.skinUrl ? { skinUrl: e.skinUrl } : {}),
+        ...(e.skinModel ? { skinModel: e.skinModel } : {}),
         ...(e.droppedItem ? { droppedItem: structuredClone(e.droppedItem) } : {}),
       }));
 

@@ -124,14 +124,15 @@ export class MineflayerGameAdapter implements GameAdapter {
     const list: RawEntity[] = [];
     try {
       for (const e of Object.values(bot.entities)) {
-        if (e) list.push(toRawEntity(e));
+        if (e) list.push(toRawEntity(e, skinDataForEntity(bot, e)));
       }
     } catch { return []; }
     return list;
   }
   getEntityById(id: number): RawEntity | null {
-    const e = this.getBot()?.entities?.[id];
-    return e ? toRawEntity(e) : null;
+    const bot = this.getBot();
+    const e = bot?.entities?.[id];
+    return e && bot ? toRawEntity(e, skinDataForEntity(bot, e)) : null;
   }
   getPlayers(): Record<string, RawPlayer> {
     const bot = this.getBot();
@@ -139,13 +140,13 @@ export class MineflayerGameAdapter implements GameAdapter {
     const out: Record<string, RawPlayer> = {};
     try {
       for (const [name, p] of Object.entries(bot.players)) {
-        out[name] = toRawPlayer(name, p as { entity?: Entity });
+        out[name] = toRawPlayer(name, p as PlayerSnapshot);
       }
     } catch { return {}; }
     return out;
   }
   getPlayer(name: string): RawPlayer | null {
-    const p = this.getBot()?.players?.[name] as { entity?: Entity } | undefined;
+    const p = this.getBot()?.players?.[name] as PlayerSnapshot | undefined;
     return p ? toRawPlayer(name, p) : null;
   }
 
@@ -721,8 +722,25 @@ function toRawBlock(b: Block): RawBlock {
     boundingBox: b.boundingBox === 'block' ? 'block' : 'empty',
   };
 }
-function toRawEntity(e: Entity): RawEntity {
+interface PlayerSkinSnapshot {
+  url: string;
+  model: string | null;
+}
+
+interface PlayerSnapshot {
+  entity?: Entity;
+  skinData?: PlayerSkinSnapshot;
+}
+
+function skinDataForEntity(bot: Bot, entity: Entity): PlayerSkinSnapshot | undefined {
+  const username = (entity as unknown as { username?: string }).username;
+  if (!username) return undefined;
+  return (bot.players?.[username] as PlayerSnapshot | undefined)?.skinData;
+}
+
+function toRawEntity(e: Entity, skinData?: PlayerSkinSnapshot): RawEntity {
   const dropped = e.getDroppedItem();
+  const username = (e as unknown as { username?: string }).username;
   return {
     id: e.id,
     name: e.name ?? 'unknown',
@@ -732,13 +750,17 @@ function toRawEntity(e: Entity): RawEntity {
     yaw: e.yaw,
     pitch: e.pitch,
     health: (e as unknown as { health?: number }).health,
-    username: (e as unknown as { username?: string }).username,
+    username,
+    ...(username && skinData?.url ? {
+      skinUrl: skinData.url,
+      skinModel: skinData.model === 'slim' ? 'slim' as const : 'classic' as const,
+    } : {}),
     ...(dropped ? { droppedItem: { name: dropped.name, count: dropped.count } } : {}),
   };
 }
-function toRawPlayer(name: string, p: { entity?: Entity }): RawPlayer {
+function toRawPlayer(name: string, p: PlayerSnapshot): RawPlayer {
   return {
     username: name,
-    entity: p.entity ? toRawEntity(p.entity) : undefined,
+    entity: p.entity ? toRawEntity(p.entity, p.skinData) : undefined,
   };
 }

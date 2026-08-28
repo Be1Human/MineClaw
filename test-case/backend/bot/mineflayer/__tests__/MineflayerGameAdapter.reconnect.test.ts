@@ -89,3 +89,34 @@ test('BUG-CROSS-69: dropped item identity is preserved by the adapter', () => {
     droppedItem: { name: 'iron_pickaxe', count: 1 },
   }]);
 });
+
+test('WEBUI-001: server player skin data is preserved by the adapter', () => {
+  const player = {
+    id: 52,
+    name: 'player',
+    username: 'cloudboyboy',
+    type: 'player',
+    position: { x: 2, y: 65, z: 3 },
+    yaw: 1.25,
+    getDroppedItem: () => null,
+  };
+  const bot = {
+    entities: { 52: player },
+    players: {
+      cloudboyboy: {
+        entity: player,
+        skinData: {
+          url: 'http://textures.minecraft.net/texture/server-player',
+          model: 'slim',
+        },
+      },
+    },
+  } as unknown as Bot;
+  const adapter = new MineflayerGameAdapter(() => bot);
+
+  const entity = adapter.getEntities()[0];
+  assert.equal(entity.username, 'cloudboyboy');
+  assert.equal(entity.skinUrl, 'http://textures.minecraft.net/texture/server-player');
+  assert.equal(entity.skinModel, 'slim');
+  assert.deepEqual(adapter.getPlayer('cloudboyboy')?.entity, entity);
+});

@@ -35,6 +35,10 @@ export interface RawEntity {
   health?: number;
   /** 玩家名（仅 type === 'player' 时有效） */
   username?: string;
+  /** 服务器 player_info 下发的玩家皮肤纹理地址。 */
+  skinUrl?: string;
+  /** 玩家皮肤手臂模型；Mineflayer 没有 slim 标记时按 classic。 */
+  skinModel?: 'classic' | 'slim';
   /** 地面掉落物的真实物品栈；非 item 实体为空。 */
   droppedItem?: {
     name: string;

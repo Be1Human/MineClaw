@@ -140,6 +140,10 @@ export interface EntityView {
   };
   /** 实体朝向（弧度）· 玩家/生物有效 */
   yaw?: number;
+  /** 服务器下发的玩家皮肤纹理；仅玩家实体可能存在。 */
+  skinUrl?: string;
+  /** 玩家皮肤手臂模型。 */
+  skinModel?: 'classic' | 'slim';
 }
 
 export interface TaskContextView {

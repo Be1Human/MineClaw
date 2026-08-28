@@ -285,6 +285,28 @@ describe('PerceptionPipeline', () => {
     assert.deepEqual(view.entities[0].droppedItem, { name: 'iron_pickaxe', count: 1 });
     assert.equal(view.entities[0].distance, 5);
   });
+
+  it('WEBUI-001 · 服务器玩家皮肤进入 WorldStateView', () => {
+    const game = makeMockGame({
+      entities: [{
+        id: 52,
+        name: 'player',
+        username: 'cloudboyboy',
+        type: 'player',
+        position: { x: 2, y: 64, z: 3 },
+        yaw: 0.75,
+        skinUrl: 'https://textures.minecraft.net/texture/server-player',
+        skinModel: 'slim',
+      }],
+    });
+    const view = new PerceptionPipeline(game, new EventBusV2(), { ownerName: OWNER }).perceive();
+
+    assert.equal(view.entities[0].name, 'cloudboyboy');
+    assert.equal(view.entities[0].category, 'player');
+    assert.equal(view.entities[0].skinUrl, 'https://textures.minecraft.net/texture/server-player');
+    assert.equal(view.entities[0].skinModel, 'slim');
+    assert.equal(view.entities[0].yaw, 0.75);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────
