@@ -15,6 +15,7 @@ app.innerHTML = `
       <a href="#life">我们的一天</a>
       <a href="#screens">真实世界</a>
       <a href="#demo">故事影像</a>
+      <a href="./architecture.html">框架实现</a>
     </nav>
     <a class="header-cta" href="https://github.com/Be1Human/MineClaw" target="_blank" rel="noreferrer" aria-label="在新窗口打开 MineClaw GitHub 仓库">GitHub 仓库 <span aria-hidden="true">↗</span></a>
     <button class="nav-toggle" type="button" aria-label="展开导航" aria-expanded="false" data-nav-toggle>
@@ -25,6 +26,7 @@ app.innerHTML = `
       <a href="#life">我们的一天</a>
       <a href="#screens">真实世界</a>
       <a href="#demo">故事影像</a>
+      <a href="./architecture.html">框架实现</a>
       <a href="https://github.com/Be1Human/MineClaw" target="_blank" rel="noreferrer">GitHub 仓库 ↗</a>
     </nav>
   </header>
@@ -198,7 +200,7 @@ app.innerHTML = `
         <figure class="details-capture reveal">
           <div class="screen-frame live-capture">
             <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION RELATIONSHIP</b><small>REAL PRODUCT CAPTURE</small></div>
-            <img src="./media/images/live-relationship.jpg?v=20260827-112520" alt="MineClaw 最新伙伴配置页面，完整展示伙伴身份、性格和 AI Agent 配置" loading="lazy" />
+            <img src="./media/images/live-relationship.jpg?v=20260828-141500" alt="MineClaw 当前伙伴配置页面，展示伙伴身份、性格和 AI Agent 配置" loading="lazy" />
           </div>
           <figcaption><span>REAL 01</span><strong>每个伙伴都有自己的身份</strong><p>最新伙伴配置页完整展示名字、皮肤、性格描述与 AI Agent 选择；她如何说话、如何判断，都从清晰可见的设定开始。</p></figcaption>
         </figure>
@@ -281,7 +283,7 @@ app.innerHTML = `
         <figure class="screen-feature live-evidence reveal">
           <div class="screen-frame live-capture perception-capture">
             <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION PERCEPTION</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
-            <img src="./media/images/live-perception.jpg?v=20260827-112520" alt="MineClaw 最新游玩总览完整页面，展示伙伴列表、三维感知待机区和伙伴状态面板" loading="lazy" />
+            <img src="./media/images/live-perception.jpg?v=20260828-141500" alt="MineClaw 当前游玩总览完整页面，展示伙伴列表、雷达感知区和伙伴状态面板" loading="lazy" />
           </div>
           <figcaption><span>02</span><strong>她此刻能看见什么，一目了然</strong><p>最新游玩总览把伙伴列表、三维感知区与实时状态放在同一屏。截图使用安全的离线演示实例，因此如实显示感知待机状态；伙伴上线后，这里会渲染她正在感知的周围世界。</p></figcaption>
         </figure>
@@ -289,7 +291,7 @@ app.innerHTML = `
         <div class="screen-pair">
           <figure class="screen-world reveal">
             <div class="world-shot">
-              <img src="./media/images/mineclaw-companion-in-world.png?v=20260827-2205" alt="MineClaw 最新 App 完整页面，展示伙伴列表、感知空间和伙伴交流面板" loading="lazy" />
+              <img src="./media/images/mineclaw-companion-in-world.png?v=20260828-141500" alt="MineClaw 当前 App 真实世界待机页面，展示伙伴列表、感知空间和伙伴面板" loading="lazy" />
               <div class="world-shot-tag"><i></i> MINECLAW · COMPANION IN WORLD</div>
             </div>
             <figcaption><span>03</span><strong>她真正来到我的世界</strong><p>拥有 Minecraft 身体、位置和背包，不是屏幕外的一个声音；你可以在同一片方块上看到她、找到她，和她并肩出发。</p></figcaption>
@@ -297,7 +299,7 @@ app.innerHTML = `
           <figure class="screen-inventory reveal">
             <div class="screen-frame live-capture inventory-capture">
               <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION INVENTORY</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
-              <img src="./media/images/live-inventory.jpg?v=20260827-112520" alt="MineClaw 最新背包页面完整视图，保留三维感知区和右侧背包面板" loading="lazy" />
+              <img src="./media/images/live-inventory.jpg?v=20260828-141500" alt="MineClaw 当前背包页面完整视图，保留真实世界待机区和右侧背包面板" loading="lazy" />
             </div>
             <figcaption><span>04</span><strong>行动会在背包里留下实物</strong><p>背包页和伙伴当前状态同屏呈现。演示伙伴未上线时，界面明确显示“暂无背包数据”；连接世界后，采集、制作和整理留下的真实物品会出现在这里。</p></figcaption>
           </figure>
@@ -307,14 +309,14 @@ app.innerHTML = `
           <figure class="screen-chat reveal">
             <div class="screen-frame webui-capture">
               <div class="screen-chrome"><span></span><span></span><span></span><b>CONVERSATION</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
-              <img src="./media/images/mineclaw-companion-chat.png?v=20260827-112520" alt="MineClaw 最新聊天页面完整视图，包含伙伴、感知和聊天输入区域" loading="lazy" />
+              <img src="./media/images/mineclaw-companion-chat.png?v=20260828-141500" alt="MineClaw 当前聊天页面完整视图，包含伙伴、感知和聊天记录区域" loading="lazy" />
             </div>
             <figcaption><span>05</span><strong>一起做事，也一直保持对话</strong><p>聊天页始终与伙伴当前状态相连。离线实例会禁用输入并保留清晰提示；连接后，她能回应你的话，也能在共同做事时持续汇报进展。</p></figcaption>
           </figure>
           <figure class="screen-running reveal">
             <div class="screen-frame webui-capture">
               <div class="screen-chrome"><span></span><span></span><span></span><b>TASK WORKBENCH</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
-              <img src="./media/images/task-workbench-running.jpg?v=20260827-112520" alt="MineClaw 最新任务栏完整视图，展示任务汇总和运行时状态" loading="lazy" />
+              <img src="./media/images/task-workbench-running.jpg?v=20260828-141500" alt="MineClaw 当前任务栏完整视图，如实展示任务汇总和空状态" loading="lazy" />
             </div>
             <figcaption><span>06</span><strong>一起做的事有过程</strong><p>任务栏同时展示进行中、暂停与归档数量。当前演示实例未启动运行时，页面如实给出可重试的空状态；运行后，每一步进展与遇到的问题都会留在这里。</p></figcaption>
           </figure>
@@ -323,7 +325,7 @@ app.innerHTML = `
         <figure class="screen-feature completed-screen reveal">
           <div class="screen-frame webui-capture">
             <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION ROLE CARD</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
-            <img src="./media/images/live-role-card.jpg?v=20260827-112520" alt="MineClaw 最新角色卡完整页面，展示身份、背景、人格和表达方式" loading="lazy" />
+            <img src="./media/images/live-role-card.jpg?v=20260828-141500" alt="MineClaw 当前角色卡完整页面，展示身份、背景、人格和表达方式" loading="lazy" />
           </div>
           <figcaption><span>07</span><strong>她不只是一套能力，也有完整角色</strong><p>角色卡把身份、背景、自我认知、人格、价值观和边界放在同一处。你可以看见这个伙伴如何认识自己，也能决定你们要以怎样的关系相处。</p></figcaption>
         </figure>
@@ -331,7 +333,7 @@ app.innerHTML = `
         <figure class="screen-feature trace-screen reveal">
           <div class="screen-frame live-capture trace-capture">
             <div class="screen-chrome"><span></span><span></span><span></span><b>MINECLAW · COMPANION THOUGHT TRACE</b><small>CURRENT PUBLIC/MAIN · FULL VIEW</small></div>
-            <img src="./media/images/live-trace.jpg?v=20260827-112520" alt="MineClaw 当前演示伙伴的大脑轨迹工作台展示回合、模型调用和事件账本" loading="lazy" />
+            <img src="./media/images/live-trace.jpg?v=20260828-141500" alt="MineClaw 当前演示伙伴的轨迹工作台，展示回合、模型调用和事件账本" loading="lazy" />
           </div>
           <figcaption><span>08</span><strong>连她怎么理解、怎么选择，也能回看</strong><p>轨迹工作台完整呈现筛选、会话、事件账本与调用检查器。未运行时会明确显示服务状态；运行后，每次理解、调用和恢复都能沿事件链继续下钻。</p></figcaption>
         </figure>
@@ -370,6 +372,7 @@ app.innerHTML = `
           <span><strong>10</strong> 个节点连续闭环</span>
           <span><strong>100%</strong> 关键调用可下钻</span>
           <span><strong>3</strong> 种沟通节奏可选</span>
+          <a class="tech-proof-link" href="./architecture.html">查看完整框架实现 <span aria-hidden="true">→</span></a>
         </div>
       </div>
     </section>
@@ -473,7 +476,7 @@ if (reducedMotion || !('IntersectionObserver' in window)) {
   reveals.forEach((element) => revealObserver.observe(element));
 }
 
-const navLinks = [...document.querySelectorAll('.desktop-nav a')];
+const navLinks = [...document.querySelectorAll('.desktop-nav a[href^="#"]')];
 const sections = navLinks
   .map((link) => document.querySelector(link.getAttribute('href')))
   .filter(Boolean);

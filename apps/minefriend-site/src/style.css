@@ -74,6 +74,8 @@ img, video { max-width: 100%; }
 .header-cta { justify-self: end; display: inline-flex; align-items: center; gap: 28px; min-height: 40px; padding: 0 15px; border: 1px solid rgba(246, 240, 228, 0.42); font-size: 12px; font-weight: 800; transition: background 180ms ease, color 180ms ease; }
 .header-cta:hover { background: var(--moss-bright); color: var(--night); }
 .nav-toggle, .mobile-nav { display: none; }
+.tech-proof-link { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 14px; min-height: 48px; padding: 0 18px; border-top: 1px solid rgba(166, 199, 114, 0.42); color: var(--moss-bright); font-size: 11px; font-weight: 800; transition: background 180ms ease, color 180ms ease; }
+.tech-proof-link:hover { background: var(--moss-bright); color: var(--night); }
 
 .hero { position: relative; min-height: 860px; overflow: hidden; background: var(--night); color: var(--cream); }
 .hero-media, .hero-veil, .hero-grid { position: absolute; inset: 0; }

@@ -1,6 +1,6 @@
 # MineClaw 参赛介绍页 · 部署说明
 
-这个文件夹就是完整的静态网页发布包，不需要 Node.js、后端、数据库或 Minecraft 服务器。
+这个文件夹就是完整的静态网页发布包，不需要 Node.js、后端、数据库或 Minecraft 服务器。发布包包含宣传首页 `index.html` 与独立框架实现页 `architecture.html`。
 
 ## 部署
 
@@ -8,7 +8,7 @@
 2. 可以直接部署到域名根目录，也可以部署到 `/mineclaw-showcase/` 等子目录。
 3. 服务器只需按原目录结构提供静态文件；不需要 rewrite 或代理规则。
 
-请不要只上传 `index.html`。`assets/`、`media/`、`media-config.js` 都是页面的一部分。
+请不要只上传 `index.html`。`architecture.html`、`assets/`、`media/`、`media-config.js` 都是页面的一部分。框架页使用显式 `.html` 地址，不依赖服务器 rewrite。
 
 ## 补充视频
 
