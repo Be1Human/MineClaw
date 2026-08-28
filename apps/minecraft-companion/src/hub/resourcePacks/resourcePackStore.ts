@@ -85,6 +85,12 @@ export class ResourcePackStore {
     return readFileSync(file);
   }
 
+  removeCached(id: string): boolean {
+    if (!this.get(id)) return false;
+    rmSync(this.packRoot(id), { recursive: true, force: true });
+    return true;
+  }
+
   private requireDescriptor(target: string): ResourcePackDescriptor {
     return JSON.parse(readFileSync(join(target, 'descriptor.json'), 'utf8')) as ResourcePackDescriptor;
   }

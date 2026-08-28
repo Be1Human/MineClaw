@@ -11,6 +11,7 @@ export class ResourcePackClient {
     this.selected = null;
     this.jsonCache = new Map();
     this.paletteModelCache = new Map();
+    this.assetExistenceCache = new Map();
   }
 
   async list() {
@@ -33,6 +34,7 @@ export class ResourcePackClient {
     this.selected = descriptor;
     this.jsonCache.clear();
     this.paletteModelCache.clear();
+    this.assetExistenceCache.clear();
   }
 
   async verifySelected(gameVersion) {
@@ -62,17 +64,51 @@ export class ResourcePackClient {
     if (state.name === 'water' || state.name === 'lava') {
       return { models: [fluidModelDescriptor(state)], missing: [] };
     }
-    const location = resourceLocation(state.name);
-    const blockState = await this.readJson(`assets/${location.namespace}/blockstates/${location.path}.json`);
-    const applications = selectBlockModelApplications(blockState, state.properties, stableRandom(state.stateId));
-    if (!applications.length) throw new Error('未匹配 blockstate variant/multipart');
-    const models = [];
-    for (const application of applications) {
-      const model = await resolveMinecraftModel(application.model, name => this.loadModel(name));
-      const baked = bakeMinecraftBlockModel(model, application, { isTextureTransparent: likelyTransparentTexture });
-      models.push(serializeBakedModel(baked, model));
+    try {
+      const location = resourceLocation(state.name);
+      const blockState = await this.readJson(`assets/${location.namespace}/blockstates/${location.path}.json`);
+      const applications = selectBlockModelApplications(blockState, state.properties, stableRandom(state.stateId));
+      if (!applications.length) throw new Error('未匹配 blockstate variant/multipart');
+      const models = [];
+      for (const application of applications) {
+        const model = await resolveMinecraftModel(application.model, name => this.loadModel(name));
+        const baked = bakeMinecraftBlockModel(model, application, { isTextureTransparent: likelyTransparentTexture });
+        models.push(serializeBakedModel(baked, model));
+      }
+      return { models, missing: [] };
+    } catch (error) {
+      const texture = await this.findFallbackTexture(state);
+      return {
+        models: [cubeModelDescriptor(texture)],
+        missing: texture === 'mineclaw:missing' ? [`${state.name}: ${error.message}`] : [],
+        fallback: true,
+      };
     }
-    return { models, missing: [] };
+  }
+
+  async findFallbackTexture(state) {
+    const location = resourceLocation(state.name);
+    const base = `${location.namespace}:block/${location.path}`;
+    const candidates = [
+      FALLBACK_TEXTURE_OVERRIDES[state.name],
+      base,
+      `${base}_side`,
+      `${base}_top`,
+      `${base}_front`,
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
+    for (const textureKey of candidates) {
+      if (await this.textureExists(textureKey)) return textureKey;
+    }
+    return 'mineclaw:missing';
+  }
+
+  async textureExists(textureKey) {
+    if (this.assetExistenceCache.has(textureKey)) return this.assetExistenceCache.get(textureKey);
+    const promise = this.fetchImpl(this.textureUrl(textureKey), { method: 'HEAD' })
+      .then(response => response.ok)
+      .catch(() => false);
+    this.assetExistenceCache.set(textureKey, promise);
+    return promise;
   }
 
   textureUrl(textureKey) {
@@ -117,8 +153,12 @@ function serializeBakedModel(baked, model) {
 }
 
 function missingModelDescriptor() {
+  return cubeModelDescriptor('mineclaw:missing');
+}
+
+function cubeModelDescriptor(texture) {
   const model = {
-    textures: { all: 'mineclaw:missing' },
+    textures: { all: texture },
     elements: [{
       from: [0, 0, 0], to: [16, 16, 16],
       faces: Object.fromEntries(['west', 'east', 'down', 'up', 'north', 'south'].map(direction => [direction, { texture: '#all' }])),
@@ -126,6 +166,12 @@ function missingModelDescriptor() {
   };
   return serializeBakedModel(bakeMinecraftBlockModel(model), model);
 }
+
+const FALLBACK_TEXTURE_OVERRIDES = {
+  grass_block: 'minecraft:block/grass_block_side',
+  mycelium: 'minecraft:block/mycelium_side',
+  podzol: 'minecraft:block/podzol_side',
+};
 
 function fluidModelDescriptor(state) {
   const level = Math.max(0, Math.min(15, Number(state.properties?.level) || 0));

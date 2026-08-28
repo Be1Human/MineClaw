@@ -128,6 +128,7 @@ import McIcon from './icons/McIcon.vue';
 import { PerceptionRendererRegistry } from '../lib/authentic/rendererRegistry.js';
 import { AuthenticWorldRenderer } from '../lib/authentic/AuthenticWorldRenderer.js';
 import { ResourcePackClient } from '../lib/authentic/resourcePackClient.js';
+import { selectPreferredResourcePack } from '../lib/authentic/resourcePackSelection.js';
 
 const props = defineProps({
   worldState: { type: Object, default: null },
@@ -396,9 +397,7 @@ async function loadResourcePacks() {
     resourcePacks.value = await packClient.list();
     const saved = readPackSelections()[props.profileId];
     const gameVersion = props.visualWorldStore?.gameVersion;
-    const preferred = resourcePacks.value.find(pack => pack.id === saved)
-      ?? resourcePacks.value.find(pack => !gameVersion || pack.minecraftVersion === gameVersion)
-      ?? null;
+    const preferred = selectPreferredResourcePack(resourcePacks.value, { savedId: saved, gameVersion });
     selectedPackId.value = preferred?.id ?? '';
     if (preferred) packClient.select(preferred);
     packError.value = '';
@@ -455,7 +454,7 @@ async function activateWorldMode() {
     if (!props.visualWorldConfig) throw new Error('真实渲染配置尚未就绪');
     if (!props.visualWorldStore || props.visualWorldStore.status !== 'ready') throw new Error('真实世界数据尚未就绪');
     const pack = selectedPackDescriptor();
-    if (!pack) throw new Error('请导入并选择与服务器版本匹配的资源包');
+    if (!pack) throw new Error('内置真实资源包尚未就绪');
     authenticWorldRenderer?.setStore(props.visualWorldStore);
     authenticWorldRenderer?.setPack(pack);
     await worldRendererRegistry.activate('authentic');

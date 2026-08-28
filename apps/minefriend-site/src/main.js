@@ -175,12 +175,16 @@ app.innerHTML = `
 
     <section class="companion-details page-shell" id="companion" aria-labelledby="companion-title">
       <div class="section-index reveal">03 / WHO SHE IS</div>
-      <div class="details-layout">
-        <div class="details-copy reveal">
+      <div class="details-heading reveal">
+        <div>
           <p class="section-kicker">她不是一个等你下命令的角色，而是有自己性格的游戏好友</p>
           <h2 id="companion-title">先认识她这个人，<br />再和她一起出发。</h2>
-          <p class="details-lead">MineClaw 里的伙伴随和、坦率，有一点幽默，也有自己的偏好。她喜欢 Minecraft，但不会把你们之间的每句话都变成任务：可以聊今天发生的事，可以约着上线，也可以对下一次冒险有不同意见。</p>
+        </div>
+        <p class="details-lead">MineClaw 里的伙伴随和、坦率，有一点幽默，也有自己的偏好。她喜欢 Minecraft，但不会把你们之间的每句话都变成任务：可以聊今天发生的事，可以约着上线，也可以对下一次冒险有不同意见。</p>
+      </div>
 
+      <div class="details-layout">
+        <div class="details-copy reveal">
           <div class="detail-list" aria-label="MineClaw 伙伴的人格与关系细节">
             <article>
               <span>01</span>

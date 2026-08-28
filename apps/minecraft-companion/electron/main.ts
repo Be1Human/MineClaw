@@ -31,6 +31,9 @@ async function startBackend(): Promise<void> {
   const dataDir = app.isPackaged
     ? join(app.getPath('userData'), 'data')
     : join(process.cwd(), 'data')
+  const builtinResourcePackPath = app.isPackaged
+    ? join(process.resourcesPath, 'resource-packs', 'mineclaw-open-blocks.zip')
+    : join(process.cwd(), 'builtin-packs', 'mineclaw-open-blocks.zip')
 
   // 生产包：用 Express 托管前端 dist，前端与 API/Socket.IO 同源
   if (app.isPackaged || !process.env['ELECTRON_RENDERER_URL']) {
@@ -42,6 +45,7 @@ async function startBackend(): Promise<void> {
       port: parseInt(process.env['HUB_PORT'] ?? '3000', 10),
       host: '127.0.0.1',
       dataDir,
+      builtinResourcePackPath,
     },
     {
       apiKey: process.env['LLM_API_KEY'] ?? '',

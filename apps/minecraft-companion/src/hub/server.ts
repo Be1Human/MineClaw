@@ -14,7 +14,7 @@ import { validateCharacterCard } from '../character/validateCharacterCard.js';
 import { registerPlannerEvolutionRoutes } from './plannerEvolutionRoutes.js';
 import { LlmTraceQueryError, type LlmTraceAgent } from '../bot/v2/infra/llmTrace/index.js';
 import { acceptChatSubmit, rejectChatSubmit, type ChatSubmitAck } from './chatSubmit.js';
-import { ResourcePackStore, registerResourcePackRoutes } from './resourcePacks/index.js';
+import { ResourcePackStore, registerResourcePackRoutes, seedBuiltinResourcePack } from './resourcePacks/index.js';
 import { tuning } from '../bot/v2/infra/tuning.js';
 import { VisualWorldDeltaBatcher } from './visualWorldDeltaBatcher.js';
 
@@ -22,6 +22,7 @@ export interface HubConfig {
   port: number;
   host: string;
   dataDir: string;
+  builtinResourcePackPath?: string;
 }
 
 export interface DefaultLlmConfig {
@@ -43,6 +44,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   const serverPresetStore = new ServerPresetStore(config.dataDir);
   const desktopPetConfigStore = new DesktopPetConfigStore(config.dataDir);
   const resourcePackStore = new ResourcePackStore(config.dataDir, () => tuning().worldVisual);
+  if (config.builtinResourcePackPath) seedBuiltinResourcePack(resourcePackStore, config.builtinResourcePackPath);
   registerResourcePackRoutes(app, resourcePackStore, () => tuning().worldVisual);
   const botManager = new BotManager(config.dataDir, llmAgentConfigStore, serverPresetStore);
   botManager.defaultLlm = defaultLlm ?? null;
