@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -86,4 +86,103 @@ test('failed identity switch keeps the previous live lease', () => {
 
   first.release();
   second.release();
+});
+
+test('BUG-CROSS-82 | reused PID with a different process instance reclaims the stale lease', () => {
+  const root = makeRoot();
+  const oldProcess = new GameConnectionLease({
+    lockRoot: root,
+    isProcessAlive: () => true,
+    processPid: 38_688,
+    processInstanceId: 'old-process-instance',
+  });
+  const currentProcess = new GameConnectionLease({
+    lockRoot: root,
+    isProcessAlive: () => true,
+    processPid: 38_688,
+    processInstanceId: 'current-process-instance',
+  });
+
+  oldProcess.acquire(identity);
+  currentProcess.acquire(identity);
+  const record = JSON.parse(readFileSync(currentProcess.lockPathFor(identity), 'utf8'));
+  assert.equal(record.version, 2);
+  assert.equal(record.processInstanceId, 'current-process-instance');
+
+  oldProcess.release();
+  assert.equal(readFileSync(currentProcess.lockPathFor(identity), 'utf8').length > 0, true);
+  currentProcess.release();
+});
+
+test('BUG-CROSS-82 | expired heartbeat is reclaimed even when its PID has been reused elsewhere', () => {
+  const root = makeRoot();
+  let now = Date.parse('2026-08-29T07:00:00.000Z');
+  const oldProcess = new GameConnectionLease({
+    lockRoot: root,
+    isProcessAlive: () => true,
+    now: () => now,
+    processPid: 10_001,
+    processInstanceId: 'old-process-instance',
+  });
+  oldProcess.acquire(identity);
+
+  now += 61_000;
+  const currentProcess = new GameConnectionLease({
+    lockRoot: root,
+    isProcessAlive: () => true,
+    getTiming: () => ({ heartbeatIntervalMs: 5_000, staleAfterMs: 60_000 }),
+    now: () => now,
+    processPid: 20_002,
+    processInstanceId: 'current-process-instance',
+  });
+  currentProcess.acquire(identity);
+  const record = JSON.parse(readFileSync(currentProcess.lockPathFor(identity), 'utf8'));
+  assert.equal(record.pid, 20_002);
+
+  oldProcess.release();
+  currentProcess.release();
+});
+
+test('BUG-CROSS-82 | heartbeat refreshes the current owner record', async () => {
+  const root = makeRoot();
+  const lease = new GameConnectionLease({
+    lockRoot: root,
+    isProcessAlive: () => true,
+    getTiming: () => ({ heartbeatIntervalMs: 5, staleAfterMs: 1_000 }),
+  });
+  const path = lease.lockPathFor(identity);
+  lease.acquire(identity);
+  const before = JSON.parse(readFileSync(path, 'utf8'));
+
+  await new Promise(resolve => setTimeout(resolve, 30));
+
+  const after = JSON.parse(readFileSync(path, 'utf8'));
+  assert.equal(after.ownerToken, before.ownerToken);
+  assert.ok(Date.parse(after.heartbeatAt) > Date.parse(before.heartbeatAt));
+  lease.release();
+});
+
+test('BUG-CROSS-82 | legacy v1 lease predating the current same-PID process migrates to v2', () => {
+  const root = makeRoot();
+  const lease = new GameConnectionLease({
+    lockRoot: root,
+    isProcessAlive: () => true,
+    processPid: 38_688,
+    processInstanceId: 'current-process-instance',
+    processStartedAt: Date.parse('2026-08-29T07:43:51.000Z'),
+  });
+  const path = lease.lockPathFor(identity);
+  writeFileSync(path, JSON.stringify({
+    version: 1,
+    key: gameIdentityKey(identity),
+    pid: 38_688,
+    ownerToken: 'legacy-owner',
+    acquiredAt: '2026-08-29T07:00:55.000Z',
+  }));
+
+  lease.acquire(identity);
+  const record = JSON.parse(readFileSync(path, 'utf8'));
+  assert.equal(record.version, 2);
+  assert.equal(record.processInstanceId, 'current-process-instance');
+  lease.release();
 });

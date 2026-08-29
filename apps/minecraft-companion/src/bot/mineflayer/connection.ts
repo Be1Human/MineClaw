@@ -7,7 +7,7 @@ import { MineflayerGameAdapter } from './MineflayerGameAdapter.js';
 import { MineflayerNavigationAdapter } from './MineflayerNavigationAdapter.js';
 import type { GameAdapter } from '../adapter/GameAdapter.js';
 import type { NavigationAdapter } from '../adapter/NavigationAdapter.js';
-import { GameConnectionLease } from './gameConnectionLease.js';
+import { GameConnectionLease, type GameConnectionLeaseTiming } from './gameConnectionLease.js';
 import { MineflayerVisualWorldSource } from './MineflayerVisualWorldSource.js';
 import type { VisualWorldSource } from '../adapter/VisualWorldSource.js';
 
@@ -18,10 +18,14 @@ export class MineflayerConnection {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalDisconnect = false;
-  private readonly connectionLease = new GameConnectionLease();
+  private readonly connectionLease: GameConnectionLease;
 
   readonly events = new EventBus();
   onSpawn?: () => void;
+
+  constructor(options: { getLeaseTiming?: () => GameConnectionLeaseTiming | null } = {}) {
+    this.connectionLease = new GameConnectionLease({ getTiming: options.getLeaseTiming });
+  }
 
   /**
    * 适配器实例（构造时即创建，内部通过 `() => bot` 工厂获取当前实例，

@@ -102,6 +102,13 @@ export interface TuningConfig {
   testBench: {
     enabled: boolean;
   };
+  /** BUG-CROSS-82 · 跨进程游戏身份租约存活判定。 */
+  gameConnectionLease: {
+    /** 持有者刷新租约心跳的间隔。 */
+    heartbeatIntervalMs: number;
+    /** 超过此时长未刷新，竞争者可回收陈旧租约。 */
+    staleAfterMs: number;
+  };
   /** FEAT-L7-16 · 任务终态闭环推送（task_feedback 通道） */
   l7: {
     /** 任务终态去抖窗口 ms：窗口内多个 completed/failed/cancelled 合并成一次 task_feedback turn */
@@ -326,6 +333,10 @@ const DEFAULTS: TuningConfig = {
   },
   testBench: {
     enabled: false,
+  },
+  gameConnectionLease: {
+    heartbeatIntervalMs: 5_000,
+    staleAfterMs: 60_000,
   },
   l7: {
     taskFeedbackDebounceMs: 1500,

@@ -343,7 +343,7 @@ export class BotRuntime {
 
   constructor(config: BotRuntimeConfig) {
     this.config = config;
-    this.conn = new MineflayerConnection();
+    this.conn = new MineflayerConnection({ getLeaseTiming: () => tuning().gameConnectionLease });
     this.conn.onSpawn = () => this.onGameJoined?.();
   }
 
