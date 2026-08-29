@@ -7,6 +7,7 @@ import { createServer } from 'vite';
 import {
   TRACE_EVENT_WINDOW,
   cacheStatusText,
+  compactTraceValue,
   fetchTraceJson,
   formatCachePercent,
   formatCacheSummary,
@@ -15,6 +16,8 @@ import {
   formatTraceTokens,
   mergeTraceEvents,
   orderTraceEventsNewestFirst,
+  traceEventPresentation,
+  traceEventSummary,
   traceQuery,
 } from '../../../../apps/minecraft-companion/web/src/lib/llmTrace.js';
 
@@ -66,10 +69,90 @@ test('轨迹工作台包含三段式视图、五页签、完整复制和窄屏�
   assert.match(source, /interactionSessionId: turnId/);
   assert.match(source, /displayedEvents/);
   assert.match(source, /scrollLedgerTop/);
-  assert.match(source, /\.event-row \{ width:min\(100%,360px\);/);
-  assert.match(source, /@media \(max-width:850px\)[\s\S]*\.event-row \{ width:100%; \}/);
+  assert.match(source, /\.event-row \{ width:100%; height:32px; min-height:32px;/);
+  assert.match(source, /grid-template-columns:40px 58px 62px minmax\(0,1fr\) 58px/);
+  assert.match(source, /\.event-summary \{[^}]*text-overflow:ellipsis; white-space:nowrap;/);
+  assert.match(source, /@media \(max-width:520px\)[\s\S]*\.event-agent \{ display:none; \}/);
+  assert.doesNotMatch(source, /event-rail|event-copy/);
   assert.match(source, /following\.value = el\.scrollTop < 72/);
-  assert.ok(source.indexOf('v-for="event in displayedEvents"') < source.indexOf("loadingOlder ? '加载中…' : '加载更早事件'"));
+  assert.ok(source.indexOf('v-for="row in displayedEvents"') < source.indexOf("loadingOlder ? '加载中…' : '加载更早事件'"));
+});
+
+test('轨迹展示投影提供单行类型、Agent 之外的行为语义和工具状态', () => {
+  const player = traceEventPresentation({
+    type: 'interaction.received', payload: { message: '你没给我\n\t我怎么会有呢' },
+  });
+  assert.equal(player.kind, 'user');
+  assert.equal(player.label, '玩家');
+  assert.equal(player.summary, '你没给我 我怎么会有呢');
+
+  const request = traceEventPresentation({
+    type: 'llm.request.recorded',
+    payload: { model: 'deepseek-chat', messageCount: 12, toolCount: 8 },
+    cache: { cacheHitRate: 0.736 },
+  });
+  assert.deepEqual(
+    { kind: request.kind, label: request.label, summary: request.summary },
+    { kind: 'model', label: '模型请求', summary: 'deepseek-chat · 12 messages · 8 tools · 命中 73.6%' },
+  );
+
+  const tool = traceEventPresentation({
+    type: 'tool.call', payload: { name: 'owner_ask', arguments: { item: '石镐', note: '要\n一把' } },
+  });
+  assert.equal(tool.kind, 'tool');
+  assert.equal(tool.label, '工具');
+  assert.equal(tool.summary, 'owner_ask · item=石镐, note=要 一把');
+
+  const result = traceEventPresentation({
+    type: 'tool.result', payload: { name: 'owner_ask', ok: false, result: { reason: 'denied' }, durationMs: 34 },
+  });
+  assert.equal(result.kind, 'tool-result');
+  assert.equal(result.label, '结果');
+  assert.equal(result.tone, 'danger');
+  assert.equal(result.summary, 'owner_ask · 失败 · reason=denied');
+  assert.equal(result.meta, '34 ms');
+});
+
+test('所有轨迹事件族都有可读兜底且大 payload 不进入主账本', () => {
+  const fixtures = [
+    { type: 'llm.response.recorded', payload: { toolCalls: [{ function: { name: 'world_observe' } }] } },
+    { type: 'llm.call.failed', payload: { failure: 'timeout' } },
+    { type: 'llm.call.cancelled', payload: { reason: 'owner_stop' } },
+    { type: 'trace.persistence_gap', payload: { missingEventType: 'llm.response.recorded', reason: 'disk' } },
+    { type: 'delegation.submitted', payload: { request: { goal: '拿石镐' } } },
+    { type: 'delegation.accepted', payload: { result: { sessionId: 'goal-1' } } },
+    { type: 'agent.node.entered', node: 'round', payload: {} },
+    { type: 'agent.node.exited', node: 'round', payload: {} },
+    { type: 'context.source.selected', payload: { kind: 'memory', ref: 'profile/lan-yi' } },
+    { type: 'context.source.omitted', payload: { kind: 'memory', ref: 'old', reason: 'budget' } },
+    { type: 'world.observed', payload: { inventory: { oak_log: 18 } } },
+    { type: 'verdict.recorded', payload: { passed: false, reason: '数量不足' } },
+    { type: 'session.terminal', payload: { outcome: 'completed', summary: '已交付' } },
+    { type: 'future.event', payload: { nested: { text: 'x'.repeat(2_000) }, message: '兼容事件' } },
+  ];
+  const rows = fixtures.map(traceEventPresentation);
+  assert.ok(rows.every(row => row.label && row.summary && !row.summary.includes('\n')));
+  assert.ok(rows.every(row => row.summary.length <= 180));
+  assert.equal(rows[0].summary, '调用 world_observe');
+  assert.equal(rows[8].summary, '选中 profile/lan-yi');
+  assert.equal(rows[9].label, '上下文裁剪');
+  assert.match(rows[11].summary, /^未通过 · 数量不足$/);
+  assert.equal(rows.at(-1).kind, 'unknown');
+  assert.doesNotMatch(rows.at(-1).summary, /\[object Object\]/);
+  assert.ok(compactTraceValue({ a: 1, b: 2, c: 3, d: 4, e: 'ignored' }).length <= 120);
+  assert.equal(traceEventSummary({ type: 'unknown', node: 'round', payload: {} }), 'round');
+});
+
+test('500 条前端窗口可一次投影为有界单行记录', () => {
+  const events = Array.from({ length: TRACE_EVENT_WINDOW }, (_, index) => ({
+    seq: index + 1,
+    type: index % 2 ? 'tool.call' : 'tool.result',
+    payload: { name: 'world_observe', ok: true, arguments: { radius: 8 }, durationMs: 12 },
+  }));
+  const rows = orderTraceEventsNewestFirst(events).map(traceEventPresentation);
+  assert.equal(rows.length, TRACE_EVENT_WINDOW);
+  assert.equal(rows[0].summary, 'world_observe · radius=8');
+  assert.ok(rows.every(row => row.summary.length <= 180));
 });
 
 test('缓存指标格式化区分真实零命中、未提供和数据覆盖率', () => {
