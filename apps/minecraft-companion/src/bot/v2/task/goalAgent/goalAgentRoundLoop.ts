@@ -78,6 +78,8 @@ export class GoalAgentRoundLoop {
   private readonly aborts = new Map<string, { epoch: number; controller: AbortController }>();
   /** BUG-CROSS-80 · 每个会话已发过的主人反馈 kind（防重复打扰）。 */
   private readonly sentFeedbackKinds = new Map<string, Set<GoalAgentOwnerFeedbackKind>>();
+  /** BUG-CROSS-80 · 每个会话连续未调用 action_execute 的轮数（观察/搜索循环检测）。 */
+  private readonly inactiveRoundsBySession = new Map<string, number>();
 
   constructor(private readonly options: GoalAgentRoundLoopOptions) {
     this.tools = options.tools ?? {};
@@ -389,10 +391,16 @@ export class GoalAgentRoundLoop {
     const actionListReceipt = receipts.find(value => value.name === 'action_list');
     const candidates = actionListReceipt?.receipt.content.candidates;
     const lastCandidateCount = Array.isArray(candidates) ? candidates.length : null;
+    const acted = receipts.some(value => value.name === 'action_execute');
+    const inactiveRounds = acted
+      ? 0
+      : (this.inactiveRoundsBySession.get(state.sessionId) ?? 0) + 1;
+    this.inactiveRoundsBySession.set(state.sessionId, inactiveRounds);
     const feedback = computeOwnerFeedback({
       state,
       emptySearchStreak: this.toolRuntime.emptySearchStreak(state.sessionId),
       lastCandidateCount,
+      inactiveRounds,
       alreadySentKinds: sent,
     });
     if (feedback) {

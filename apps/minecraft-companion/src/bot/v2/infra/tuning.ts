@@ -136,6 +136,10 @@ export interface TuningConfig {
     feedbackEmptySearchStreak: number;
     /** BUG-CROSS-80 · llmCalls 达 maxLlmCalls 的该比例且未达成 → 向主人发预算告警。 */
     feedbackBudgetRatio: number;
+    /** BUG-CROSS-80 · 连续该轮数未调用 action_execute（观察/搜索循环）→ 向主人发障碍反馈。 */
+    feedbackInactiveRounds: number;
+    /** BUG-CROSS-80 · 托管任务（craft_item/gather_material）单次最长执行 ms。 */
+    managedTaskTimeoutMs: number;
   };
   /** FEAT-CROSS-07 · 技能固化闭环（Strategy 自学习）· 全参热加载零裸常量 */
   strategy: {
@@ -339,6 +343,8 @@ const DEFAULTS: TuningConfig = {
     maxActionsPerGoal: 80,
     feedbackEmptySearchStreak: 3,
     feedbackBudgetRatio: 0.8,
+    feedbackInactiveRounds: 5,
+    managedTaskTimeoutMs: 110_000,
   },
   strategy: {
     enabled: true,

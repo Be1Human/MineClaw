@@ -232,6 +232,8 @@ function makeMockGame(opts: {
     equip: async (itemName: string, dest?: unknown) => {
       if (opts.equipThrows) throw new Error('no such item in inventory');
       calls.equip.push({ name: itemName, dest: (dest as string) ?? 'hand' });
+      // BUG-CROSS-80 · 模拟服务器手持同步，供 equip 原子的后置确认轮询读取
+      opts.heldItem = { name: itemName, count: 1 };
     },
     toss: async (itemName: string, count?: number) => {
       calls.toss.push({ name: itemName, count });

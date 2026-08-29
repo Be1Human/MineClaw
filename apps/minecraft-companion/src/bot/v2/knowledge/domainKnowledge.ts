@@ -63,6 +63,22 @@ export class DomainKnowledgeRegistry implements GoalAgentDomainKnowledgePort {
     }
   }
 
+  /**
+   * BUG-CROSS-80 · 延迟装配：追加一批文档（如 bot spawn 后才可生成的配方知识）。
+   * 已存在的 id 跳过（幂等），重复 ref 报错。
+   */
+  addAll(documents: readonly DomainKnowledgeDocument[]): number {
+    let added = 0;
+    for (const document of documents) {
+      if (this.byId.has(document.id)) continue;
+      if (this.byRef.has(document.ref)) throw new Error(`duplicate domain knowledge ref: ${document.ref}`);
+      this.byId.set(document.id, document);
+      this.byRef.set(document.ref, document);
+      added += 1;
+    }
+    return added;
+  }
+
   ids(): readonly string[] {
     return Object.freeze([...this.byId.keys()].sort());
   }

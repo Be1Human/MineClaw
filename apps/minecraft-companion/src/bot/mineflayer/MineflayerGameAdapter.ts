@@ -263,11 +263,12 @@ export class MineflayerGameAdapter implements GameAdapter {
   }
   async equip(itemName: string, destination: EquipDestination = 'hand'): Promise<void> {
     const bot = this.getBot();
-    if (!bot) return;
-    try {
-      const item = bot.inventory.items().find((it) => it.name === itemName);
-      if (item) await bot.equip(item, destination);
-    } catch { /* silenced */ }
+    // BUG-CROSS-80 · 不再静默吞错：equip 前置条件失败必须抛错，
+    // 否则原子层误报成功、后置验真才暴露 equip_unverified。
+    if (!bot) throw new Error('equip_failed: bot 未连接');
+    const item = bot.inventory.items().find((it) => it.name === itemName);
+    if (!item) throw new Error(`equip_failed: 背包中没有 ${itemName}`);
+    await bot.equip(item, destination);
   }
   // FEAT-L3-13 · 扔出指定物品（交给玩家）。count 缺省=该物品全部；返回实际扔出数量。
   async toss(itemName: string, count?: number): Promise<number> {

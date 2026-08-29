@@ -787,24 +787,35 @@ export class V2Runtime {
       const agricultureResources = loadCapabilityResourcePackage(
         join(__dirname, '../../../capability-packages/agriculture'),
       );
-      // BUG-CROSS-80 · 配方知识与执行层同源：从 getCraftRecipes/getItemSource 生成
-      // 领域知识文档，与能力包 Markdown 合并，让 knowledge_search 可召回合成配方。
-      const recipeKnowledge = buildRecipeKnowledgeDocuments({
-        items: DEFAULT_GOAL_TARGETS
-          .filter(target => target.kind === 'item' && target.registryId.startsWith('minecraft:'))
-          .map(target => ({
-            id: target.registryId.replace(/^minecraft:/, ''),
-            aliases: target.aliases,
-          })),
-        data: {
-          getCraftRecipes: (item, withTable) => cfg.game.getCraftRecipes(item, withTable),
-          getItemSource: item => cfg.game.getItemSource(item),
-        },
-      });
-      const domainKnowledge = new DomainKnowledgeRegistry([
-        ...agricultureResources.knowledgeDocuments,
-        ...recipeKnowledge,
-      ]);
+      // BUG-CROSS-80 · 配方知识与执行层同源：从 getCraftRecipes/getItemSource 生成领域知识文档。
+      // 生成依赖 bot.registry（mineflayer 连接后才有），故延迟到 onSpawn 时注入；
+      // 初始 registry 只装能力包 Markdown（农业），bot 上线后 addAll 配方知识（幂等）。
+      const domainKnowledge = new DomainKnowledgeRegistry(agricultureResources.knowledgeDocuments);
+      const recipeKnowledgeItems = DEFAULT_GOAL_TARGETS
+        .filter(target => target.kind === 'item' && target.registryId.startsWith('minecraft:'))
+        .map(target => ({
+          id: target.registryId.replace(/^minecraft:/, ''),
+          aliases: target.aliases,
+        }));
+      const attachRecipeKnowledge = (): void => {
+        try {
+          const documents = buildRecipeKnowledgeDocuments({
+            items: recipeKnowledgeItems,
+            data: {
+              getCraftRecipes: (item, withTable) => cfg.game.getCraftRecipes(item, withTable),
+              getItemSource: item => cfg.game.getItemSource(item),
+            },
+          });
+          const added = domainKnowledge.addAll(documents);
+          if (added > 0) {
+            log(`[v2][knowledge] recipe knowledge attached: ${added} documents`);
+          }
+        } catch (error) {
+          log(`[v2][knowledge] recipe knowledge attach failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      };
+      // bot 上线/spawn 时注入；死亡重生重复触发时 addAll 幂等跳过已存在 id。
+      cfg.game.onSpawn(() => attachRecipeKnowledge());
       const capabilityPackages = new CapabilityPackageRegistry({
         atomicIds: createDefaultAtomicContractRegistry().list().map(value => value.action),
         behaviorIds: this.behaviorRegistry.list().map(value => value.id),

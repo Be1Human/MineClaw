@@ -701,6 +701,15 @@ async function equipItem(
   if (!itemName) return fail(req, start, 'equip requires target.itemName');
   try {
     await ctx.game.equip(itemName, 'hand');
+    // BUG-CROSS-80 · equip 后主动等待服务器同步手持（约 1.5s），失败即结构化失败，
+    // 不再把"手持未变"留给后置验真消耗恢复预算。
+    for (let i = 0; i < 15; i += 1) {
+      if (ctx.game.getHeldItem()?.name === itemName) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (ctx.game.getHeldItem()?.name !== itemName) {
+      return fail(req, start, `equip_unverified: 手持为 ${ctx.game.getHeldItem()?.name ?? '空'}，期望 ${itemName}`);
+    }
     ctx.bus.publish('atomic.equip', 'info', { item: itemName });
     return { ok: true, request: req, durationMs: Date.now() - start };
   } catch (e) {

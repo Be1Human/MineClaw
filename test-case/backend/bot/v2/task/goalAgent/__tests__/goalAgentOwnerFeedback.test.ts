@@ -92,6 +92,7 @@ test('empty search streak reaching tuning threshold emits blocked feedback once'
     state,
     emptySearchStreak: 3,
     lastCandidateCount: 2,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(),
   });
   assert.ok(feedback);
@@ -103,6 +104,7 @@ test('empty search streak reaching tuning threshold emits blocked feedback once'
     state,
     emptySearchStreak: 5,
     lastCandidateCount: 2,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(['blocked', 'budget_warning']),
   }), null);
 });
@@ -114,6 +116,7 @@ test('streak below threshold stays silent', () => {
     state,
     emptySearchStreak: 2,
     lastCandidateCount: 2,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(),
   }), null);
 });
@@ -124,6 +127,7 @@ test('budget at 80% of maxLlmCalls emits budget warning once', () => {
     state,
     emptySearchStreak: 0,
     lastCandidateCount: null,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(),
   });
   assert.ok(feedback);
@@ -133,6 +137,7 @@ test('budget at 80% of maxLlmCalls emits budget warning once', () => {
     state,
     emptySearchStreak: 0,
     lastCandidateCount: null,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(['budget_warning']),
   }), null);
 });
@@ -144,6 +149,7 @@ test('budget below threshold stays silent', () => {
     state,
     emptySearchStreak: 0,
     lastCandidateCount: null,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(),
   }), null);
 });
@@ -153,6 +159,7 @@ test('equip_unverified with zero available candidates emits help_needed with own
     state: failedState(),
     emptySearchStreak: 0,
     lastCandidateCount: 0,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(),
   });
   assert.ok(feedback);
@@ -168,6 +175,7 @@ test('equip_unverified with candidates still available does not ask for help yet
     state,
     emptySearchStreak: 0,
     lastCandidateCount: 3,
+    inactiveRounds: 0,
     alreadySentKinds: new Set(),
   }), null);
 });
@@ -179,17 +187,53 @@ test('tuning override changes the streak threshold', () => {
       state: failedState(),
       emptySearchStreak: 2,
       lastCandidateCount: 5,
+      inactiveRounds: 0,
       alreadySentKinds: new Set(),
-    })?.kind, 'blocked');
-    const state = baseState();
+    })?.kind, 'blocked');    const state = baseState();
     state.budget.llmCalls = 107; // 107/120 = 0.89 < 0.9（override）但 > 0.8（默认）→ 证明热覆盖生效
     assert.equal(computeOwnerFeedback({
       state,
       emptySearchStreak: 0,
       lastCandidateCount: null,
+      inactiveRounds: 0,
       alreadySentKinds: new Set(),
     }), null);
   } finally {
     __setTuningOverride(null);
   }
+});
+
+test('BUG-CROSS-80 · inactive observe/search rounds reach threshold emit blocked feedback', () => {
+  const state = failedState();
+  state.budget.llmCalls = 50; // 隔离预算告警
+  const feedback = computeOwnerFeedback({
+    state,
+    emptySearchStreak: 0,
+    lastCandidateCount: 7, // 候选在，但模型不执行
+    inactiveRounds: 5,
+    alreadySentKinds: new Set(),
+  });
+  assert.ok(feedback);
+  assert.equal(feedback.kind, 'blocked');
+  assert.match(feedback.summary, /5 轮/);
+  assert.match(feedback.summary, /没有执行任何动作/);
+  assert.equal(computeOwnerFeedback({
+    state,
+    emptySearchStreak: 0,
+    lastCandidateCount: 7,
+    inactiveRounds: 4,
+    alreadySentKinds: new Set(),
+  }), null);
+});
+
+test('BUG-CROSS-80 · acted round resets inactive count below threshold', () => {
+  const state = failedState();
+  state.budget.llmCalls = 50;
+  assert.equal(computeOwnerFeedback({
+    state,
+    emptySearchStreak: 0,
+    lastCandidateCount: 7,
+    inactiveRounds: 1,
+    alreadySentKinds: new Set(),
+  }), null);
 });

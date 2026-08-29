@@ -24,6 +24,8 @@ export interface OwnerFeedbackInput {
   emptySearchStreak: number;
   /** 本轮 action_list 返回的候选数；null 表示本轮未调用 action_list。 */
   lastCandidateCount: number | null;
+  /** 连续未调用 action_execute 的轮数（观察/搜索循环检测）。 */
+  inactiveRounds: number;
   /** 已发过反馈的 kind 集合（防重复打扰主人）。 */
   alreadySentKinds: ReadonlySet<GoalAgentOwnerFeedbackKind>;
 }
@@ -59,15 +61,25 @@ export function computeOwnerFeedback(input: OwnerFeedbackInput): GoalAgentOwnerF
     };
   }
 
-  // ② 连续空搜索达到阈值 → 障碍反馈
-  if (!alreadySentKinds.has('blocked') && input.emptySearchStreak >= cfg.feedbackEmptySearchStreak) {
-    const tried = failure ? `最近失败：${failure.detail ?? failureCode}` : '已尝试搜索但无结果';
-    return {
-      kind: 'blocked',
-      summary: `连续 ${input.emptySearchStreak} 次知识/技能/能力搜索都没有结果，${tried}。我暂时找不到可执行的路径，先停下来向主人说明，不再空转。`,
-      evidenceRefs: ['goalagent:empty_search_streak', ...(failure?.evidenceRefs ?? [])],
-      ownerActionable: false,
-    };
+  // ② 连续空搜索 或 连续无动作（观察/搜索循环）达到阈值 → 障碍反馈
+  if (!alreadySentKinds.has('blocked')) {
+    if (input.emptySearchStreak >= cfg.feedbackEmptySearchStreak) {
+      const tried = failure ? `最近失败：${failure.detail ?? failureCode}` : '已尝试搜索但无结果';
+      return {
+        kind: 'blocked',
+        summary: `连续 ${input.emptySearchStreak} 次知识/技能/能力搜索都没有结果，${tried}。我暂时找不到可执行的路径，先停下来向主人说明，不再空转。`,
+        evidenceRefs: ['goalagent:empty_search_streak', ...(failure?.evidenceRefs ?? [])],
+        ownerActionable: false,
+      };
+    }
+    if (input.inactiveRounds >= cfg.feedbackInactiveRounds) {
+      return {
+        kind: 'blocked',
+        summary: `我已经连续 ${input.inactiveRounds} 轮只是观察和搜索、没有执行任何动作。这样下去只会空转，先向主人说明当前处境，再决定下一步。`,
+        evidenceRefs: ['goalagent:inactive_rounds', ...(failure?.evidenceRefs ?? [])],
+        ownerActionable: false,
+      };
+    }
   }
 
   // ③ llmCalls 达阈值比例且未达成 → 预算告警

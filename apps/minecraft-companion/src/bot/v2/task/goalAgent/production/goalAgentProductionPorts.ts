@@ -1,6 +1,7 @@
 import type { AtomicContext } from '../../../atomic/atomics.js';
 import { executeAtomic } from '../../../atomic/atomics.js';
 import { isDeepStrictEqual } from 'node:util';
+import { tuning } from '../../../infra/tuning.js';
 import { createDefaultAtomicContractRegistry } from '../../../atomic/contracts/defaultContracts.js';
 import type { IBehaviorRegistry } from '../../../behavior/types.js';
 import type { CapabilityActionCandidateProvider } from '../../../capabilities/types.js';
@@ -405,7 +406,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
 
     const task = this.options.tasks.createSubtask({
       kind: validated.taskKind,
-      params: { ...validated.params, _timeoutMs: 110_000 },
+      params: { ...validated.params, _timeoutMs: tuning().goalAgent.managedTaskTimeoutMs },
       priority: validated.taskKind === 'craft_item' ? 56 : 55,
     }, parentId);
     return new Promise(resolve => {
