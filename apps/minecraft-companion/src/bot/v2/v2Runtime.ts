@@ -45,6 +45,7 @@ import {
   InMemoryGoalKnowledgePort,
 } from './knowledge/goalTargetKnowledge.js';
 import { DomainKnowledgeRegistry } from './knowledge/domainKnowledge.js';
+import { buildRecipeKnowledgeDocuments } from './knowledge/recipeKnowledge.js';
 import { AgentSkillRegistry } from './skills/skillRegistry.js';
 import { GoalAgentSkillKnowledgeAdapter } from './skills/goalAgentSkillKnowledge.js';
 import { join, dirname } from 'node:path';
@@ -786,7 +787,24 @@ export class V2Runtime {
       const agricultureResources = loadCapabilityResourcePackage(
         join(__dirname, '../../../capability-packages/agriculture'),
       );
-      const domainKnowledge = new DomainKnowledgeRegistry(agricultureResources.knowledgeDocuments);
+      // BUG-CROSS-80 · 配方知识与执行层同源：从 getCraftRecipes/getItemSource 生成
+      // 领域知识文档，与能力包 Markdown 合并，让 knowledge_search 可召回合成配方。
+      const recipeKnowledge = buildRecipeKnowledgeDocuments({
+        items: DEFAULT_GOAL_TARGETS
+          .filter(target => target.kind === 'item' && target.registryId.startsWith('minecraft:'))
+          .map(target => ({
+            id: target.registryId.replace(/^minecraft:/, ''),
+            aliases: target.aliases,
+          })),
+        data: {
+          getCraftRecipes: (item, withTable) => cfg.game.getCraftRecipes(item, withTable),
+          getItemSource: item => cfg.game.getItemSource(item),
+        },
+      });
+      const domainKnowledge = new DomainKnowledgeRegistry([
+        ...agricultureResources.knowledgeDocuments,
+        ...recipeKnowledge,
+      ]);
       const capabilityPackages = new CapabilityPackageRegistry({
         atomicIds: createDefaultAtomicContractRegistry().list().map(value => value.action),
         behaviorIds: this.behaviorRegistry.list().map(value => value.id),

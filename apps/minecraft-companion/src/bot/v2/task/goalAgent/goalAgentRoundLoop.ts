@@ -29,6 +29,11 @@ import {
   type GoalAgentMonitorSignal,
   type GoalAgentMonitoringAdvice,
 } from './goalAgentMonitoring.js';
+import {
+  computeOwnerFeedback,
+  type GoalAgentOwnerFeedback,
+  type GoalAgentOwnerFeedbackKind,
+} from './goalAgentOwnerFeedback.js';
 
 export interface GoalAgentRoundLoopOptions {
   store: GoalAgentSessionStorePort;
@@ -71,6 +76,8 @@ export class GoalAgentRoundLoop {
   private readonly deadlineClock: GoalAgentDeadlineClock;
   private readonly locks = new Map<string, Promise<void>>();
   private readonly aborts = new Map<string, { epoch: number; controller: AbortController }>();
+  /** BUG-CROSS-80 · 每个会话已发过的主人反馈 kind（防重复打扰）。 */
+  private readonly sentFeedbackKinds = new Map<string, Set<GoalAgentOwnerFeedbackKind>>();
 
   constructor(private readonly options: GoalAgentRoundLoopOptions) {
     this.tools = options.tools ?? {};
@@ -356,6 +363,11 @@ export class GoalAgentRoundLoop {
           tools: receipts.map(value => ({ name: value.name, callId: value.callId, ok: value.receipt.content.ok === true })),
           ...(terminal ? { outcome: state.terminal?.outcome } : {}),
         });
+        // BUG-CROSS-80 · 每轮提交后判定主人反馈（空搜索/预算/缺料求助），命中即经事件投影
+        const feedback = this.evaluateOwnerFeedback(state, receipts);
+        if (feedback) {
+          this.publish('goalagent.owner.feedback', state, { feedback });
+        }
         if (terminal || state.phase === 'paused_owner') return state;
       } catch (error) {
         if (error instanceof GoalAgentDeadlineExceededError) return this.commitTimedOut(state, error);
@@ -366,6 +378,28 @@ export class GoalAgentRoundLoop {
     }
     this.publish('goalagent.run.yielded', state, { reason: 'round_budget' });
     return state;
+  }
+
+  /** BUG-CROSS-80 · 汇总本轮证据判定主人反馈，每个 kind 每会话只发一次。 */
+  private evaluateOwnerFeedback(
+    state: GoalAgentStateV1,
+    receipts: Array<{ callId: string; name: string; receipt: GoalAgentRoundToolReceipt }>,
+  ): GoalAgentOwnerFeedback | null {
+    const sent = this.sentFeedbackKinds.get(state.sessionId) ?? new Set<GoalAgentOwnerFeedbackKind>();
+    const actionListReceipt = receipts.find(value => value.name === 'action_list');
+    const candidates = actionListReceipt?.receipt.content.candidates;
+    const lastCandidateCount = Array.isArray(candidates) ? candidates.length : null;
+    const feedback = computeOwnerFeedback({
+      state,
+      emptySearchStreak: this.toolRuntime.emptySearchStreak(state.sessionId),
+      lastCandidateCount,
+      alreadySentKinds: sent,
+    });
+    if (feedback) {
+      sent.add(feedback.kind);
+      this.sentFeedbackKinds.set(state.sessionId, sent);
+    }
+    return feedback;
   }
 
   private handlePlainResponse(

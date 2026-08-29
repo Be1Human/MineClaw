@@ -132,6 +132,10 @@ export interface TuningConfig {
     maxRoundsPerRun: number;
     /** 同一 GoalAgent 会话的累计动作上限。 */
     maxActionsPerGoal: number;
+    /** BUG-CROSS-80 · 连续空搜索结果（knowledge/skill/capability）达到此次数 → 向主人发障碍反馈。 */
+    feedbackEmptySearchStreak: number;
+    /** BUG-CROSS-80 · llmCalls 达 maxLlmCalls 的该比例且未达成 → 向主人发预算告警。 */
+    feedbackBudgetRatio: number;
   };
   /** FEAT-CROSS-07 · 技能固化闭环（Strategy 自学习）· 全参热加载零裸常量 */
   strategy: {
@@ -333,6 +337,8 @@ const DEFAULTS: TuningConfig = {
     maxTotalTokensPerGoal: null,
     maxRoundsPerRun: 20,
     maxActionsPerGoal: 80,
+    feedbackEmptySearchStreak: 3,
+    feedbackBudgetRatio: 0.8,
   },
   strategy: {
     enabled: true,

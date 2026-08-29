@@ -389,6 +389,33 @@ export class GoalAgent {
     if (!state) return;
     if (event.type === 'goalagent.session.terminal') this.scheduleReflection(state);
     this.options.onState?.(state, event);
+    // BUG-CROSS-80 · 空搜索/预算告警/缺料求助经 R20 通道投影为主人可见的进度事实
+    if (event.type === 'goalagent.owner.feedback') {
+      const feedback = event.payload.feedback;
+      if (feedback && typeof feedback === 'object') {
+        const record = feedback as Record<string, unknown>;
+        const summary = typeof record.summary === 'string' ? record.summary : '任务遇到障碍';
+        const refs = Array.isArray(record.evidenceRefs)
+          ? record.evidenceRefs.filter((ref): ref is string => typeof ref === 'string')
+          : [];
+        const observedAt = state.updatedAt;
+        const request = this.reportRequestBySession.get(state.sessionId) ?? state.request;
+        this.publishReport(request, {
+          status: 'running',
+          summary,
+          evidence: refs.map(ref => ({ type: 'action_result', ref, observedAt })),
+          update: {
+            kind: 'obstacle',
+            importance: 'critical',
+            episodeKey: `${state.sessionId}:feedback:${String(record.kind ?? 'unknown')}`,
+            dedupeKey: `${state.sessionId}:feedback:${String(record.kind ?? 'unknown')}:${state.revision}`,
+            ownerActionable: record.ownerActionable === true,
+            nextAction: summary,
+          },
+        });
+      }
+      return;
+    }
     const progressReport = projectGoalAgentProgressReport(state, event);
     if (progressReport) {
       const request = this.reportRequestBySession.get(state.sessionId) ?? state.request;

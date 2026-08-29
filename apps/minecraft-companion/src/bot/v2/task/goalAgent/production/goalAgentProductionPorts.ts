@@ -252,23 +252,21 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
     }
 
     const inventoryItem = inventoryCriterion(criteria)?.item;
-    const recipes = inventoryItem
-      ? this.craftRecipes(inventoryItem)
-      : [];
-    const managedTask = managedInventoryTaskCandidate(
-      criteria,
-      world,
-      recipes.length > 0,
-      inventoryItem ? this.hasGatherSource(inventoryItem) : false,
-    );
-    if (managedTask) candidates.push(managedTask);
+    // BUG-CROSS-80 · craft 能力不再被"目标物是否有配方"门控：
+    // canCraftTarget 只用于候选描述提示；craft_item / craft_one / craft 原子按"能力存在"暴露，
+    // 材料可行性由原子层 RecipeResolver 递归补料或返回结构化缺料错误，形成 ReAct 闭环。
+    const canCraftTarget = Boolean(inventoryItem && this.craftRecipes(inventoryItem).length > 0);
+    const canGather = Boolean(inventoryItem && this.hasGatherSource(inventoryItem));
+    for (const managedTask of managedInventoryTaskCandidates(criteria, world, canCraftTarget, canGather)) {
+      candidates.push(managedTask);
+    }
     for (const behavior of this.options.behaviors.list()) {
-      for (const candidate of this.behaviorCandidates(behavior.id, criteria, world, recipes.length > 0)) {
+      for (const candidate of this.behaviorCandidates(behavior.id, criteria, world, canGather)) {
         candidates.push(candidate);
       }
     }
     for (const definition of this.contracts.list()) {
-      const fixedArgs = applicableAtomicArgs(definition.action, criteria, world, recipes.length > 0);
+      const fixedArgs = applicableAtomicArgs(definition.action, criteria, world);
       if (!fixedArgs) continue;
       candidates.push({
         id: `atomic:${definition.action}`,
@@ -462,7 +460,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
     behaviorId: string,
     criteria: GoalSuccessCriterion[],
     world: WorldStateView,
-    canCraft: boolean,
+    canGather: boolean,
   ): GoalAgentActionCandidate[] {
     const base = {
       kind: 'behavior' as const,
@@ -473,7 +471,9 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
       evidenceRefs: [`behavior:${behaviorId}`],
     };
     const inventory = criteria.find(value => value.type === 'inventory');
-    if (behaviorId === 'gather_block' && inventory?.item && !canCraft) {
+    // BUG-CROSS-80 · gather_block 保留"目标物有采集源"门控（canGather），不再被 !canCraft 反噬：
+    // 可合成物不生成无意义采集候选；采集物照常暴露确定性的方块目标。
+    if (behaviorId === 'gather_block' && inventory?.item && canGather) {
       const targets = this.options.resolveGatherTargets?.(inventory.item, world) ?? [];
       return targets.slice(0, 4).map((target, index) => ({
         ...base,
@@ -481,12 +481,15 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         fixedArgs: { behavior: behaviorId, behaviorParams: target },
       }));
     }
-    if (behaviorId === 'craft_one' && inventory?.item && canCraft) {
+    if (behaviorId === 'craft_one' && inventory?.item) {
+      // BUG-CROSS-80 · 不再要求 canCraft(目标物)：item 默认目标物，模型可改为所需工具/中间物，
+      // 材料不足由 craft 原子递归补料或结构化失败闭环。
       const have = inventoryCount(world, inventory.item);
       const target = inventory.count ?? 1;
       return [{
         ...base,
         id: `behavior:${behaviorId}`,
+        description: `Craft items via the recursive crafting behavior (item defaults to ${inventory.item}; the model may override item to craft a required tool or intermediate)`,
         fixedArgs: {
           behavior: behaviorId,
           behaviorParams: { item: inventory.item, count: Math.max(1, target - have), inventoryTargetCount: target },
@@ -644,12 +647,13 @@ function applicableAtomicArgs(
   action: string,
   criteria: GoalSuccessCriterion[],
   world: WorldStateView,
-  canCraft: boolean,
 ): Record<string, unknown> | null {
   const inventory = criteria.find(value => value.type === 'inventory');
-  if (inventory?.item && action === 'craft' && canCraft) {
+  if (inventory?.item && action === 'craft') {
+    // BUG-CROSS-80 · craft 原子按"能力存在"暴露：itemName 不预填，由模型填目标物或所需工具；
+    // 原子层 RecipeResolver 递归补料，缺料返回结构化错误形成 ReAct 闭环。
     const target = inventory.count ?? 1;
-    return { itemName: inventory.item, count: Math.max(1, target - inventoryCount(world, inventory.item)), inventoryTargetCount: target };
+    return { count: Math.max(1, target - inventoryCount(world, inventory.item)), inventoryTargetCount: target };
   }
   const delivered = criteria.find(value => value.type === 'item_delivered');
   if (delivered?.item && action === 'toss_item') return { itemName: delivered.item, count: delivered.count ?? 1 };
@@ -675,35 +679,68 @@ function inventoryCriterion(criteria: GoalSuccessCriterion[]) {
   return criteria.find(value => value.type === 'inventory');
 }
 
-function managedInventoryTaskCandidate(
+function managedInventoryTaskCandidates(
   criteria: GoalSuccessCriterion[],
   world: WorldStateView,
-  canCraft: boolean,
+  canCraftTarget: boolean,
   canGather: boolean,
-): GoalAgentActionCandidate | null {
+): GoalAgentActionCandidate[] {
   const inventory = inventoryCriterion(criteria);
-  if (!inventory?.item) return null;
+  if (!inventory?.item) return [];
   const target = Math.max(1, inventory.count ?? 1);
-  if (inventoryCount(world, inventory.item) >= target) return null;
-  if (!canCraft && !canGather) return null;
-  const taskKind = canCraft ? 'craft_item' : 'gather_material';
-  const params = canCraft
-    ? { item: inventory.item, count: target }
-    : { material: inventory.item, count: target };
-  return {
-    id: `task:${taskKind}:${inventory.item}`,
+  if (inventoryCount(world, inventory.item) >= target) return [];
+  const candidates: GoalAgentActionCandidate[] = [];
+  // BUG-CROSS-80 · craft_item 不再被 canCraft(目标物) 门控：任何 inventory 缺口都暴露合成任务，
+  // 模型可把 item 改为所需工具/中间物；ProvisionStrategy + RecipeResolver 递归补料并结构化失败闭环。
+  candidates.push({
+    id: `task:craft_item:${inventory.item}`,
     kind: 'task',
     source: 'registered_task',
     action: 'invoke_task',
-    description: canCraft
+    description: canCraftTarget
       ? `Run the registered recursive crafting task for ${inventory.item}`
-      : `Run the registered gathering task for ${inventory.item}, including bounded exploration`,
-    fixedArgs: { taskKind, params },
+      : `Run the registered recursive crafting task (item defaults to ${inventory.item}; the model may override item to craft a required tool or intermediate)`,
+    fixedArgs: { taskKind: 'craft_item', params: { item: inventory.item, count: target } },
     argumentSchema: {
-      type: 'object', properties: {}, required: ['taskKind', 'params'], additionalProperties: false,
+      type: 'object',
+      properties: {
+        taskKind: { type: 'string', enum: ['craft_item'] },
+        params: {
+          type: 'object',
+          properties: { item: { type: 'string' }, count: { type: 'number' } },
+          additionalProperties: false,
+        },
+      },
+      required: ['taskKind', 'params'],
+      additionalProperties: false,
     },
-    evidenceRefs: [`task-capability:${taskKind}`],
-  };
+    evidenceRefs: ['task-capability:craft_item'],
+  });
+  if (canGather) {
+    candidates.push({
+      id: `task:gather_material:${inventory.item}`,
+      kind: 'task',
+      source: 'registered_task',
+      action: 'invoke_task',
+      description: `Run the registered gathering task for ${inventory.item}, including bounded exploration`,
+      fixedArgs: { taskKind: 'gather_material', params: { material: inventory.item, count: target } },
+      argumentSchema: {
+        type: 'object',
+        properties: {
+          taskKind: { type: 'string', enum: ['gather_material'] },
+          params: {
+            type: 'object',
+            properties: { material: { type: 'string' }, count: { type: 'number' } },
+            additionalProperties: false,
+          },
+        },
+        required: ['taskKind', 'params'],
+        additionalProperties: false,
+      },
+      evidenceRefs: ['task-capability:gather_material'],
+    });
+  }
+  return candidates;
 }
 
 function validateManagedTask(

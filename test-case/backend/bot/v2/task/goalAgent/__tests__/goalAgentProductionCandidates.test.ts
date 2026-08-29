@@ -110,16 +110,38 @@ test('inventory gather goal exposes only bounded relevant gather candidates', as
     planNodeId: 'task-1',
     signal: new AbortController().signal,
   });
-  assert.equal(candidates.length, 5);
+  // BUG-CROSS-80 · craft_item/craft_one/craft 原子不再被 canCraft 门控，与采集候选同时暴露
+  assert.deepEqual(candidates.map(candidate => candidate.id), [
+    'task:craft_item:oak_log',
+    'task:gather_material:oak_log',
+    'behavior:gather_block:1',
+    'behavior:gather_block:2',
+    'behavior:gather_block:3',
+    'behavior:gather_block:4',
+    'behavior:craft_one',
+    'atomic:craft',
+  ]);
   assert.deepEqual(candidates[0], {
-    id: 'task:gather_material:oak_log', kind: 'task', source: 'registered_task', action: 'invoke_task',
-    description: 'Run the registered gathering task for oak_log, including bounded exploration',
-    fixedArgs: { taskKind: 'gather_material', params: { material: 'oak_log', count: 1 } },
-    argumentSchema: { type: 'object', properties: {}, required: ['taskKind', 'params'], additionalProperties: false },
-    evidenceRefs: ['task-capability:gather_material'],
+    id: 'task:craft_item:oak_log', kind: 'task', source: 'registered_task', action: 'invoke_task',
+    description: 'Run the registered recursive crafting task (item defaults to oak_log; the model may override item to craft a required tool or intermediate)',
+    fixedArgs: { taskKind: 'craft_item', params: { item: 'oak_log', count: 1 } },
+    argumentSchema: {
+      type: 'object',
+      properties: {
+        taskKind: { type: 'string', enum: ['craft_item'] },
+        params: {
+          type: 'object',
+          properties: { item: { type: 'string' }, count: { type: 'number' } },
+          additionalProperties: false,
+        },
+      },
+      required: ['taskKind', 'params'],
+      additionalProperties: false,
+    },
+    evidenceRefs: ['task-capability:craft_item'],
   });
-  assert.ok(candidates.slice(1).every(candidate => candidate.id.startsWith('behavior:gather_block:')));
-  assert.ok(candidates.slice(1).every(candidate => candidate.action === 'invoke_behavior'));
+  assert.ok(candidates.slice(2, 6).every(candidate => candidate.id.startsWith('behavior:gather_block:')));
+  assert.ok(candidates.slice(2, 6).every(candidate => candidate.action === 'invoke_behavior'));
   assert.ok(candidates.every(candidate => !/combat|follow|farm|flee|sleep|attack|toss/.test(candidate.id)));
 });
 
@@ -140,7 +162,9 @@ test('BUG-CROSS-74 · gather task stays available when no resource block is curr
     state: state([{ type: 'inventory', item: 'oak_log', count: 1 }]),
     planNodeId: 'task-1', signal: new AbortController().signal,
   });
-  assert.deepEqual(candidates.map(candidate => candidate.id), ['task:gather_material:oak_log']);
+  assert.deepEqual(candidates.map(candidate => candidate.id), [
+    'task:craft_item:oak_log', 'task:gather_material:oak_log', 'atomic:craft',
+  ]);
 });
 
 test('craftable inventory goal exposes managed task plus bounded direct craft candidates', async () => {
@@ -157,8 +181,12 @@ test('craftable inventory goal exposes managed task plus bounded direct craft ca
   assert.deepEqual(candidates[0]?.fixedArgs, {
     taskKind: 'craft_item', params: { item: 'oak_planks', count: 4 },
   });
-  assert.ok(candidates.slice(1).every(candidate => candidate.fixedArgs.itemName === 'oak_planks'
-    || (candidate.fixedArgs.behaviorParams as { item?: string }).item === 'oak_planks'));
+  // BUG-CROSS-80 · craft 原子 itemName 不再预填，由模型填目标物或所需工具
+  assert.deepEqual(candidates[2]?.fixedArgs, { count: 4, inventoryTargetCount: 4 });
+  assert.deepEqual(
+    (candidates[1]?.fixedArgs.behaviorParams as { item?: string })?.item,
+    'oak_planks',
+  );
 });
 
 test('BUG-CROSS-64 · chest as crafted output is not mistaken for a container source', async () => {
@@ -196,8 +224,8 @@ test('candidate cap is deterministic and applied after applicability filtering',
     signal: new AbortController().signal,
   });
   assert.deepEqual(candidates.map(candidate => candidate.id), [
-    'behavior:gather_block:1',
-    'behavior:gather_block:2',
+    'task:craft_item:oak_log',
+    'atomic:craft',
   ]);
 });
 
@@ -362,11 +390,15 @@ test('BUG-CROSS-69 · a different grounded item does not create a pickup candida
     parentTaskId: () => null,
   });
 
+  // BUG-CROSS-80 · 能力制：缺铁镐时 craft_item 与 craft 原子照常暴露，由原子层失败闭环
   assert.deepEqual(await port.listCandidates({
     state: pickupState,
     planNodeId: 'task-1',
     signal: new AbortController().signal,
-  }), []);
+  }).then(candidates => candidates.map(candidate => candidate.id)), [
+    'task:craft_item:iron_pickaxe',
+    'atomic:craft',
+  ]);
 });
 
 test('BUG-CROSS-61 · deposit exposes only the grounded target-chest behavior', async () => {
@@ -586,10 +618,13 @@ test('action recovery excludes the exact candidate that just failed', async () =
     signal: new AbortController().signal,
   });
   assert.deepEqual(candidates.map(candidate => candidate.id), [
+    'task:craft_item:oak_log',
     'task:gather_material:oak_log',
     'behavior:gather_block:2',
     'behavior:gather_block:3',
     'behavior:gather_block:4',
+    'behavior:craft_one',
+    'atomic:craft',
   ]);
 });
 

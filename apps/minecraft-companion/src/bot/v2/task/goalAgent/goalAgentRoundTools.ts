@@ -86,6 +86,8 @@ export class GoalAgentRoundToolRuntime {
   private readonly verifier = new PlanVerifier();
   private readonly now: () => string;
   private readonly goalId: () => string;
+  /** BUG-CROSS-80 · 每个会话连续空搜索（knowledge/skill/capability）次数，供反馈协议读取。 */
+  private readonly emptySearchStreaks = new Map<string, number>();
 
   constructor(private readonly options: GoalAgentRoundToolRuntimeOptions) {
     if (!options.profileId.trim()) throw new Error('GoalAgent round tools require profileId');
@@ -106,6 +108,19 @@ export class GoalAgentRoundToolRuntime {
 
   names(): string[] {
     return [...this.registry.keys()].sort((left, right) => left.localeCompare(right));
+  }
+
+  /** BUG-CROSS-80 · 当前会话连续空搜索结果次数（反馈协议判定用）。 */
+  emptySearchStreak(sessionId: string): number {
+    return this.emptySearchStreaks.get(sessionId) ?? 0;
+  }
+
+  private noteSearchResult(sessionId: string, empty: boolean): void {
+    if (empty) {
+      this.emptySearchStreaks.set(sessionId, this.emptySearchStreak(sessionId) + 1);
+    } else {
+      this.emptySearchStreaks.delete(sessionId);
+    }
   }
 
   async execute(
@@ -239,7 +254,7 @@ export class GoalAgentRoundToolRuntime {
       }, ['ref'], (state, args) => this.getSkill(state, args)),
       this.tool('capability_search', 'Search registered GoalAgent capability modes and lifecycle handlers.', {
         query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 12 },
-      }, ['query'], (_state, args) => this.searchCapabilities(args)),
+      }, ['query'], (state, args) => this.searchCapabilities(state, args)),
       this.tool('capability_get', 'Read one registered capability definition by id.', {
         id: { type: 'string' },
       }, ['id'], (_state, args) => this.getCapability(args)),
@@ -508,7 +523,9 @@ export class GoalAgentRoundToolRuntime {
     const proposal = {
       source: candidate.source,
       action: candidate.action,
-      args: { ...modelArgs, ...structuredClone(candidate.fixedArgs) },
+      // BUG-CROSS-80 · 模型参数优先：fixedArgs 只兜底未填字段（幂等/审计由 actionKey 保证），
+      // 关键业务参数（item/itemName/count）由模型观察世界后填写，schema/领域校验兜底。
+      args: { ...structuredClone(candidate.fixedArgs), ...modelArgs },
       rationale: text(args.rationale) || candidate.description,
     };
     const idempotencyKey = actionKey(state, candidate.id, proposal.args);
@@ -659,6 +676,7 @@ export class GoalAgentRoundToolRuntime {
       ...(state.action.result?.failure?.code ? { failureCode: state.action.result.failure.code } : {}),
       limit: integer(args.limit, 6, 1, 12),
     });
+    this.noteSearchResult(state.sessionId, results.length === 0);
     const refs = results.map(result => result.evidenceRef);
     state.cognition.knowledgeRefs = [...new Set([...state.cognition.knowledgeRefs, ...refs])];
     return { content: { ok: true, skills: results }, summary: `found ${results.length} skills`, evidenceRefs: refs };
@@ -670,6 +688,7 @@ export class GoalAgentRoundToolRuntime {
       query: text(args.query),
       limit: integer(args.limit, 6, 1, 12),
     });
+    this.noteSearchResult(state.sessionId, results.length === 0);
     const refs = results.map(result => result.evidenceRef);
     state.cognition.knowledgeRefs = [...new Set([...state.cognition.knowledgeRefs, ...refs])];
     return {
@@ -707,9 +726,10 @@ export class GoalAgentRoundToolRuntime {
     return { content: { ok: result.ok, result }, summary: result.ok ? `loaded skill ${result.skill.name}` : `skill load failed: ${result.reason}`, evidenceRefs };
   }
 
-  private async searchCapabilities(args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
+  private async searchCapabilities(state: GoalAgentStateV1, args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
     if (!this.options.capabilities) return failureReceipt('capability_knowledge_unavailable');
     const results = this.options.capabilities.search({ query: text(args.query), limit: integer(args.limit, 6, 1, 12) });
+    this.noteSearchResult(state.sessionId, results.length === 0);
     return { content: { ok: true, capabilities: results }, summary: `found ${results.length} capabilities`, evidenceRefs: results.map(value => `capability:${value.id}`) };
   }
 
