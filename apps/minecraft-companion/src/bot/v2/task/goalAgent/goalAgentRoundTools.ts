@@ -153,7 +153,7 @@ export class GoalAgentRoundToolRuntime {
       this.tool('goal_get_target', 'Read one controlled target definition by registryId.', {
         registryId: { type: 'string' },
       }, ['registryId'], (state, args) => this.getTarget(state, args)),
-      this.tool('goal_create', 'Create the durable root goal after selecting a controlled target.', {
+      this.tool('goal_create', 'Create the durable root goal after selecting a controlled target. outcome must faithfully reflect the player intent: "给我/交给/递给/拿给/扔给/交给玩家 X" or "give/deliver/bring X to me" requires outcome=deliver; only "做/造/采/获得 X" without handover wording may use outcome=obtain. A deliver goal is only complete after the item is really handed to the owner, never when it merely sits in your inventory.', {
         outcome: { type: 'string', enum: [...OUTCOMES] },
         target: {
           type: 'object',
@@ -322,6 +322,15 @@ export class GoalAgentRoundToolRuntime {
     const selected = state.interpretation.candidates.find(candidate => candidate.registryId === registryId);
     const canonical = selected ? this.requireKnowledge().getTarget(selected.registryId) : null;
     if (!selected || !canonical) return failureReceipt('goal target must come from goal_search_targets or goal_get_target');
+    // BUG-CROSS-80 · 交付语义 fail closed：玩家请求含"给我/交给/递给…"而模型选了非 deliver → 结构化拒绝，
+    // 防止"背包里有"冒充"已交付"（真服实证：石斧在背包即 completed，主人未收到）。
+    const outcome = text(args.outcome);
+    const deliveryHint = /(?:给我|交给|递给|送给|拿给|扔给|deliver|give|bring)/i.test(state.request.requestText ?? '');
+    if (deliveryHint && outcome !== 'deliver') {
+      return failureReceipt(
+        `goal_create_outcome_mismatch: 玩家请求含交付语义（给我/交给/递给…），outcome 必须为 deliver（判据 item_delivered，需真实交付收据）`,
+      );
+    }
     const normalizedArgs = {
       ...args,
       target: {

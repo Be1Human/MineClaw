@@ -27,8 +27,8 @@ function request(): GoalRequestV2 {
       idempotencyKey: 'request-round-1',
     },
     origin: 'player_message',
-    originalText: '给我一块石头',
-    requestText: '给我一块石头',
+    originalText: '弄一块石头',
+    requestText: '弄一块石头',
     requestKind: 'task',
     constraints: [],
   };
