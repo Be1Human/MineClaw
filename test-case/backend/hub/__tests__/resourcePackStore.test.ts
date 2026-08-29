@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { get as httpGet } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +69,21 @@ function testPack(options: {
 
 function expectPackError(action: () => unknown, code: ResourcePackError['code']): void {
   assert.throws(action, (error: unknown) => error instanceof ResourcePackError && error.code === code);
+}
+
+function requestBytes(url: string): Promise<{ status: number; body: Buffer; contentType: string }> {
+  return new Promise((resolveRequest, rejectRequest) => {
+    const request = httpGet(url, response => {
+      const chunks: Buffer[] = [];
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+      response.on('end', () => resolveRequest({
+        status: response.statusCode ?? 0,
+        body: Buffer.concat(chunks),
+        contentType: String(response.headers['content-type'] ?? ''),
+      }));
+    });
+    request.on('error', rejectRequest);
+  });
 }
 
 test('FEAT-WEBUI-27-001 | 自制资源包安全导入、缓存幂等并可读取模型纹理', () => {
@@ -156,7 +172,7 @@ test('FEAT-WEBUI-27-001 | HTTP 导入接口不暴露原始 ZIP 且只提供缓�
   }
 });
 
-test('FEAT-WEBUI-27-005 | 内置开源方块包自动播种且重复启动幂等', () => {
+test('FEAT-WEBUI-27-005 | 内置开源视觉资源包自动播种且重复启动幂等', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mineclaw-builtin-pack-'));
   try {
     const store = new ResourcePackStore(dir, () => BUILTIN_LIMITS);
@@ -168,7 +184,8 @@ test('FEAT-WEBUI-27-005 | 内置开源方块包自动播种且重复启动幂等
       || path.startsWith('assets/minecraft/blockstates/')
       || path.startsWith('assets/minecraft/models/block/')
       || path.startsWith('assets/minecraft/textures/block/')
-    )), '内置 ZIP 不得包含声音、音乐、GUI、字体、实体、物品或世界文件');
+      || path.startsWith('assets/minecraft/textures/item/')
+    )), '内置 ZIP 不得包含声音、音乐、GUI、字体、实体、物品模型或世界文件');
     store.import({
       archive: testPack({ declaredVersion: '1.21', license: 'MIT' }),
       fileName: 'mineclaw-open-blocks.zip',
@@ -186,8 +203,47 @@ test('FEAT-WEBUI-27-005 | 内置开源方块包自动播种且重复启动幂等
     assert.equal(first.distributable, true);
     assert.equal(first.minecraftVersion, '1.21');
     assert.ok(store.readFile(first.id, 'assets/minecraft/textures/block/stone.png'));
+    assert.ok(store.readFile(first.id, 'assets/minecraft/textures/item/oak_door.png'));
     assert.match(new TextDecoder().decode(store.readFile(first.id, 'MINECLAW-PROVENANCE.json')!), /Love-and-Tolerance/);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('BUG-WEBUI-ICON-01 | 背包 item/block 图标只从内置包读取且不创建下载缓存', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mineclaw-builtin-icons-'));
+  const dataDir = join(dir, 'data');
+  const hub = createHubServer({
+    host: '127.0.0.1', port: 0, dataDir, builtinResourcePackPath: BUILTIN_PACK_PATH,
+  });
+  const originalFetch = globalThis.fetch;
+  let externalFetchCalls = 0;
+  globalThis.fetch = (async () => {
+    externalFetchCalls += 1;
+    throw new Error('external fetch is disabled for the inventory icon test');
+  }) as typeof fetch;
+  try {
+    await hub.listen();
+    const port = (hub.httpServer.address() as AddressInfo).port;
+    const base = `http://127.0.0.1:${port}/api/icon`;
+
+    const item = await requestBytes(`${base}/oak_door`);
+    assert.equal(item.status, 200);
+    assert.match(item.contentType, /^image\/png/);
+    assert.deepEqual([...item.body.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+
+    const block = await requestBytes(`${base}/oak_log`);
+    assert.equal(block.status, 200);
+    assert.match(block.contentType, /^image\/png/);
+
+    assert.equal((await requestBytes(`${base}/missing_icon_fixture`)).status, 404);
+    assert.equal((await requestBytes(`${base}/oak-log`)).status, 400);
+    assert.equal(externalFetchCalls, 0);
+    assert.equal(existsSync(join(dataDir, 'icon-cache')), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await hub.botManager.stopAll();
+    if (hub.httpServer.listening) await new Promise<void>(done => hub.httpServer.close(() => done()));
     rmSync(dir, { recursive: true, force: true });
   }
 });

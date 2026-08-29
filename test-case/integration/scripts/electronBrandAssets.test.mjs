@@ -59,10 +59,16 @@ test('Windows packaging embeds and ships the same generated brand icon', async (
   const electronBuild = await text('scripts/electronBuild.mjs');
 
   assert.equal(manifest.build.win.icon, 'build/icon.png');
-  assert.deepEqual(manifest.build.extraResources, [{
-    from: 'build/icon.png',
-    to: 'brand/mineclaw-mark.png',
-  }]);
+  assert.deepEqual(manifest.build.extraResources, [
+    {
+      from: 'build/icon.png',
+      to: 'brand/mineclaw-mark.png',
+    },
+    {
+      from: 'builtin-packs/mineclaw-open-blocks.zip',
+      to: 'resource-packs/mineclaw-open-blocks.zip',
+    },
+  ]);
   assert.match(electronBuild, /brandAssets\.mjs'\), '--sync'/);
   assert.match(electronBuild, /copyFile\(backupBinding, defaultBindingPath\)/);
 });

@@ -110,6 +110,16 @@ test('右侧任务、背包与日志面板共享正式版容器和结构化空�
   assert.match(componentSources.inventory, /\.inv-slot/);
 });
 
+test('BUG-WEBUI-ICON-01 | 背包图标使用同源本地接口并保留失败回退与格子状态', () => {
+  assert.match(componentSources.inventory, /return \[`\/api\/icon\/\$\{cleanName\(name\)\}`\]/);
+  assert.match(componentSources.inventory, /@error="onIconError\(it\.name\)"/);
+  assert.match(componentSources.inventory, /v-else class="slot-fallback"/);
+  assert.match(componentSources.inventory, /:class="\{ active: heldName && it\.name === heldName \}"/);
+  assert.match(componentSources.inventory, /class="slot-count" v-if="it\.count > 1"/);
+  assert.match(componentSources.inventory, /class="slot-dura"/);
+  assert.doesNotMatch(componentSources.inventory, /jsdelivr|https?:\/\//i);
+});
+
 test('新建伙伴与皮肤编辑器使用可访问的共享弹窗外壳', () => {
   assert.equal((appSource.match(/class="mc-dialog-backdrop"/g) || []).length, 2);
   assert.equal((appSource.match(/role="dialog"/g) || []).length, 2);

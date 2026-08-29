@@ -7,7 +7,8 @@
   "included": [
     "assets/minecraft/blockstates/",
     "assets/minecraft/models/block/",
-    "assets/minecraft/textures/block/"
+    "assets/minecraft/textures/block/",
+    "assets/minecraft/textures/item/"
   ],
   "excluded": [
     "music",
@@ -15,11 +16,11 @@
     "font",
     "gui",
     "entity",
-    "item",
+    "item models",
     "environment"
   ],
   "file": "mineclaw-open-blocks.zip",
-  "sha256": "ccc81f0cd7103fde25d5b440e24c7676ff6e1308d0bebf46a6aa96f5827960a8",
-  "archiveBytes": 2167325,
-  "entryCount": 2010
+  "sha256": "8eb47c4eecdc96add8201b2c2bcba7a553750808efae41d02959af5a77a47ab1",
+  "archiveBytes": 3039846,
+  "entryCount": 2558
 }

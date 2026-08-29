@@ -17,6 +17,7 @@ const allowedPrefixes = [
   'assets/minecraft/blockstates/',
   'assets/minecraft/models/block/',
   'assets/minecraft/textures/block/',
+  'assets/minecraft/textures/item/',
 ];
 
 const response = await fetch(ARCHIVE_URL);
@@ -48,7 +49,7 @@ const provenance = {
   license: 'MIT',
   curatedAt: '2026-08-28',
   included: allowedPrefixes,
-  excluded: ['music', 'sounds', 'font', 'gui', 'entity', 'item', 'environment'],
+  excluded: ['music', 'sounds', 'font', 'gui', 'entity', 'item models', 'environment'],
 };
 
 selected['pack.mcmeta'] = strToU8(JSON.stringify({

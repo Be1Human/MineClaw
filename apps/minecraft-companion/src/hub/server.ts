@@ -1,7 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
-import { appendFileSync, mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { appendFileSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ProfileStore, toPublicBotProfile, type BotProfile } from './profileStore.js';
@@ -17,6 +17,7 @@ import { acceptChatSubmit, rejectChatSubmit, type ChatSubmitAck } from './chatSu
 import { ResourcePackStore, registerResourcePackRoutes, seedBuiltinResourcePack } from './resourcePacks/index.js';
 import { tuning } from '../bot/v2/infra/tuning.js';
 import { VisualWorldDeltaBatcher } from './visualWorldDeltaBatcher.js';
+import { registerInventoryIconRoutes } from './inventoryIconRoutes.js';
 
 export interface HubConfig {
   port: number;
@@ -44,8 +45,11 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   const serverPresetStore = new ServerPresetStore(config.dataDir);
   const desktopPetConfigStore = new DesktopPetConfigStore(config.dataDir);
   const resourcePackStore = new ResourcePackStore(config.dataDir, () => tuning().worldVisual);
-  if (config.builtinResourcePackPath) seedBuiltinResourcePack(resourcePackStore, config.builtinResourcePackPath);
+  const builtinResourcePack = config.builtinResourcePackPath
+    ? seedBuiltinResourcePack(resourcePackStore, config.builtinResourcePackPath)
+    : null;
   registerResourcePackRoutes(app, resourcePackStore, () => tuning().worldVisual);
+  registerInventoryIconRoutes(app, resourcePackStore, builtinResourcePack?.id ?? null);
   const botManager = new BotManager(config.dataDir, llmAgentConfigStore, serverPresetStore);
   botManager.defaultLlm = defaultLlm ?? null;
   const visualWorldRoom = (botId: string): string => `visual-world:${botId}`;
@@ -468,34 +472,6 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     } catch (e) {
       res.status(502).json({ error: 'mojang fetch failed', detail: (e as Error).message });
     }
-  });
-
-  // FEAT-WEBUI-11 · 物品图标代理 + 磁盘缓存（客户端只访问 localhost·同源·缓存后离线可用）
-  // 首次从 jsDelivr 镜像(Mojang 提取贴图)取 item→block，存本地复用；纯本地个人缓存，非对外再分发。
-  const iconCacheDir = join(config.dataDir, 'icon-cache');
-  if (!existsSync(iconCacheDir)) mkdirSync(iconCacheDir, { recursive: true });
-  const ICON_SRC = 'https://cdn.jsdelivr.net/gh/InventivetalentDev/minecraft-assets@1.20.1/assets/minecraft/textures';
-  app.get('/api/icon/:name', async (req, res) => {
-    const name = String(req.params.name || '').replace(/^minecraft:/, '').toLowerCase();
-    if (!/^[a-z0-9_]+$/.test(name)) { res.status(400).end(); return; }
-    const file = join(iconCacheDir, `${name}.png`);
-    res.type('png');
-    if (existsSync(file)) {
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.send(readFileSync(file)); return;
-    }
-    for (const kind of ['item', 'block']) {
-      try {
-        const r = await fetch(`${ICON_SRC}/${kind}/${name}.png`);
-        if (r.ok) {
-          const buf = Buffer.from(await r.arrayBuffer());
-          try { writeFileSync(file, buf); } catch { /* 缓存失败不影响返回 */ }
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          res.send(buf); return;
-        }
-      } catch { /* 换下一个 kind */ }
-    }
-    res.status(404).end();
   });
 
   app.delete('/api/profiles/:id', async (req, res) => {

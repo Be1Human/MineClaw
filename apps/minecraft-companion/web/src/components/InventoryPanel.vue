@@ -2,8 +2,8 @@
   InventoryPanel · FEAT-WEBUI-02 背包/物品展示
   数据源：worldState.inventory（bot:v2:worldState 推送）
     inventory = { items:[{name,count,slot,durability?,maxDurability?}], held, freeSlots }
-  物品贴图：浏览器直连第三方 CDN（链接·非打包 Mojang 素材）。
-    名字归一化 → 依次试 items/ → blocks/ 多候选 → 全失败降级为「分类配色方块+缩写」（永不破图/空白）。
+  物品贴图：Hub 从项目内置 MIT 资源包读取，运行时不访问外网。
+    名字归一化 → 本地 item → 本地 block → 全失败降级为「分类配色方块+缩写」（永不破图/空白）。
 -->
 <template>
   <section class="inv-panel mc-panel" aria-labelledby="inventory-title">
@@ -75,8 +75,7 @@ const props = defineProps({
   worldState: { type: Object, default: null },
 });
 
-// 图标走后端代理 + 磁盘缓存：客户端只访问同源 localhost（秒开·缓存后离线·绕开 CDN 抽风/CORS）。
-// 后端 /api/icon/:name 内部从 jsDelivr 镜像取 item→block 并缓存；这里单候选，取不到 → 分类降级。
+// 图标只走同源 /api/icon/:name；Hub 从内置资源包按 item→block 读取，取不到则分类降级。
 function candidates(name) {
   return [`/api/icon/${cleanName(name)}`];
 }
