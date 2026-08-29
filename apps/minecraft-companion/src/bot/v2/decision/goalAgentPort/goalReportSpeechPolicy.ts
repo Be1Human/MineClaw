@@ -8,6 +8,8 @@ export interface SpeechPolicyVerdict {
 
 const COMPLETION_CLAIM = /(?:已经|已|任务)?(?:完成|搞定|做好|拿到|交付|送到|到达)|(?:done|completed|finished|got it|delivered|arrived)/i;
 const SUCCESS_CLAIM = /(?:成功|没问题了|一切正常)|(?:success|succeeded|all good)/i;
+/** FEAT-CROSS-21 · 交付/放置类话术：无对应动作证据时禁止（防"没有给却说给了"）。 */
+const DELIVERY_CLAIM = /(?:给你|交给你|递给你|放到?你(?:那边|旁边|面前|脚下|这儿|这里)|放你(?:那边|旁边|面前|脚下|这儿|这里)|放进?(?:了)?(?:箱子|箱子里|包)|拿去吧|拿去用|给你用|已交付|交付(?:成功|完毕|好了)|送到(?:了|你)|放那儿|放这里|在这边地上)/i;
 const PROCESS_CLAIM = /(?:使用|用了?|用|拿着|挥动).{0,12}(?:剑|斧|镐|弓)|(?:攻击|击打|砍|射击)(?:了|过)|(?:吃了|进食|吃下|喝了|食用)|(?:全程|一直).{0,16}(?:保护|护着|没受伤|没有受伤|存活|活着)|(?:没有|没|未)(?:破坏|碰|挖).{0,12}(?:方块|场地|斗兽场)|(?:方块|场地|斗兽场).{0,12}(?:没有|没|未)(?:破坏|碰|挖)|(?:撤退|拉距|逃跑|回血|恢复了?血量)/i;
 const PLANNING_ONLY_CLAIM = /(?:还在|仍在|目前还在)?(?:规划|计划)(?:确认)?阶段|(?:规划|计划)好了?(?:就|再)(?:动手|开始|执行|收割)|还在(?:核对|确认)(?:范围|位置)?/i;
 const EXECUTING_CLAIM = /正在(?:执行|收割|挖|采集|拾取|归仓|存放|制作|移动|跟随)|已经开始(?:执行|收割|动手|制作|采集)/i;
@@ -75,6 +77,16 @@ export class GoalReportSpeechPolicy {
       return {
         pass: false,
         reason: '回复包含具体执行过程，但报告只有根终态判据，没有对应动作证据',
+        hint: `只能陈述已验证终态：${report.summary}`,
+      };
+    }
+    // FEAT-CROSS-21 · completed 但无交付/放置动作证据（只有根终态判据或证据为空）时，禁止"给你/放你那边/放进箱子"话术
+    const noActionEvidence = report.evidence.length === 0
+      || report.evidence.every(item => item.type === 'root_verdict');
+    if (report.status === 'completed' && noActionEvidence && DELIVERY_CLAIM.test(text)) {
+      return {
+        pass: false,
+        reason: '报告没有交付/放置动作证据，禁止声称已交付、已放置或放在某处',
         hint: `只能陈述已验证终态：${report.summary}`,
       };
     }

@@ -135,6 +135,8 @@ test('BUG-CROSS-58 · completed root settles mirrors from every historical plan 
       outcome: 'completed', summary: 'verified after replan',
       completedAt: '2026-08-22T00:00:02.000Z', evidenceRefs: [],
     };
+    // FEAT-CROSS-21 · 双签：MainBrain 复核通过后才允许任务树 completed
+    projection.markConfirmed('goal-projection');
     projection.update(value);
 
     const children = tasks.list().filter(task => task.parentId)
@@ -144,6 +146,34 @@ test('BUG-CROSS-58 · completed root settles mirrors from every historical plan 
       [2, 'completed'],
     ]);
     assert.equal(tasks.list().filter(task => task.state === 'running' || task.state === 'paused').length, 0);
+  } finally { memory.close(); }
+});
+
+test('FEAT-CROSS-21 · completed 声明未过确认闸 → 任务树保持 running（双签不盖章）', () => {
+  const { memory, tasks, projection } = harness();
+  try {
+    const value = state([planNode('deliver', 'dispatched')], 'deliver');
+    projection.update(value);
+    value.plan.revision = 2;
+    value.plan.graph = {
+      ...value.plan.graph!,
+      id: 'plan-projection-r2',
+      nodes: [planNode('deliver', 'satisfied')],
+    };
+    value.plan.activeNodeId = null;
+    value.phase = 'completed';
+    value.activeNode = 'terminal';
+    value.terminal = {
+      outcome: 'completed', summary: 'declared completed but not confirmed',
+      completedAt: '2026-08-22T00:00:02.000Z', evidenceRefs: [],
+    };
+    // 未 markConfirmed：根任务必须保持 running，mirror 也不能 completed
+    projection.update(value);
+    const root = tasks.list().find(task => !task.parentId)!;
+    assert.notEqual(root.state, 'completed', '未确认的 completed 声明不得写任务树 completed');
+    assert.equal(root.state, 'running');
+    const mirror = tasks.list().find(task => task.parentId)!.state;
+    assert.notEqual(mirror, 'completed');
   } finally { memory.close(); }
 });
 

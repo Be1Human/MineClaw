@@ -140,6 +140,8 @@ export interface TuningConfig {
     feedbackInactiveRounds: number;
     /** BUG-CROSS-80 · 托管任务（craft_item/gather_material）单次最长执行 ms。 */
     managedTaskTimeoutMs: number;
+    /** FEAT-CROSS-21 · 完成声明被复核拒绝后的同请求重试上限。 */
+    confirmationRetryLimit: number;
   };
   /** FEAT-CROSS-07 · 技能固化闭环（Strategy 自学习）· 全参热加载零裸常量 */
   strategy: {
@@ -345,6 +347,7 @@ const DEFAULTS: TuningConfig = {
     feedbackBudgetRatio: 0.8,
     feedbackInactiveRounds: 5,
     managedTaskTimeoutMs: 110_000,
+    confirmationRetryLimit: 1,
   },
   strategy: {
     enabled: true,

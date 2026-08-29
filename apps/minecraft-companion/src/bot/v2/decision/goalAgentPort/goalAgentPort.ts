@@ -21,9 +21,28 @@ import {
   type GoalSessionWatchdogConfig,
   type GoalStatusInspector,
 } from './goalSessionWatchdog.js';
+import type { GoalSuccessCriterion } from '../../task/contracts/goalTypes.js';
+import type { WorldStateView } from '../../types.js';
+import type { GoalCriterionEvidence } from '../../task/goalRunner/goalCriteriaEvaluator.js';
+import type { ConfirmationVerdict } from './completionConfirmationGate.js';
 
 export interface GoalAgentRequestSink {
   submit(request: GoalRequestV2): { accepted: boolean; reason?: string; details?: Record<string, unknown> };
+}
+
+/** FEAT-CROSS-21 · 完成确认闸依赖（MainBrain 侧机器复核）。 */
+export interface GoalAgentConfirmationDeps {
+  getCriteria: (sessionId: string) => readonly GoalSuccessCriterion[] | null;
+  getWorld: () => WorldStateView | null;
+  getEvidence: () => GoalCriterionEvidence;
+  /** 复核拒绝后的恢复钩子（-003 接：重开会话/新建会话注入拒绝证据）。 */
+  onRejected?: (input: { requestId: string; sessionId: string; reason: string; detail: string }) => void;
+  confirm: (input: {
+    goalText: string;
+    criteria: readonly GoalSuccessCriterion[];
+    world: WorldStateView | null;
+    evidence: GoalCriterionEvidence;
+  }) => ConfirmationVerdict;
 }
 
 export interface GoalAgentWatchdogOptions {
@@ -51,6 +70,7 @@ export class GoalAgentPort {
     private readonly sessions = new InteractionSessionManager(),
     private readonly watchdogOptions?: GoalAgentWatchdogOptions,
     progressOptions: GoalProgressCommunicationGovernorOptions = {},
+    private readonly confirmation?: GoalAgentConfirmationDeps,
   ) {
     this.progressGovernor = new GoalProgressCommunicationGovernor(progressOptions);
     if (watchdogOptions) {
@@ -92,6 +112,49 @@ export class GoalAgentPort {
       }),
       bus.on('goalagent.report', event => {
         const report = event.payload as Omit<GoalReportV2, 'meta'> & { meta?: GoalReportV2['meta'] };
+        // FEAT-CROSS-21 · 完成确认闸：completed 必须先过机器复核（收据/fresh 实物），
+        // 通过发 confirmed；不通过降级 running/obstacle 并触发恢复，共享状态不置完成。
+        if (report.status === 'completed' && this.confirmation) {
+          const sessionId = this.sessions.sessionIdForRequest(report.requestId);
+          const criteria = sessionId ? this.confirmation.getCriteria(sessionId) : null;
+          const gate = this.confirmation;
+          if (criteria && criteria.length > 0) {
+            const goalText = report.summary ?? report.requestId;
+            const verdict = gate.confirm({
+              goalText,
+              criteria,
+              world: gate.getWorld(),
+              evidence: gate.getEvidence(),
+            });
+            if (!verdict.ok) {
+              this.bus.publish('goalagent.confirmation_rejected', 'recoverable', {
+                requestId: report.requestId,
+                sessionId,
+                reason: verdict.reason,
+                detail: verdict.detail,
+              });
+              const downgraded: Omit<GoalReportV2, 'meta'> & { meta?: GoalReportV2['meta'] } = {
+                ...report,
+                status: 'running',
+                summary: `任务尚未确认完成：${verdict.detail}`,
+                update: {
+                  kind: 'obstacle',
+                  importance: 'high',
+                  episodeKey: `${report.requestId}:confirmation_rejected`,
+                  dedupeKey: `${report.requestId}:confirmation_rejected:${Date.now()}`,
+                  ownerActionable: false,
+                  nextAction: '继续执行直至真实交付',
+                },
+              };
+              this.watchdog?.recordReport(downgraded); // running → active 保持
+              const continuation = this.sessions.handleReport(downgraded);
+              if (continuation) this.publishContinuation(continuation);
+              gate.onRejected?.({ requestId: report.requestId, sessionId: sessionId ?? '', reason: verdict.reason, detail: verdict.detail });
+              return;
+            }
+            this.bus.publish('goalagent.confirmed', 'info', { requestId: report.requestId, sessionId, summary: verdict.summary });
+          }
+        }
         this.watchdog?.recordReport(report);
         let continuation: GoalContinuationV2 | null;
         if (report.status === 'running' && report.update) {
@@ -172,6 +235,19 @@ export class GoalAgentPort {
       this.bus.publish('goalagent.receipt', 'recoverable', receipt);
       return receipt;
     }
+  }
+
+  /**
+   * FEAT-CROSS-21 · 完成声明被复核拒绝后的恢复：以原请求语义重发（新建会话继承上下文），
+   * requestText 追加拒绝证据，让 GoalAgent 继续执行至真实交付。
+   */
+  retryRequest(requestId: string, note: string): GoalMessageReceiptV2 | null {
+    const sessionId = this.sessions.sessionIdForRequest(requestId);
+    const session = sessionId ? this.sessions.getSession(sessionId) : undefined;
+    if (!session) return null;
+    const baseText = session.desiredOutcome ?? session.originalText;
+    const requestText = [baseText.trim(), note.trim()].filter(Boolean).join('；');
+    return this.request({ requestText, requestKind: 'task' });
   }
 
   /** MainBrain / WebUI 同步读取当前执行状态，不创建第二条游戏任务。 */

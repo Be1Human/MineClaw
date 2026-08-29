@@ -74,4 +74,32 @@ describe('GoalReportSpeechPolicy', () => {
     };
     assert.equal(policy.validate(actionBacked, '我吃了面包').pass, true);
   });
+
+  it('FEAT-CROSS-21 · E1 只有根终态判据时禁止交付/放置话术（防"没有给却说给了"）', () => {
+    const terminal: GoalReportV2 = {
+      ...report('completed'),
+      summary: '机器判据已满足：criterion:inventory:stone_axe:1。',
+      evidence: [{ type: 'root_verdict', ref: 'criterion:inventory:stone_axe:1', observedAt: '2026-08-29T04:24:45.000Z' }],
+    };
+    assert.equal(policy.validate(terminal, '石斧已经做好了').pass, true);
+    assert.equal(policy.validate(terminal, '石斧已经做好了，给你放在这儿了').pass, false);
+    assert.equal(policy.validate(terminal, '给你放在这儿了，拿去用吧').pass, false);
+    assert.equal(policy.validate(terminal, '我放进箱子了').pass, false);
+    assert.equal(policy.validate(terminal, '已经交付给你了').pass, false);
+    assert.equal(policy.validate(terminal, '石斧在我背包里，我确认一下交付').pass, true);
+  });
+
+  it('FEAT-CROSS-21 · E2 有真实交付动作证据时允许交付措辞', () => {
+    const actionBacked: GoalReportV2 = {
+      ...report('completed'),
+      summary: 'verified criterion:item_delivered:stone_axe:1',
+      evidence: [{ type: 'action_result', ref: 'atomic:toss:success', observedAt: '2026-08-29T04:30:00.000Z' }],
+    };
+    assert.equal(policy.validate(actionBacked, '石斧已经交给你了，给你放在这儿了').pass, true);
+  });
+
+  it('FEAT-CROSS-21 · 无任何证据时也禁止交付话术', () => {
+    const noEvidence = report('completed', false);
+    assert.equal(policy.validate(noEvidence, '任务完成，给你放那儿了').pass, false);
+  });
 });

@@ -6,8 +6,19 @@ import type { GoalAgentStateV1 } from '../goalAgentState.js';
 export class GoalAgentTaskProjection {
   private readonly roots = new Map<string, string>();
   private readonly nodes = new Map<string, string>();
+  /** FEAT-CROSS-21 · 已通过完成确认闸的会话：只有双签才允许任务树 completed。 */
+  private readonly confirmedSessions = new Set<string>();
 
   constructor(private readonly tasks: TaskRuntime) {}
+
+  /** FEAT-CROSS-21 · 记录确认通过的会话（由 goalagent.confirmed 事件填入）。 */
+  markConfirmed(sessionId: string): void {
+    this.confirmedSessions.add(sessionId);
+  }
+
+  isConfirmed(sessionId: string): boolean {
+    return this.confirmedSessions.has(sessionId);
+  }
 
   update(state: Readonly<GoalAgentStateV1>): void {
     const rootId = this.rootTaskId(state.sessionId) ?? this.createRoot(state);
@@ -27,7 +38,13 @@ export class GoalAgentTaskProjection {
       return;
     }
     if (state.phase === 'completed') {
-      if (root.state !== 'completed') this.tasks.complete(rootId);
+      // FEAT-CROSS-21 · 双签：只有 MainBrain 复核通过（confirmedSessions）才写任务树 completed；
+      // 未确认的 completed 声明保持 running，绝不提前盖章。
+      if (this.confirmedSessions.has(state.sessionId)) {
+        if (root.state !== 'completed') this.tasks.complete(rootId);
+      } else if (root.state !== 'running' && !isTerminalTaskState(root.state)) {
+        this.tasks.resume(rootId);
+      }
       return;
     }
     if (state.phase === 'failed') {

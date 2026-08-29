@@ -6,6 +6,7 @@ import type {
   GoalStatusSnapshotV2,
 } from '../../decision/goalAgentPort/contracts.js';
 import type { WorldStateView } from '../../types.js';
+import type { GoalSuccessCriterion } from '../contracts/goalTypes.js';
 import type { GoalAgentLoopEvent } from './goalAgentEvents.js';
 import { GoalAgentRoundLoop } from './goalAgentRoundLoop.js';
 import { GoalAgentModelRuntime, type GoalAgentModelClient } from './goalAgentModelRuntime.js';
@@ -295,6 +296,12 @@ export class GoalAgent {
       ? this.sessionByInteraction.get(sessionOrInteractionId) ?? sessionOrInteractionId
       : this.latestSessionId;
     return resolved ? this.loop.snapshot(resolved) : null;
+  }
+
+  /** FEAT-CROSS-21 · 只读：根目标判据（完成确认闸复核用）。 */
+  getRootCriteria(sessionOrInteractionId: string): readonly GoalSuccessCriterion[] | null {
+    const state = this.snapshot(sessionOrInteractionId);
+    return state?.rootGoal?.successCriteria ?? null;
   }
 
   activeCount(): number {

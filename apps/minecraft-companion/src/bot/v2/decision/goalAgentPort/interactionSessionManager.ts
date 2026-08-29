@@ -300,6 +300,11 @@ export class InteractionSessionManager {
     return !!requestId && this.requestToSession.has(requestId);
   }
 
+  /** FEAT-CROSS-21 · requestId → sessionId（完成确认闸取根判据用）。 */
+  sessionIdForRequest(requestId: string): string | undefined {
+    return this.requestToSession.get(requestId);
+  }
+
   abandonSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session || ['completed','failed','cancelled','expired'].includes(session.state)) return;

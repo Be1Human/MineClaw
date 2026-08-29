@@ -46,6 +46,7 @@ import {
 } from './knowledge/goalTargetKnowledge.js';
 import { DomainKnowledgeRegistry } from './knowledge/domainKnowledge.js';
 import { buildRecipeKnowledgeDocuments } from './knowledge/recipeKnowledge.js';
+import { confirmCompletion } from './decision/goalAgentPort/completionConfirmationGate.js';
 import { AgentSkillRegistry } from './skills/skillRegistry.js';
 import { GoalAgentSkillKnowledgeAdapter } from './skills/goalAgentSkillKnowledge.js';
 import { join, dirname } from 'node:path';
@@ -326,6 +327,8 @@ export class V2Runtime {
   private taskRuntimeFactBridge: TaskRuntimeFactBridge | null = null;
   private executionFacts: ExecutionFactLog | null = null;
   private goalAgentTaskProjection: GoalAgentTaskProjection | null = null;
+  /** FEAT-CROSS-21 · 完成确认被拒后的重试计数（按 requestId）。 */
+  private readonly confirmationRetries = new Map<string, number>();
   private readonly goalAgentTerminalNotifications = new Set<string>();
   private readonly deliveryReceipts:Array<{item:string;count:number;at:number;ref:string}>=[];
   private readonly depositReceipts:Array<{
@@ -1182,6 +1185,35 @@ export class V2Runtime {
       },
     }, {
       level: cfg.progressReportLevel ?? cfg.characterCard?.performance.progressReportLevel ?? 'balanced',
+    }, {
+      // FEAT-CROSS-21 · 完成确认闸：completed 必须先过机器复核（收据/fresh 实物）
+      getCriteria: sessionId => this.goalAgent?.getRootCriteria(sessionId) ?? null,
+      getWorld: () => this.perception.getWorldState(),
+      getEvidence: () => ({
+        deliveries: [...this.deliveryReceipts],
+        deposits: [...this.depositReceipts],
+        placements: [...this.placementReceipts],
+      }),
+      confirm: input => confirmCompletion(input),
+      onRejected: input => {
+        log(`[goalagent] confirmation rejected: ${input.reason} · ${input.detail}`);
+        // 同请求重试一次（新建会话继承上下文并携带拒绝证据），防无限重试走 tuning 上限
+        const retries = this.confirmationRetries.get(input.requestId) ?? 0;
+        if (retries >= tuning().goalAgent.confirmationRetryLimit) {
+          this.bus.publish('goalagent.confirmation_exhausted', 'recoverable', input);
+          return;
+        }
+        this.confirmationRetries.set(input.requestId, retries + 1);
+        try {
+          this.goalAgentPort?.retryRequest(input.requestId, `（重试：上次完成声明未通过复核：${input.detail}，请真实交付后完成）`);
+        } catch (error) {
+          log(`[goalagent] confirmation retry failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      },
+    });
+    this.bus.on('goalagent.confirmed', event => {
+      const payload = event.payload as { sessionId?: string; requestId?: string };
+      if (payload.sessionId) this.goalAgentTaskProjection?.markConfirmed(payload.sessionId);
     });
     const brainDeps = {
       onBenchCommand: (message: string) => this.handleBenchCommand(message),
