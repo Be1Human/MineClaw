@@ -44,3 +44,14 @@ test('npm recovery uses node with a JavaScript CLI instead of spawning npm.cmd',
   const result = await runNode([npmCliPath, '--version']);
   assert.match(result.stdout.trim(), /^\d+\.\d+\.\d+/);
 });
+
+test('Electron binding 在隔离目录重建且不替换运行中的 Node binding', async () => {
+  const source = await readFile(resolve(appDir, 'scripts', 'electronNative.mjs'), 'utf8');
+
+  assert.match(source, /const stagingRoot = join\(tempRoot, 'project'\)/);
+  assert.match(source, /await cp\(join\(appDir, 'node_modules', 'better-sqlite3'\), stagingPackage/);
+  assert.match(source, /'--module-dir',\s*stagingRoot/);
+  assert.doesNotMatch(source, /copyFile\(defaultBindingPath/);
+  assert.match(source, /await probeElectron\(stagedCacheBinding\)/);
+  assert.match(source, /await probeNode\(\)/);
+});

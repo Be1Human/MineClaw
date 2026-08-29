@@ -16,7 +16,8 @@
         @click="activeSection = item.id"
       >
         <McIcon class="snav-icon" :name="item.iconName" :size="14" />
-        {{ item.label }}
+        <span class="snav-label">{{ item.label }}</span>
+        <span v-if="item.beta" class="beta-badge">Beta</span>
       </button>
     </nav>
 
@@ -305,9 +306,9 @@
 
       <!-- FEAT-WEBUI-15 · Minecraft 桌面角色 -->
       <div v-if="activeSection === 'desktop-pet'" class="settings-section">
-        <h3>桌面角色</h3>
-        <p class="desc">让一个伙伴以 Minecraft 形象常驻桌面。首版同时只显示一个角色。</p>
-        <div v-if="!isElectron" class="warn-box">设置可以保存，但桌面角色只会在 MineClaw Electron 桌面版中显示。</div>
+        <h3 class="section-heading">桌面角色 <span class="beta-badge">Beta</span></h3>
+        <p class="desc">实验性功能：让一个伙伴以 Minecraft 形象常驻桌面。当前同时只显示一个角色。</p>
+        <div v-if="!isElectron" class="warn-box">{{ desktopPetCopy.notice }}</div>
         <div class="toggle-row">
           <div>
             <div class="toggle-label">启用桌面角色</div>
@@ -336,7 +337,7 @@
           <div>{{ desktopPet.mode === 'fixed' ? '直接拖动角色即可调整位置，松手后自动记住。' : '角色会在当前显示器底部随机走动，并自动避开屏幕边界和任务栏。' }}</div>
         </div>
         <div class="form-actions">
-          <button class="btn btn-primary" :disabled="savingDesktopPet || (desktopPet.enabled && !desktopPet.profileId)" @click="saveDesktopPet">{{ savingDesktopPet ? '保存中…' : '保存并立即应用' }}</button>
+          <button class="btn btn-primary" :disabled="savingDesktopPet || (desktopPet.enabled && !desktopPet.profileId)" @click="saveDesktopPet">{{ savingDesktopPet ? '保存中…' : desktopPetCopy.saveLabel }}</button>
           <button class="btn btn-ghost" @click="loadDesktopPet">重置</button>
         </div>
         <div v-if="savedMsg" class="save-ok"><McIcon name="success" :size="13" />{{ savedMsg }}</div>
@@ -393,6 +394,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import McIcon from './icons/McIcon.vue';
+import { desktopPetEnvironmentCopy } from '../lib/desktopPetPresentation.js';
 
 const props = defineProps({
   selectedProfile: { type: Object, default: null },
@@ -417,6 +419,7 @@ const llmConfigs = ref([]);
 const clearLlmConfigApiKey = ref(false);
 const llmConfigForm = reactive({ id: '', name: '', apiKey: '', baseUrl: '', model: '' });
 const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI);
+const desktopPetCopy = desktopPetEnvironmentCopy(isElectron);
 const desktopPetProfiles = ref([]);
 const savingDesktopPet = ref(false);
 const desktopPet = reactive({ enabled: false, profileId: '', mode: 'fixed' });
@@ -434,7 +437,7 @@ const profileNavItems = [
 const globalNavItems = [
   { id: 'llm-configs', iconName: 'key', label: 'LLM Agent 配置' },
   { id: 'servers', iconName: 'server', label: '服务器配置' },
-  { id: 'desktop-pet', iconName: 'character', label: '桌面角色' },
+  { id: 'desktop-pet', iconName: 'character', label: '桌面角色', beta: true },
   { id: 'advanced', iconName: 'tool', label: '高级 / 调试' },
 ];
 const navItems = props.scope === 'global' ? globalNavItems : profileNavItems;
@@ -470,7 +473,7 @@ async function saveDesktopPet() {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || '保存桌面角色设置失败');
-    showSaved(isElectron ? '桌面角色设置已应用' : '设置已保存；启动桌面版后生效');
+    showSaved(desktopPetCopy.successMessage);
   } catch (error) {
     showError(error instanceof Error ? error.message : String(error));
   } finally {
@@ -946,11 +949,14 @@ watch(() => props.initialSection, section => {
 .snav-item:hover { color: var(--mc-text-secondary); background: var(--mc-surface-hover); border-color: var(--mc-border); }
 .snav-item.active { color: var(--mc-accent-strong); background: var(--mc-accent-soft); border-color: rgba(105,201,74,.24); }
 .snav-icon { flex-shrink: 0; }
+.snav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beta-badge { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 16px; padding: 0 4px; border: 1px solid rgba(217,170,76,.42); border-radius: var(--mc-radius-xs); background: rgba(217,170,76,.1); color: #e4bd6d; font: 700 8px var(--mc-font-mono); letter-spacing: .04em; text-transform: uppercase; }
 
 /* Content */
 .settings-content { flex: 1; overflow-y: auto; padding: 24px 28px; }
 .settings-section { max-width: 1080px; }
 .settings-section h3 { font-size: var(--mc-type-section-title); color: var(--mc-text); margin: 0 0 4px; }
+.section-heading { display: flex; align-items: center; gap: 7px; }
 .icon-heading { display: flex; align-items: center; gap: 7px; }
 .desc { font-size: var(--mc-type-secondary); color: var(--mc-text-muted); margin: 0 0 18px; }
 

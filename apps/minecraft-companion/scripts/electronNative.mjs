@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import {
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   open,
@@ -211,12 +212,31 @@ async function acquireLock() {
 async function rebuildElectronBinding(info) {
   await ensureNodeDefaultBinding();
   const tempRoot = await mkdtemp(join(tmpdir(), 'mineclaw-native-'));
-  const backupBinding = join(tempRoot, 'better_sqlite3.node.node-backup');
-  const stagedCacheBinding = join(tempRoot, 'better_sqlite3.node.electron');
-  await copyFile(defaultBindingPath, backupBinding);
+  const stagingRoot = join(tempRoot, 'project');
+  const stagingNodeModules = join(stagingRoot, 'node_modules');
+  const stagingPackage = join(stagingNodeModules, 'better-sqlite3');
+  const stagedCacheBinding = join(
+    stagingPackage,
+    'build',
+    'Release',
+    'better_sqlite3.node',
+  );
 
   let rebuildError;
   try {
+    await mkdir(stagingNodeModules, { recursive: true });
+    await cp(join(appDir, 'node_modules', 'better-sqlite3'), stagingPackage, {
+      recursive: true,
+    });
+    await writeFile(
+      join(stagingRoot, 'package.json'),
+      JSON.stringify({
+        name: 'mineclaw-electron-native-staging',
+        private: true,
+        dependencies: { 'better-sqlite3': info.sqliteVersion },
+      }, null, 2),
+      'utf8',
+    );
     const rebuildMain = require.resolve('@electron/rebuild');
     const rebuildCli = join(dirname(rebuildMain), 'cli.js');
     console.log(
@@ -230,10 +250,9 @@ async function rebuildElectronBinding(info) {
       '--version',
       info.electronVersion,
       '--module-dir',
-      appDir,
+      stagingRoot,
     ]);
-    await probeElectron(defaultBindingPath);
-    await copyFile(defaultBindingPath, stagedCacheBinding);
+    await probeElectron(stagedCacheBinding);
     await mkdir(info.cacheDir, { recursive: true });
     const targetTemp = join(
       info.cacheDir,
@@ -258,7 +277,6 @@ async function rebuildElectronBinding(info) {
   } catch (error) {
     rebuildError = error;
   } finally {
-    await copyFile(backupBinding, defaultBindingPath);
     await rm(tempRoot, { recursive: true, force: true });
   }
 

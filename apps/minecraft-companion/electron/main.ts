@@ -27,7 +27,14 @@ process.on('unhandledRejection', reason => handleFatal('unhandledRejection', rea
 // ── 后端（Express + Socket.IO）────────────────────────────────────────────────
 import { createHubServer } from '../src/hub/server.js'
 
-async function startBackend(): Promise<void> {
+async function resolveHubUrl(): Promise<string> {
+  const externalHubUrl = process.env['MINECLAW_HUB_URL']?.trim().replace(/\/$/, '')
+  if (externalHubUrl) {
+    const response = await fetch(`${externalHubUrl}/api/profiles`)
+    if (!response.ok) throw new Error(`External MineClaw Hub is unavailable: ${response.status}`)
+    console.log(`[Electron] Reusing external Hub at ${externalHubUrl}`)
+    return externalHubUrl
+  }
   const dataDir = app.isPackaged
     ? join(app.getPath('userData'), 'data')
     : join(process.cwd(), 'data')
@@ -54,7 +61,9 @@ async function startBackend(): Promise<void> {
     },
   )
   await hub.listen()
-  console.log('[Electron] Backend ready on :' + (process.env['HUB_PORT'] ?? '3000'))
+  const hubUrl = 'http://127.0.0.1:' + (process.env['HUB_PORT'] ?? '3000')
+  console.log('[Electron] Backend ready at ' + hubUrl)
+  return hubUrl
 }
 
 // ── 窗口 ──────────────────────────────────────────────────────────────────────
@@ -165,10 +174,9 @@ ipcMain.on('shell:openExternal', (_e, url: string) => {
 })
 
 app.whenReady().then(async () => {
-  await startBackend()
+  const hubUrl = await resolveHubUrl()
   const icon = await loadAppIcon()
   createWindow(icon)
-  const hubUrl = 'http://127.0.0.1:' + (process.env['HUB_PORT'] ?? '3000')
   desktopPetController = new DesktopPetController(
     hubUrl,
     join(__dirname, '../preload/index.cjs'),
