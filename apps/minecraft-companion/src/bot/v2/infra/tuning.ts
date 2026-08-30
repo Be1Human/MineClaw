@@ -102,6 +102,15 @@ export interface TuningConfig {
   testBench: {
     enabled: boolean;
   };
+  /** FEAT-CROSS-25 · 可插拔主动 Tick 通用调度与错误隔离。 */
+  proactiveTick: {
+    /** 单插件一次只读评估的最大时长。 */
+    evaluationTimeoutMs: number;
+    /** 插件评估抛错或超时后的默认退避。 */
+    errorBackoffMs: number;
+    /** 主动租约请求释放后的最大等待时间；超时由准入层强制收敛。 */
+    releaseTimeoutMs: number;
+  };
   /** FEAT-MEM-09 · 周期性对话记忆识别与整理。 */
   memoryConsolidation: {
     /** 总开关；关闭时保留原始消息、显式记忆和旧规则降级。 */
@@ -360,6 +369,11 @@ const DEFAULTS: TuningConfig = {
   },
   testBench: {
     enabled: false,
+  },
+  proactiveTick: {
+    evaluationTimeoutMs: 1_000,
+    errorBackoffMs: 30_000,
+    releaseTimeoutMs: 2_000,
   },
   memoryConsolidation: {
     enabled: true,

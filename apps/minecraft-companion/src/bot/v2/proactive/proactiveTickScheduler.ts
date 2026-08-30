@@ -1,4 +1,5 @@
 import { TickRate, type ITickable, type TickContext } from '../infra/tickRegistry.js';
+import { tuning } from '../infra/tuning.js';
 import type {
   ProactiveCapabilityPreferences,
   ProactiveTickEvaluation,
@@ -34,14 +35,10 @@ export class ProactiveTickScheduler implements ITickable {
   private running = false;
   private readonly backoffUntil = new Map<string, number>();
   private readonly now: () => number;
-  private readonly evaluationTimeoutMs: number;
-  private readonly errorBackoffMs: number;
 
   constructor(private readonly options: ProactiveTickSchedulerOptions) {
     this.preferences = options.preferences ?? {};
     this.now = options.now ?? Date.now;
-    this.evaluationTimeoutMs = options.evaluationTimeoutMs ?? 1_000;
-    this.errorBackoffMs = options.errorBackoffMs ?? 30_000;
     this.options.stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog(options.capabilities, this.preferences));
   }
 
@@ -88,7 +85,7 @@ export class ProactiveTickScheduler implements ITickable {
             foregroundBusy: this.options.isForegroundBusy(),
             signal,
           }),
-          this.evaluationTimeoutMs,
+          this.options.evaluationTimeoutMs ?? tuning().proactiveTick.evaluationTimeoutMs,
         );
         evaluations.set(entry.id, evaluation);
         this.options.stateStore.recordEvaluation(entry.id, evaluation, now);
@@ -102,7 +99,7 @@ export class ProactiveTickScheduler implements ITickable {
           });
         }
       } catch (error) {
-        const until = now + this.errorBackoffMs;
+        const until = now + (this.options.errorBackoffMs ?? tuning().proactiveTick.errorBackoffMs);
         this.backoffUntil.set(entry.id, until);
         this.options.stateStore.recordBackoff(
           entry.id,

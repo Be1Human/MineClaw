@@ -132,6 +132,18 @@ test('lease registry uses two-phase release and rejects stale ownership', () => 
   assert.equal(leases.grant({ capabilityId: 'stockpile', idempotencyKey: 'stockpile:1', priority: 20 }, 'activation-2', 102).activationId, 'activation-2');
 });
 
+test('a restarted lease registry never restores an old activation', () => {
+  const beforeRestart = new ProactiveGoalLeaseRegistry();
+  beforeRestart.grant({ capabilityId: 'follow', idempotencyKey: 'follow:1', priority: 10 }, 'activation-old', 100);
+
+  const afterRestart = new ProactiveGoalLeaseRegistry();
+  assert.deepEqual(afterRestart.snapshot(), { active: null, releasing: null });
+  assert.deepEqual(
+    afterRestart.evaluate({ capabilityId: 'follow', idempotencyKey: 'follow:2', priority: 10 }),
+    { kind: 'grantable' },
+  );
+});
+
 test('disabling an active plugin emits a release evaluation without calling it again', async () => {
   let calls = 0;
   const entry = capability('auto_test', 10, () => {
