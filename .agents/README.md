@@ -12,7 +12,7 @@ These skills describe reusable, public-safe development workflows. They do not c
 | `memory-benchmark` | Exercising the checked-in memory benchmark without external model spend. |
 | `minecraft-test-environment` | Preparing an explicitly configured local Minecraft test environment. |
 | `requirement-intake` | Recording a new feature or defect before implementation. |
-| `run` | Starting the backend and local control console. |
+| `run` | Starting the local environment. In the workspace, call `Start-Dev.bat`; do not re-list the checklist in this skill. |
 | `test-doc` | Capturing reproducible test cases and reports. |
 
 The skills are guidance, not a substitute for repository policy. [AGENTS.md](../AGENTS.md) and `.clawpm/AGENTS.md` take precedence when they apply.

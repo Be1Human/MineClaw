@@ -17,10 +17,30 @@
     "gui",
     "entity",
     "item models",
-    "environment"
+    "environment",
+    "Mojang textures"
   ],
+  "modelBaseline": {
+    "source": "https://github.com/PrismarineJS/minecraft-assets",
+    "sourceCommit": "67c9b138b00a6b67c29ba68dae74c41faef4889d",
+    "gameVersion": "1.21.1",
+    "files": [
+      "blocks_states.json",
+      "blocks_models.json"
+    ],
+    "package": "minecraft-assets",
+    "packageVersion": "1.19.0",
+    "declaredLicense": "MIT",
+    "packageSource": "https://github.com/PrismarineJS/node-minecraft-assets",
+    "packageCommit": "14b5ad06b8f2508168958bc72a3efb7962c9a89f"
+  },
+  "tintBaseline": {
+    "package": "minecraft-data",
+    "packageVersion": "3.109.1",
+    "gameVersion": "1.21.1"
+  },
   "file": "mineclaw-open-blocks.zip",
-  "sha256": "8eb47c4eecdc96add8201b2c2bcba7a553750808efae41d02959af5a77a47ab1",
-  "archiveBytes": 3039846,
-  "entryCount": 2558
+  "sha256": "8ec97a7222fafcbf4de56ae83eade9f8c5ff947aacf6241f3aac5c852686cbb7",
+  "archiveBytes": 3143961,
+  "entryCount": 2562
 }

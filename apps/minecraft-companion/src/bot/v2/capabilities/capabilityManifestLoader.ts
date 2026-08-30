@@ -5,6 +5,11 @@ import type { DomainKnowledgeDocument } from '../knowledge/domainKnowledge.js';
 import { loadDomainKnowledge } from '../knowledge/domainKnowledge.js';
 import type { GoalTargetCriterionTemplate, GoalTargetDefinition } from '../knowledge/goalTargetKnowledge.js';
 import type { CapabilityManifestDefinition } from './types.js';
+import type {
+  ProactiveConfigFieldDefinition,
+  ProactiveConfigSchema,
+  ProactiveTickManifestEntry,
+} from '../proactive/contracts.js';
 
 export interface CapabilityResourcePackage {
   readonly packageDir: string;
@@ -51,12 +56,16 @@ export function loadCapabilityManifest(packageDir: string): CapabilityManifestDe
   const skills = stringArray(raw.skills, 'skills');
   const knowledge = stringArray(raw.knowledge, 'knowledge').map(value => value.toLowerCase());
   const requires = parseRequires(raw.requires);
+  const proactiveTicks = raw.proactiveTicks === undefined
+    ? []
+    : objectArray(raw.proactiveTicks, 'proactiveTicks').map(parseProactiveTick);
   if (goalTargets.length === 0) throw new Error(`capability manifest ${id} requires goalTargets`);
   if (skills.length === 0) throw new Error(`capability manifest ${id} requires Skill references`);
   if (knowledge.length === 0) throw new Error(`capability manifest ${id} requires Knowledge references`);
   rejectDuplicates(skills, 'Skill');
   rejectDuplicates(knowledge, 'Knowledge');
   rejectDuplicates(goalTargets.map(target => target.registryId), 'goal target');
+  rejectDuplicates(proactiveTicks.map(tick => tick.id), 'proactive Tick');
   return Object.freeze({
     schema: 'mineclaw/capability-manifest@1',
     id,
@@ -66,7 +75,100 @@ export function loadCapabilityManifest(packageDir: string): CapabilityManifestDe
     skills: Object.freeze(skills),
     knowledge: Object.freeze(knowledge),
     requires,
+    proactiveTicks: Object.freeze(proactiveTicks),
   });
+}
+
+function parseProactiveTick(value: Record<string, unknown>): ProactiveTickManifestEntry {
+  const rate = requiredText(value.rate, 'proactiveTicks.rate').toLowerCase();
+  if (!['fast', 'std', 'slow', 'idle'].includes(rate)) {
+    throw new Error(`invalid proactive Tick rate: ${rate}`);
+  }
+  const decisionMode = requiredText(value.decisionMode, 'proactiveTicks.decisionMode').toLowerCase();
+  if (decisionMode !== 'deterministic' && decisionMode !== 'deliberative') {
+    throw new Error(`invalid proactive Tick decisionMode: ${decisionMode}`);
+  }
+  if (typeof value.defaultEnabled !== 'boolean') {
+    throw new Error('capability manifest proactiveTicks.defaultEnabled must be boolean');
+  }
+  if (!Number.isFinite(value.priority)) {
+    throw new Error('capability manifest proactiveTicks.priority must be a finite number');
+  }
+  const conflictGroups = value.conflictGroups === undefined
+    ? []
+    : stringArray(value.conflictGroups, 'proactiveTicks.conflictGroups');
+  rejectDuplicates(conflictGroups, 'proactive Tick conflict group');
+  const configSchema = value.configSchema === undefined
+    ? Object.freeze({})
+    : parseProactiveConfigSchema(value.configSchema);
+  return Object.freeze({
+    id: requiredText(value.id, 'proactiveTicks.id'),
+    label: requiredText(value.label, 'proactiveTicks.label'),
+    description: requiredText(value.description, 'proactiveTicks.description'),
+    goalTarget: requiredText(value.goalTarget, 'proactiveTicks.goalTarget').toLowerCase(),
+    defaultEnabled: value.defaultEnabled,
+    rate: rate as ProactiveTickManifestEntry['rate'],
+    priority: value.priority as number,
+    decisionMode: decisionMode as ProactiveTickManifestEntry['decisionMode'],
+    conflictGroups: Object.freeze(conflictGroups),
+    configSchema,
+  });
+}
+
+function parseProactiveConfigSchema(value: unknown): ProactiveConfigSchema {
+  if (!isRecord(value)) throw new Error('capability manifest proactiveTicks.configSchema must be an object');
+  const entries = Object.entries(value).map(([key, raw]) => {
+    if (!key.trim() || !isRecord(raw)) {
+      throw new Error('capability manifest proactive Tick config field must be an object');
+    }
+    const type = requiredText(raw.type, `proactiveTicks.configSchema.${key}.type`);
+    if (type !== 'boolean' && type !== 'number' && type !== 'string') {
+      throw new Error(`invalid proactive Tick config type: ${type}`);
+    }
+    const field: ProactiveConfigFieldDefinition = Object.freeze({
+      type,
+      label: requiredText(raw.label, `proactiveTicks.configSchema.${key}.label`),
+      ...(raw.description === undefined
+        ? {}
+        : { description: requiredText(raw.description, `proactiveTicks.configSchema.${key}.description`) }),
+      default: parseConfigDefault(type, raw.default, key),
+      ...(raw.min === undefined ? {} : { min: finiteNumber(raw.min, `proactiveTicks.configSchema.${key}.min`) }),
+      ...(raw.max === undefined ? {} : { max: finiteNumber(raw.max, `proactiveTicks.configSchema.${key}.max`) }),
+      ...(raw.enum === undefined ? {} : { enum: Object.freeze(stringArray(raw.enum, `proactiveTicks.configSchema.${key}.enum`)) }),
+    });
+    validateConfigFieldBounds(key, field);
+    return [key.trim(), field] as const;
+  });
+  return Object.freeze(Object.fromEntries(entries));
+}
+
+function parseConfigDefault(
+  type: ProactiveConfigFieldDefinition['type'],
+  value: unknown,
+  key: string,
+): ProactiveConfigFieldDefinition['default'] {
+  if (type === 'boolean' && typeof value === 'boolean') return value;
+  if (type === 'number' && typeof value === 'number' && Number.isFinite(value)) return value;
+  if (type === 'string' && typeof value === 'string') return value;
+  throw new Error(`proactive Tick config default does not match type: ${key}`);
+}
+
+function validateConfigFieldBounds(key: string, field: ProactiveConfigFieldDefinition): void {
+  if (field.type !== 'number' && (field.min !== undefined || field.max !== undefined)) {
+    throw new Error(`proactive Tick config bounds require number type: ${key}`);
+  }
+  if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+    throw new Error(`proactive Tick config min exceeds max: ${key}`);
+  }
+  if (field.type === 'number') {
+    const value = field.default as number;
+    if (field.min !== undefined && value < field.min) throw new Error(`proactive Tick config default below min: ${key}`);
+    if (field.max !== undefined && value > field.max) throw new Error(`proactive Tick config default above max: ${key}`);
+  }
+  if (field.enum) {
+    if (field.type !== 'string') throw new Error(`proactive Tick config enum requires string type: ${key}`);
+    if (!field.enum.includes(field.default as string)) throw new Error(`proactive Tick config default is outside enum: ${key}`);
+  }
 }
 
 function parseGoalTarget(value: Record<string, unknown>): GoalTargetDefinition {
@@ -149,6 +251,11 @@ function positiveInteger(value: unknown, field: string): number {
 
 function positiveNumber(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`capability manifest ${field} must be positive`);
+  return value;
+}
+
+function finiteNumber(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`capability manifest ${field} must be finite`);
   return value;
 }
 

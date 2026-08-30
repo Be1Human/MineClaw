@@ -3,13 +3,17 @@ import {
   resolveMinecraftModel,
   selectBlockModelApplications,
 } from './blockModel.js';
+import { isCompatibleMinecraftVersion } from './resourcePackSelection.js';
+import { isNonOpaqueMaterial } from './materialRenderLayer.js';
 
 export class ResourcePackClient {
   constructor({ fetchImpl = fetch, baseUrl = '/api/resource-packs' } = {}) {
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = (...args) => fetchImpl(...args);
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.selected = null;
+    this.gameVersion = null;
     this.jsonCache = new Map();
+    this.baselineCache = new Map();
     this.paletteModelCache = new Map();
     this.assetExistenceCache = new Map();
   }
@@ -20,28 +24,22 @@ export class ResourcePackClient {
     return (await response.json()).packs ?? [];
   }
 
-  async import(file, minecraftVersion, source = 'local-import') {
-    const query = new URLSearchParams({ fileName: file.name, minecraftVersion, source });
-    const response = await this.fetchImpl(`${this.baseUrl}?${query}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error ?? `resource pack import failed (${response.status})`);
-    return payload;
-  }
-
   select(descriptor) {
     this.selected = descriptor;
+    this.gameVersion = normalizeBaselineVersion(descriptor?.minecraftVersion);
     this.jsonCache.clear();
+    this.baselineCache.clear();
     this.paletteModelCache.clear();
     this.assetExistenceCache.clear();
   }
 
   async verifySelected(gameVersion) {
-    if (!this.selected) throw new Error('请先导入并选择一个资源包');
-    if (this.selected.declaredMinecraftVersion && this.selected.minecraftVersion !== gameVersion) {
+    if (!this.selected) throw new Error('内置真实资源尚未就绪');
+    if (this.selected.declaredMinecraftVersion
+      && !isCompatibleMinecraftVersion(this.selected.minecraftVersion, gameVersion)) {
       throw new Error(`资源包版本 ${this.selected.minecraftVersion} 与游戏 ${gameVersion} 不匹配`);
     }
+    this.gameVersion = normalizeBaselineVersion(gameVersion);
     await this.readJson('pack.mcmeta');
     return this.selected;
   }
@@ -66,23 +64,47 @@ export class ResourcePackClient {
     }
     try {
       const location = resourceLocation(state.name);
-      const blockState = await this.readJson(`assets/${location.namespace}/blockstates/${location.path}.json`);
+      const blockState = await this.loadBlockState(location);
       const applications = selectBlockModelApplications(blockState, state.properties, stableRandom(state.stateId));
       if (!applications.length) throw new Error('未匹配 blockstate variant/multipart');
       const models = [];
+      const diagnostics = [];
       for (const application of applications) {
         const model = await resolveMinecraftModel(application.model, name => this.loadModel(name));
         const baked = bakeMinecraftBlockModel(model, application, { isTextureTransparent: likelyTransparentTexture });
-        models.push(serializeBakedModel(baked, model));
+        if (baked.geometry.getAttribute('position').count === 0) {
+          diagnostics.push({
+            type: 'unsupported-block-entity',
+            block: state.name,
+            message: `${application.model} 需要专用 block entity renderer`,
+          });
+          continue;
+        }
+        models.push(serializeBakedModel(baked, model, state));
       }
-      return { models, missing: [] };
+      return { models, missing: [], fallback: false, unsupported: models.length === 0, diagnostics };
     } catch (error) {
       const texture = await this.findFallbackTexture(state);
       return {
-        models: [cubeModelDescriptor(texture)],
+        models: [cubeModelDescriptor(texture, state)],
         missing: texture === 'mineclaw:missing' ? [`${state.name}: ${error.message}`] : [],
         fallback: true,
+        fallbackKind: 'legacy-cube',
+        diagnostics: [{ type: 'legacy-cube-fallback', block: state.name, message: error.message }],
       };
+    }
+  }
+
+  async loadBlockState(location) {
+    const path = `assets/${location.namespace}/blockstates/${location.path}.json`;
+    try {
+      return await this.readJson(path);
+    } catch (overlayError) {
+      if (location.namespace !== 'minecraft') throw overlayError;
+      const states = await this.readBaselineJson('blocks_states');
+      const state = states[location.path];
+      if (!state) throw new Error(`${path} 在覆盖层和 ${this.gameVersion} 基线中都缺失`);
+      return state;
     }
   }
 
@@ -119,7 +141,36 @@ export class ResourcePackClient {
 
   async loadModel(name) {
     const location = resourceLocation(name);
-    return this.readJson(`assets/${location.namespace}/models/${location.path}.json`);
+    const path = `assets/${location.namespace}/models/${location.path}.json`;
+    try {
+      return await this.readJson(path);
+    } catch (overlayError) {
+      if (location.namespace !== 'minecraft') throw overlayError;
+      const models = await this.readBaselineJson('blocks_models');
+      const modelName = location.path.replace(/^block\//, '');
+      const model = models[modelName];
+      if (!model) throw new Error(`${path} 在覆盖层和 ${this.gameVersion} 基线中都缺失`);
+      return model;
+    }
+  }
+
+  async getTintData() {
+    try {
+      return await this.readBaselineJson('tints');
+    } catch {
+      return {};
+    }
+  }
+
+  async readBaselineJson(kind) {
+    const version = normalizeBaselineVersion(this.gameVersion ?? this.selected?.minecraftVersion);
+    const key = `${this.selected?.id ?? 'none'}:${version}:${kind}`;
+    if (this.baselineCache.has(key)) return this.baselineCache.get(key);
+    if (!this.selected) throw new Error('resource pack not selected');
+    const path = `assets/minecraft/mineclaw-baseline/${version}/${kind}.json`;
+    const promise = this.readJson(path);
+    this.baselineCache.set(key, promise);
+    return promise;
   }
 
   async readJson(path) {
@@ -136,7 +187,7 @@ export class ResourcePackClient {
   }
 }
 
-function serializeBakedModel(baked, model) {
+function serializeBakedModel(baked, model, state = {}) {
   return {
     positions: Array.from(baked.geometry.getAttribute('position').array),
     normals: Array.from(baked.geometry.getAttribute('normal').array),
@@ -145,10 +196,13 @@ function serializeBakedModel(baked, model) {
     groups: baked.geometry.groups.map((group, index) => ({
       start: group.start, count: group.count, materialIndex: group.materialIndex,
       direction: baked.geometry.userData.faceDirections?.[index] ?? null,
+      tintIndex: baked.geometry.userData.faceTintIndices?.[index] ?? null,
     })),
     materialKeys: baked.materialKeys,
     transparent: baked.transparent,
     occluding: isFullOpaqueCube(model) && !baked.transparent,
+    blockName: state.name ?? null,
+    properties: state.properties ?? {},
   };
 }
 
@@ -156,7 +210,7 @@ function missingModelDescriptor() {
   return cubeModelDescriptor('mineclaw:missing');
 }
 
-function cubeModelDescriptor(texture) {
+function cubeModelDescriptor(texture, state = {}) {
   const model = {
     textures: { all: texture },
     elements: [{
@@ -164,7 +218,7 @@ function cubeModelDescriptor(texture) {
       faces: Object.fromEntries(['west', 'east', 'down', 'up', 'north', 'south'].map(direction => [direction, { texture: '#all' }])),
     }],
   };
-  return serializeBakedModel(bakeMinecraftBlockModel(model), model);
+  return serializeBakedModel(bakeMinecraftBlockModel(model), model, state);
 }
 
 const FALLBACK_TEXTURE_OVERRIDES = {
@@ -181,10 +235,12 @@ function fluidModelDescriptor(state) {
     textures: { all: texture },
     elements: [{
       from: [0, 0, 0], to: [16, height, 16],
-      faces: Object.fromEntries(['west', 'east', 'down', 'up', 'north', 'south'].map(direction => [direction, { texture: '#all' }])),
+      faces: Object.fromEntries(['west', 'east', 'down', 'up', 'north', 'south'].map(direction => [direction, {
+        texture: '#all', tintindex: state.name === 'water' ? 0 : undefined,
+      }])),
     }],
   };
-  const descriptor = serializeBakedModel(bakeMinecraftBlockModel(model, {}, { isTextureTransparent: () => true }), model);
+  const descriptor = serializeBakedModel(bakeMinecraftBlockModel(model, {}, { isTextureTransparent: () => true }), model, state);
   descriptor.occluding = false;
   return descriptor;
 }
@@ -203,11 +259,17 @@ function stableRandom(stateId) {
 }
 
 function likelyTransparentTexture(key) {
-  return /(glass|water|lava|leaves|ice|portal|slime|honey|web)/i.test(key);
+  return isNonOpaqueMaterial(key);
 }
 
 function isFullOpaqueCube(model) {
   return Array.isArray(model?.elements) && model.elements.length === 1
     && JSON.stringify(model.elements[0].from) === '[0,0,0]'
     && JSON.stringify(model.elements[0].to) === '[16,16,16]';
+}
+
+function normalizeBaselineVersion(version) {
+  const normalized = String(version ?? '').trim();
+  if (normalized === '1.21') return '1.21.1';
+  return normalized || '1.21.1';
 }

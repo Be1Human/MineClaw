@@ -57,7 +57,7 @@
             </select>
             <button class="btn btn-ghost" @click="emit('request-global-settings')">管理配置</button>
           </div>
-          <span v-if="selectedRoleLlmConfig()" class="hint">{{ selectedRoleLlmConfig().baseUrl }} · {{ selectedRoleLlmConfig().model }} · {{ selectedRoleLlmConfig().apiKeyConfigured ? 'Key 已配置' : '使用服务端默认 Key' }}</span>
+          <span v-if="selectedRoleLlmConfig()" class="hint">{{ llmApiLabel(selectedRoleLlmConfig().api) }} · {{ selectedRoleLlmConfig().baseUrl }} · {{ selectedRoleLlmConfig().model }} · {{ selectedRoleLlmConfig().apiKeyConfigured ? 'Key 已配置' : '使用服务端默认 Key' }}</span>
           <span v-else class="hint">请选择用于此角色的全局 LLM Agent 配置。</span>
         </div>
         <div class="form-actions">
@@ -262,7 +262,7 @@
               <button class="qa-btn danger" :disabled="config.profileCount > 0" :title="config.profileCount > 0 ? `仍有 ${config.profileCount} 个角色使用此配置` : '删除配置'" @click="deleteLlmConfig(config)">删除</button>
             </div>
           </div>
-          <div>{{ config.baseUrl }} · {{ config.model }} · {{ config.apiKeyConfigured ? 'Key 已配置' : '使用服务端默认 Key' }}</div>
+          <div>{{ llmApiLabel(config.api) }} · {{ config.baseUrl }} · {{ config.model }} · {{ config.apiKeyConfigured ? 'Key 已配置' : '使用服务端默认 Key' }}</div>
         </div>
         <div class="separator"></div>
         <div class="provider-title">{{ llmConfigForm.id ? '编辑 Agent 配置' : '新建 Agent 配置' }}</div>
@@ -279,6 +279,13 @@
             <label>模型</label>
             <input v-model="llmConfigForm.model" placeholder="deepseek-chat / gpt-4o-mini / anthropic/claude-3.5-sonnet" spellcheck="false" autocomplete="off" autocapitalize="off" />
           </div>
+          <div class="form-field">
+            <label>OpenAI API</label>
+            <select v-model="llmConfigForm.api">
+              <option v-for="option in llmApiOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <span class="hint">{{ selectedLlmApiDescription }}</span>
+          </div>
           <div class="form-field full">
             <label>API Key</label>
             <input type="password" v-model="llmConfigForm.apiKey" :placeholder="selectedLlmConfig()?.apiKeyConfigured ? '已保存；留空保持不变' : '留空使用服务端默认 LLM_API_KEY'" spellcheck="false" autocomplete="new-password" autocapitalize="off" />
@@ -290,7 +297,7 @@
           <button
             v-for="preset in modelPresets" :key="preset.label"
             class="qa-btn"
-            :class="{ active: llmConfigForm.baseUrl === preset.baseUrl && llmConfigForm.model === preset.model }"
+            :class="{ active: llmConfigForm.baseUrl === preset.baseUrl && llmConfigForm.model === preset.model && llmConfigForm.api === preset.api }"
             @click="applyPreset(preset)"
           >{{ preset.label }}</button>
         </div>
@@ -417,7 +424,7 @@ const llmTestMsg = ref('');
 const llmTestOk = ref(false);
 const llmConfigs = ref([]);
 const clearLlmConfigApiKey = ref(false);
-const llmConfigForm = reactive({ id: '', name: '', apiKey: '', baseUrl: '', model: '' });
+const llmConfigForm = reactive({ id: '', name: '', apiKey: '', baseUrl: '', model: '', api: 'openai-completions' });
 const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI);
 const desktopPetCopy = desktopPetEnvironmentCopy(isElectron);
 const desktopPetProfiles = ref([]);
@@ -494,12 +501,28 @@ const personalityListFields = [
 ];
 
 const modelPresets = [
-  { label: 'DeepSeek Chat', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
-  { label: 'DeepSeek Reasoner', baseUrl: 'https://api.deepseek.com', model: 'deepseek-reasoner' },
-  { label: 'GPT-4o Mini', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  { label: 'Claude via OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'anthropic/claude-3.5-sonnet' },
-  { label: '本地 Ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:3b' },
+  { label: 'DeepSeek Chat', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat', api: 'openai-completions' },
+  { label: 'DeepSeek Reasoner', baseUrl: 'https://api.deepseek.com', model: 'deepseek-reasoner', api: 'openai-completions' },
+  { label: 'GPT-4o Mini', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', api: 'openai-completions' },
+  { label: 'Claude via OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'anthropic/claude-3.5-sonnet', api: 'openai-completions' },
+  { label: '本地 Ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:3b', api: 'openai-completions' },
 ];
+const llmApiOptions = [
+  {
+    value: 'openai-completions',
+    label: 'Chat Completions',
+    description: '兼容现有 DeepSeek、Ark、OpenRouter、Ollama 与 OpenAI Chat 接口。',
+  },
+  {
+    value: 'openai-responses',
+    label: 'Responses',
+    description: '使用 store:false；历史由 MineClaw 本地保存并以 output items 安全回放。',
+  },
+];
+const selectedLlmApiDescription = computed(() => (
+  llmApiOptions.find(option => option.value === llmConfigForm.api)?.description
+    || '请选择受支持的 OpenAI API。'
+));
 
 const form = reactive({
   name: '', skinName: '', personality: '', ownerName: '',
@@ -698,6 +721,7 @@ function startNewLlmConfig() {
   llmConfigForm.apiKey = '';
   llmConfigForm.baseUrl = '';
   llmConfigForm.model = '';
+  llmConfigForm.api = 'openai-completions';
   clearLlmConfigApiKey.value = false;
   llmTestMsg.value = '';
 }
@@ -708,6 +732,7 @@ function editLlmConfig(config) {
   llmConfigForm.apiKey = '';
   llmConfigForm.baseUrl = config.baseUrl;
   llmConfigForm.model = config.model;
+  llmConfigForm.api = config.api || 'openai-completions';
   clearLlmConfigApiKey.value = false;
   llmTestMsg.value = '';
 }
@@ -732,6 +757,7 @@ async function saveLlmConfig() {
       name: llmConfigForm.name.trim(),
       baseUrl,
       model: llmConfigForm.model.trim(),
+      api: llmConfigForm.api,
     };
     const newApiKey = llmConfigForm.apiKey.trim();
     if (newApiKey) body.apiKey = newApiKey;
@@ -775,12 +801,13 @@ async function testLlmConfig() {
         ...(llmConfigForm.apiKey.trim() ? { apiKey: llmConfigForm.apiKey.trim() } : {}),
         baseUrl,
         model: llmConfigForm.model.trim(),
+        api: llmConfigForm.api,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.ok) {
       llmTestOk.value = true;
-      llmTestMsg.value = `测试通过：${data.model} @ ${data.baseUrl}${data.preview ? ` · ${data.preview}` : ''}`;
+      llmTestMsg.value = `测试通过：${llmApiLabel(data.api)} · ${data.model} @ ${data.baseUrl}${data.preview ? ` · ${data.preview}` : ''}`;
       return;
     }
     llmTestMsg.value = data.error || `测试失败：HTTP ${res.status}`;
@@ -819,6 +846,11 @@ async function deleteLlmConfig(config) {
 function applyPreset(p) {
   llmConfigForm.baseUrl = p.baseUrl;
   llmConfigForm.model = p.model;
+  llmConfigForm.api = p.api || 'openai-completions';
+}
+
+function llmApiLabel(api) {
+  return api === 'openai-responses' ? 'Responses' : 'Chat Completions';
 }
 
 // FEAT-WEBUI-12 · 服务器预设

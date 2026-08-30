@@ -18,6 +18,8 @@ import {
   LLMToolLoop,
   llmFailureMessage,
   parseLegacyActionJson,
+  restoreMainBrainPendingHistory,
+  serializeMainBrainPendingHistory,
   stripLeakedActionJson,
   type HistoryEntry,
 } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/llmLoop.js';
@@ -29,6 +31,12 @@ import { MainBrainLoopCritic } from '../../../../../../apps/minecraft-companion/
 import type { EventBusV2 } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/eventBus.js';
 import { buildMainBrainSystemPrompt } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/systemPrompt.js';
 import { LlmTraceEventStore } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/llmTrace/index.js';
+import { canonicalizeChatMessages } from '../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/canonical.js';
+import {
+  ResponsesCodec,
+  decideResponsesReplay,
+} from '../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/responsesCodec.js';
+import { ChatCompletionsCodec } from '../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/chatCompletionsCodec.js';
 
 // ─────────── 测试夹具 ───────────
 
@@ -116,6 +124,57 @@ function fcResponse(name: string, args: Record<string, unknown>, content = ''): 
 function sayResp(text = '好的！'): LLMToolCallResult { return fcResponse('say', { text }); }
 function askResp(text = '要 A 还是 B？'): LLMToolCallResult { return fcResponse('ask_master', { text }); }
 function worldResp(): LLMToolCallResult { return fcResponse('get_world_state', {}); }
+
+function responsesAskResp(): LLMToolCallResult {
+  const usage = {
+    inputTokens: 20, outputTokens: 5, totalTokens: 25,
+    cacheStatus: 'reported' as const, source: 'openai-responses',
+  };
+  return {
+    content: '',
+    toolCalls: [{ id: 'call-responses-ask', name: 'ask_master', arguments: { text: '要 A 还是 B？' } }],
+    usage,
+    canonical: {
+      content: [
+        { kind: 'reasoning', text: '' },
+        { kind: 'tool-call', id: 'call-responses-ask', name: 'ask_master', arguments: { text: '要 A 还是 B？' } },
+      ],
+      usage,
+      replay: {
+        kind: 'openai-native', version: 1, api: 'openai-responses',
+        providerRoute: 'route-responses', model: 'gpt-test',
+        blocks: [
+          { id: 'rs-main', type: 'reasoning', status: 'completed', encrypted_content: 'opaque-main', summary: [] },
+          { id: 'fc-main', type: 'function_call', status: 'completed', call_id: 'call-responses-ask' },
+        ],
+      },
+    },
+  };
+}
+
+function responsesTextResp(text: string): LLMToolCallResult {
+  const usage = {
+    inputTokens: 10, outputTokens: 4, totalTokens: 14,
+    cacheStatus: 'reported' as const, source: 'openai-responses',
+  };
+  return {
+    content: text,
+    toolCalls: [],
+    usage,
+    canonical: {
+      content: [{ kind: 'text', text }],
+      usage,
+      replay: {
+        kind: 'openai-native', version: 1, api: 'openai-responses',
+        providerRoute: 'route-responses', model: 'gpt-test',
+        blocks: [{
+          id: 'msg-rewrite', type: 'message', status: 'completed', role: 'assistant',
+          content: [{ type: 'output_text', text, annotations: [] }],
+        }],
+      },
+    },
+  };
+}
 
 // ─────────── 测试套件 ───────────
 
@@ -275,7 +334,7 @@ describe('LLMToolLoop (function calling)', () => {
 
   it('BUG-CROSS-46 · 隐式回复命中主仆口吻时拦截并重写', async () => {
     const { llm, capturedCalls } = makeMockLLM([
-      { toolCalls: [], content: '我一直在原地待命等你指令。' },
+      responsesTextResp('我一直在原地待命等你指令。'),
       { toolCalls: [], content: '我刚在整理背包，晚上一起挖矿？' },
     ]);
     const { dispatcher, sayCalls } = makeMockDispatcher();
@@ -287,6 +346,8 @@ describe('LLMToolLoop (function calling)', () => {
     const rewritePrompt = capturedCalls[1]?.messages.at(-1)?.content ?? '';
     assert.match(rewritePrompt, /平等熟人/);
     assert.match(rewritePrompt, /你在干嘛/);
+    const rejectedDraft = capturedCalls[1]?.messages.find(message => message.role === 'assistant');
+    assert.equal(rejectedDraft?.canonical?.source?.replay?.blocks[0]?.type, 'message');
   });
 
   it('BUG-CROSS-46 · 显式 say 命中主仆口吻时也不得发送', async () => {
@@ -762,6 +823,65 @@ describe('LLMToolLoop (function calling)', () => {
     const userIdx = msgs.findIndex(m => m.role === 'user' && m.content === '选 A 吧');
     assert.ok(userIdx >= 0, '本轮主人答复应作为 user 消息进入上下文');
     assert.ok(userIdx > assistantIdx, '主人答复必须排在 ask_master 提问之后（时序正确）');
+  });
+
+  it('FEAT-CROSS-22 · ask-master continuation preserves native replay and does not rerun history tools', async () => {
+    const firstLLM = makeMockLLM([responsesAskResp()]);
+    const tools = makeMockDispatcher();
+    const firstLoop = new LLMToolLoop(firstLLM.llm, tools.dispatcher, { systemPrompt: 'sys', maxRounds: 2 }, () => {});
+    const pending = await firstLoop.run('帮我选方案', []);
+    assert.equal(pending.pendingAskMaster, true);
+    assert.equal(tools.askCalls.length, 1);
+    assert.equal(pending.history[0]?.assistant?.canonical?.source?.replay?.blocks[0]?.encrypted_content, 'opaque-main');
+
+    const restored = restoreMainBrainPendingHistory(serializeMainBrainPendingHistory(pending.history));
+    assert.ok(restored);
+    const resumedLLM = makeMockLLM([sayResp('选 A 就好')]);
+    const resumedLoop = new LLMToolLoop(resumedLLM.llm, tools.dispatcher, { systemPrompt: 'sys', maxRounds: 2 }, () => {});
+    await resumedLoop.run('选 A', restored!);
+
+    assert.equal(tools.askCalls.length, 1, 'historical ask_master must not execute during replay');
+    const messages = resumedLLM.capturedCalls[0]!.messages;
+    const exact = new ResponsesCodec().buildRequest({
+      messages: canonicalizeChatMessages(messages.slice(0, 4)),
+      tools: [],
+    }, { routeId: 'route-responses', baseUrl: 'https://api.openai.com/v1', model: 'gpt-test' });
+    const input = exact.body.input as Array<Record<string, unknown>>;
+    assert.ok(input.some(item => item.type === 'reasoning' && item.encrypted_content === 'opaque-main'));
+    assert.equal(input.filter(item => item.type === 'function_call').length, 1);
+    assert.equal(input.filter(item => item.type === 'function_call_output').length, 1);
+  });
+
+  it('FEAT-CROSS-22 · mismatched pending replay degrades as a whole to canonical history', async () => {
+    const firstLLM = makeMockLLM([responsesAskResp()]);
+    const tools = makeMockDispatcher();
+    const firstLoop = new LLMToolLoop(firstLLM.llm, tools.dispatcher, { systemPrompt: 'sys', maxRounds: 2 }, () => {});
+    const pending = await firstLoop.run('帮我选方案', []);
+    const restored = restoreMainBrainPendingHistory(serializeMainBrainPendingHistory(pending.history))!;
+    restored[0]!.assistant!.canonical!.source!.replay!.model = 'stale-model';
+
+    const resumedLLM = makeMockLLM([sayResp('选 A 就好')]);
+    await new LLMToolLoop(resumedLLM.llm, tools.dispatcher, { systemPrompt: 'sys', maxRounds: 2 }, () => {})
+      .run('选 A', restored);
+    const assistant = canonicalizeChatMessages(resumedLLM.capturedCalls[0]!.messages)
+      .find(message => message.source?.replay);
+    assert.ok(assistant);
+    const decision = decideResponsesReplay(
+      assistant!,
+      { routeId: 'route-responses', baseUrl: 'https://api.openai.com/v1', model: 'gpt-test' },
+    );
+    assert.equal(decision.source, 'canonical-rebuild');
+    assert.equal(decision.reason, 'model-mismatch');
+    assert.equal(tools.askCalls.length, 1);
+
+    const chat = new ChatCompletionsCodec().buildRequest({
+      messages: canonicalizeChatMessages(resumedLLM.capturedCalls[0]!.messages.slice(0, 4)),
+      tools: [],
+    }, { routeId: 'route-chat', baseUrl: 'https://api.openai.com/v1', model: 'gpt-chat' });
+    const chatMessages = chat.body.messages as Array<Record<string, unknown>>;
+    assert.ok(chatMessages.some(message => Array.isArray(message.tool_calls)));
+    assert.equal(chatMessages.filter(message => message.role === 'tool').length, 1);
+    assert.doesNotMatch(JSON.stringify(chat.body), /opaque-main/);
   });
 
   it('FEAT-CROSS-13 · memoryBlock receives the current user message', async () => {

@@ -90,6 +90,52 @@ test('BUG-CROSS-77 · round slice yields and resumes the same non-terminal sessi
   }
 });
 
+test('FEAT-CROSS-22 · replayed historical tool receipts are context only and never execute again', async () => {
+  const store = new GoalAgentSessionStore(':memory:');
+  let observations = 0;
+  const loop = new GoalAgentRoundLoop({
+    store,
+    profileId: 'responses-history-test',
+    maxRoundsPerRun: 1,
+    model: new GoalAgentModelRuntime({
+      async callWithTools() { return { content: 'continue without tools', toolCalls: [] }; },
+    }, { eventLog: store }),
+    tools: {
+      perception: {
+        async observe() {
+          observations += 1;
+          return world(0);
+        },
+      },
+    },
+  });
+  try {
+    const initial = createGoalAgentState({
+      sessionId: 'goal-responses-history', interactionSessionId: 'interaction-responses-history', request: request(),
+      budget: { maxTotalTokens: null },
+    });
+    loop.create(initial);
+    store.appendMessage({
+      sessionId: initial.sessionId, node: 'round', stateRevision: 0, epoch: initial.epoch,
+      message: {
+        role: 'assistant', content: '',
+        tool_calls: [{ id: 'old-call', type: 'function', function: { name: 'world_observe', arguments: '{}' } }],
+      },
+    });
+    store.appendMessage({
+      sessionId: initial.sessionId, node: 'round', stateRevision: 0, epoch: initial.epoch,
+      message: { role: 'tool', tool_call_id: 'old-call', content: '{"ok":true,"historical":true}' },
+    });
+
+    await loop.run(initial.sessionId, { maxRounds: 1 });
+    assert.equal(observations, 0);
+    assert.equal(store.deriveMessages(initial.sessionId).filter(message => message.role === 'tool').length, 1);
+  } finally {
+    loop.dispose();
+    store.close();
+  }
+});
+
 test('continuous round loop keeps model, direct tools and receipts in one session log', async () => {
   const store = new GoalAgentSessionStore(':memory:');
   let inventoryCount = 0;

@@ -102,6 +102,29 @@ export interface TuningConfig {
   testBench: {
     enabled: boolean;
   };
+  /** FEAT-MEM-09 · 周期性对话记忆识别与整理。 */
+  memoryConsolidation: {
+    /** 总开关；关闭时保留原始消息、显式记忆和旧规则降级。 */
+    enabled: boolean;
+    /** 两次批量整理之间的间隔。 */
+    intervalMs: number;
+    /** 单批最多 owner 消息数。 */
+    batchSize: number;
+    /** 单批正文字符软预算；消息不会被截断后误结算。 */
+    maxBatchChars: number;
+    /** 提供给模型用于去重和冲突判断的 Active 事实上限。 */
+    activeFactLimit: number;
+    /** 单次模型请求超时。 */
+    requestTimeoutMs: number;
+    /** 单批模型最多提交的事实操作数。 */
+    maxOperationsPerBatch: number;
+    /** 每批提供给模型选择的官方槽位候选上限。 */
+    slotCandidateLimit: number;
+    /** 模型扩展候选自动晋升所需的独立主人证据数。 */
+    dynamicPromotionEvidenceCount: number;
+    /** 普通召回最多选择的官方槽位数。 */
+    recallSlotLimit: number;
+  };
   /** BUG-CROSS-82 · 跨进程游戏身份租约存活判定。 */
   gameConnectionLease: {
     /** 持有者刷新租约心跳的间隔。 */
@@ -238,6 +261,8 @@ export interface TuningConfig {
     sectionBuildBudgetMs: number;
     /** 单帧最多构建的区段数。 */
     maxSectionBuildsPerFrame: number;
+    /** 解析模型和 Worker 网格构建的最大在途区段数。 */
+    maxPendingSectionBuilds: number;
     /** 浏览器最多常驻的区段数，超出后按距离淘汰。 */
     maxResidentSections: number;
     /** 真实实体的最远渲染距离（格）。 */
@@ -278,6 +303,8 @@ export interface TuningConfig {
     };
     /** 降雨时的雾密度倍数。 */
     rainFogMultiplier: number;
+    /** 真实模式中不受昼夜与天气压暗的柔和半球补光强度。 */
+    ambientFillLightIntensity: number;
   };
 }
 
@@ -333,6 +360,18 @@ const DEFAULTS: TuningConfig = {
   },
   testBench: {
     enabled: false,
+  },
+  memoryConsolidation: {
+    enabled: true,
+    intervalMs: 300_000,
+    batchSize: 40,
+    maxBatchChars: 8_000,
+    activeFactLimit: 100,
+    requestTimeoutMs: 60_000,
+    maxOperationsPerBatch: 24,
+    slotCandidateLimit: 20,
+    dynamicPromotionEvidenceCount: 2,
+    recallSlotLimit: 8,
   },
   gameConnectionLease: {
     heartbeatIntervalMs: 5_000,
@@ -411,9 +450,10 @@ const DEFAULTS: TuningConfig = {
   },
   worldVisual: {
     enabled: true,
-    viewDistanceChunks: 2,
+    viewDistanceChunks: 3,
     sectionBuildBudgetMs: 6,
     maxSectionBuildsPerFrame: 2,
+    maxPendingSectionBuilds: 4,
     maxResidentSections: 512,
     entityRenderDistance: 96,
     deltaBatchMs: 100,
@@ -436,6 +476,7 @@ const DEFAULTS: TuningConfig = {
       theEnd: 0.009,
     },
     rainFogMultiplier: 1.45,
+    ambientFillLightIntensity: 0.5,
   },
 };
 

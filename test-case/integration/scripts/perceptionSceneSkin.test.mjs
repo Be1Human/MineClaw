@@ -51,7 +51,10 @@ test('the skinned bot keeps world pose and existing navigation markers', async (
   const scene = await source('components/PerceptionScene3D.vue');
 
   assert.match(scene, /botMesh\.position\.set\(bp\.x, bp\.y, bp\.z\);/);
-  assert.match(scene, /botMesh\.rotation\.y = -ws\.self\.yaw;/);
+  assert.match(scene, /mineflayerYawBasis, mineflayerYawToThreeRotation/);
+  assert.match(scene, /botMesh\.rotation\.y = mineflayerYawToThreeRotation\(ws\.self\.yaw, '\+z'\);/);
+  assert.match(scene, /const \{ forward \} = mineflayerYawBasis\(ws\.self\.yaw\);/);
+  assert.match(scene, /group\.rotation\.y = mineflayerYawToThreeRotation\(entity\.yaw, entity\.category === 'player' \? '\+z' : '-z'\);/);
   assert.match(scene, /new THREE\.RingGeometry\(0\.3, 0\.6, 24\)/);
   assert.match(scene, /new THREE\.RingGeometry\(0\.7, 1\.1, 32\)/);
   assert.match(scene, /botDirectionMesh = new THREE\.Mesh\(dirGeom, dirMat\);/);

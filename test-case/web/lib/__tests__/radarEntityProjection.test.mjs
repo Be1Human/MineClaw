@@ -24,9 +24,9 @@ function entity(id, x, z, category = 'other', overrides = {}) {
 test('yaw=0 时伙伴前后左右分别投影到雷达上/下/左/右', () => {
   const result = projectRadarEntities(world({
     entities: [
-      entity(1, 0, 10),
+      entity(1, 0, -10),
       entity(2, 10, 0),
-      entity(3, 0, -10),
+      entity(3, 0, 10),
       entity(4, -10, 0),
     ],
   }));
@@ -39,21 +39,30 @@ test('yaw=0 时伙伴前后左右分别投影到雷达上/下/左/右', () => {
   ]);
 });
 
-test('伙伴 yaw 旋转后仍以局部前方为雷达上方', () => {
-  const result = projectRadarEntities(world({
-    yaw: Math.PI / 2,
-    entities: [entity(1, -10, 0), entity(2, 0, 10)],
-  }));
+test('四个基准 yaw 均把局部前方投影到上方、右方投影到右侧', () => {
+  const cases = [
+    { yaw: 0, front: [0, -10], right: [10, 0] },
+    { yaw: Math.PI / 2, front: [-10, 0], right: [0, -10] },
+    { yaw: Math.PI, front: [0, 10], right: [-10, 0] },
+    { yaw: 3 * Math.PI / 2, front: [10, 0], right: [0, 10] },
+  ];
 
-  assert.deepEqual(result.markers.map(marker => [marker.xPercent, marker.yPercent]), [
-    [50, 6],
-    [94, 50],
-  ]);
+  for (const current of cases) {
+    const result = projectRadarEntities(world({
+      yaw: current.yaw,
+      entities: [entity(1, ...current.front), entity(2, ...current.right)],
+    }));
+
+    assert.deepEqual(result.markers.map(marker => [marker.xPercent, marker.yPercent]), [
+      [50, 6],
+      [94, 50],
+    ]);
+  }
 });
 
 test('投影范围取当前最远合法实体并把标记约束在圆形边界内', () => {
   const result = projectRadarEntities(world({
-    entities: [entity(1, 0, 5), entity(2, 0, 20)],
+    entities: [entity(1, 0, -5), entity(2, 0, -20)],
   }));
 
   assert.equal(result.range, 20);

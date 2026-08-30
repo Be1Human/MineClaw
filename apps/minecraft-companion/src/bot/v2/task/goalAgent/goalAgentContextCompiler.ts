@@ -4,10 +4,15 @@ import type {
   TraceContextOmission,
   TraceContextSourceRef,
 } from '../../infra/llmTrace/index.js';
+import {
+  buildGamePresenceContext,
+  type GamePresenceState,
+} from '../../gamePresenceContext.js';
 
 export interface GoalAgentContextCompilerOptions {
   maxHistoryCharacters?: number;
   systemIdentity?: string;
+  getGamePresence?: () => GamePresenceState;
 }
 
 export interface CompiledGoalAgentContext {
@@ -28,12 +33,24 @@ export interface GoalAgentCompactionProposal {
   throughMessageIndex: number;
 }
 
-const DEFAULT_SYSTEM_IDENTITY = [
-  'You are the GoalAgent inside MineClaw.',
-  'You operate one continuous model-tool-result loop in one append-only session.',
-  'Choose and call real tools directly; planning and recovery are optional Step objectives, never fixed routes.',
-  'Tool receipts, machine observations, safety gates, and success criteria override guesses or plain-text claims.',
-].join(' ');
+const MINECRAFT_WORLD_COGNITION = [
+  'Interpret player messages in the Minecraft gameplay context first, unless the conversation clearly indicates a non-game topic.',
+  'Ground references such as "this in your hand", "the one in your inventory", and "that one nearby" in fresh world observations before deciding what object or action the player means.',
+  'Player language may contain colloquialisms, omissions, abbreviations, typos, homophones, or speech-recognition errors. Infer the intended Minecraft concept from the requested action, deictic references, conversation context, controlled catalogs, and observed world evidence; for example, "稿子" may mean "镐子/pickaxe" in a Minecraft action context.',
+  'When fresh evidence supports one clear valid referent, use it and continue. Ask the player only when two or more materially different valid interpretations remain, or required information is unavailable from tools.',
+  'Never invent Minecraft items, recipes, world state, actions, or completion. Controlled catalogs, tool receipts, machine observations, safety gates, and success criteria override linguistic inference.',
+] as const;
+
+function defaultSystemIdentity(presence: GamePresenceState): string {
+  return [
+    buildGamePresenceContext(presence),
+    ...MINECRAFT_WORLD_COGNITION,
+    'You are the GoalAgent inside MineClaw.',
+    'You operate one continuous model-tool-result loop in one append-only session.',
+    'Choose and call real tools directly; planning and recovery are optional Step objectives, never fixed routes.',
+    'Tool receipts, machine observations, safety gates, and success criteria override guesses or plain-text claims.',
+  ].join(' ');
+}
 
 // Keep enough recent turns for tool continuity while leaving room for the
 // current node's often-large instruction inside the session token budget.
@@ -41,14 +58,17 @@ const DEFAULT_MAX_HISTORY_CHARACTERS = 10_000;
 
 export class GoalAgentContextCompiler {
   private readonly maxHistoryCharacters: number;
-  private readonly systemIdentity: string;
+  private readonly customSystemIdentity: string | null;
+  private readonly getGamePresence: () => GamePresenceState;
 
   constructor(options: GoalAgentContextCompilerOptions = {}) {
     this.maxHistoryCharacters = options.maxHistoryCharacters ?? DEFAULT_MAX_HISTORY_CHARACTERS;
     if (!Number.isInteger(this.maxHistoryCharacters) || this.maxHistoryCharacters < 2_000) {
       throw new Error('GoalAgent maxHistoryCharacters must be an integer >= 2000');
     }
-    this.systemIdentity = options.systemIdentity?.trim() || DEFAULT_SYSTEM_IDENTITY;
+    this.customSystemIdentity = options.systemIdentity?.trim() || null;
+    this.getGamePresence = options.getGamePresence
+      ?? (() => ({ embodied: true, ownerObservation: 'unknown' }));
   }
 
   compile(input: {
@@ -77,8 +97,10 @@ export class GoalAgentContextCompiler {
       role: 'user',
       content: `[GoalAgent node=${input.node} stateRevision=${input.state.revision} epoch=${input.state.epoch}]\n${instruction}`,
     };
+    const systemIdentity = this.customSystemIdentity
+      ?? defaultSystemIdentity(this.getGamePresence());
     const messages: LLMChatMessage[] = [
-      { role: 'system', content: this.systemIdentity },
+      { role: 'system', content: systemIdentity },
       ...(compactionSurface ? [{ role: 'system' as const, content: compactionSurface }] : []),
       ...history.messages,
       { role: 'user', content: sharedStateProjection(input.state) },

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import type { LLMChatMessage, LLMToolCallResult } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/types.js';
 import type { GoalRequestV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
@@ -11,9 +14,12 @@ import {
   type GoalAgentModelTrace,
 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentModelRuntime.js';
 import { cloneGoalAgentState, createGoalAgentState, type GoalAgentStateV1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
+import type { GamePresenceState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/gamePresenceContext.js';
 import { GoalAgentSessionStore } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionStore.js';
 import { InMemoryGoalAgentSessionEventLog } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionEventLog.js';
 import type { LlmTraceCallContext } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/llmTrace/index.js';
+import { canonicalizeChatMessages } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/canonical.js';
+import { ResponsesCodec } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/responsesCodec.js';
 
 function request(): GoalRequestV2 {
   return {
@@ -152,6 +158,54 @@ test('context stack keeps stable prefix first and dynamic state at the tail', ()
   });
   assert.deepEqual(recompiled.messages.slice(0, -2), compiled.messages.slice(0, -2));
   assert.notEqual(recompiled.messages.at(-2)?.content, compiled.messages.at(-2)?.content);
+});
+
+test('BUG-CROSS-81 · default system identity starts with Minecraft world cognition', () => {
+  const compiled = new GoalAgentContextCompiler().compile({
+    state: state(), node: 'round', instruction: 'Understand the player request.', historyMessages: [],
+  });
+  const system = compiled.messages[0];
+  assert.equal(system.role, 'system');
+  assert.ok(system.content.startsWith(
+    'You are an embodied AI player operating inside a live Minecraft game world.',
+  ));
+  assert.ok(system.content.indexOf('Minecraft gameplay context first')
+    < system.content.indexOf('continuous model-tool-result loop'));
+  assert.match(system.content, /fresh world observations/);
+  assert.match(system.content, /colloquialisms, omissions, abbreviations, typos, homophones, or speech-recognition errors/);
+  assert.match(system.content, /"稿子" may mean "镐子\/pickaxe" in a Minecraft action context/);
+  assert.match(system.content, /one clear valid referent, use it and continue/);
+  assert.match(system.content, /two or more materially different valid interpretations remain/);
+  assert.match(system.content, /Never invent Minecraft items, recipes, world state, actions, or completion/);
+  assert.match(system.content, /Controlled catalogs, tool receipts, machine observations, safety gates, and success criteria override linguistic inference/);
+  assert.deepEqual(compiled.contextSources.selected[0], {
+    kind: 'system_identity', ref: 'goalagent:identity/v1', messageIndexes: [0],
+  });
+});
+
+test('BUG-CROSS-81 · explicit system identity remains an exact override', () => {
+  const compiled = new GoalAgentContextCompiler({ systemIdentity: 'Custom GoalAgent identity.' }).compile({
+    state: state(), node: 'round', instruction: 'Continue.', historyMessages: [],
+  });
+  assert.deepEqual(compiled.messages[0], { role: 'system', content: 'Custom GoalAgent identity.' });
+});
+
+test('BUG-CROSS-82 · default identity reads current body and player-observation state on every compile', () => {
+  let presence: GamePresenceState = { embodied: false, ownerObservation: 'unknown' };
+  const compiler = new GoalAgentContextCompiler({ getGamePresence: () => presence });
+  const unembodied = compiler.compile({
+    state: state(), node: 'round', instruction: 'Observe.', historyMessages: [],
+  });
+  assert.match(unembodied.messages[0].content, /MinecraftBodyState=unembodied/);
+  assert.match(unembodied.messages[0].content, /does not prove the configured player is offline/);
+  assert.doesNotMatch(unembodied.messages[0].content, /^You are an embodied AI player/);
+
+  presence = { embodied: true, ownerObservation: 'not_observed' };
+  const embodied = compiler.compile({
+    state: state(), node: 'round', instruction: 'Observe again.', historyMessages: [],
+  });
+  assert.match(embodied.messages[0].content, /^You are an embodied AI player operating inside a live Minecraft game world/);
+  assert.match(embodied.messages[0].content, /owner=null does not prove the player is offline/);
 });
 
 test('compaction replaces only model surface and retains every raw event', () => {
@@ -330,4 +384,72 @@ test('explicit tool choice and abort signal pass through unified runtime', async
     parse: JSON.parse, signal: controller.signal,
   }), { name: 'AbortError' });
   assert.equal(calls, 1);
+});
+
+test('FEAT-CROSS-22 · durable Responses replay survives GoalAgent restart and actual usage wins', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'goalagent-responses-replay-'));
+  const filename = join(root, 'sessions.sqlite');
+  const shared = state('goal-responses-replay');
+  const canonical = {
+    content: [
+      { kind: 'reasoning' as const, text: '' },
+      { kind: 'tool-call' as const, id: 'call-r', name: 'world_observe', arguments: { radius: 4 } },
+    ],
+    usage: {
+      inputTokens: 321, outputTokens: 45, totalTokens: 366,
+      cachedInputTokens: 250, cacheMissInputTokens: 71,
+      cacheStatus: 'reported' as const, source: 'openai-responses',
+    },
+    replay: {
+      kind: 'openai-native' as const, version: 1 as const, api: 'openai-responses' as const,
+      providerRoute: 'route-responses', model: 'gpt-test',
+      blocks: [
+        { id: 'rs-r', type: 'reasoning', status: 'completed', encrypted_content: 'opaque', summary: [] },
+        { id: 'fc-r', type: 'function_call', status: 'completed', call_id: 'call-r' },
+      ],
+    },
+  };
+
+  let store = new GoalAgentSessionStore(filename);
+  try {
+    store.create(shared);
+    const runtime = new GoalAgentModelRuntime({
+      async callWithTools() {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call-r', name: 'world_observe', arguments: { radius: 4 } }],
+          usage: canonical.usage,
+          canonical,
+        };
+      },
+    }, { eventLog: store });
+    const result = await runtime.invoke({
+      sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Observe.', state: shared,
+      parse: (_content, calls) => calls, signal: new AbortController().signal,
+    });
+    assert.equal(result.promptTokens, 321);
+    assert.equal(result.completionTokens, 45);
+    assert.equal(result.tokenUsageSource, 'provider');
+    assert.equal(result.assistant.canonical?.source?.replay?.blocks[0]?.encrypted_content, 'opaque');
+    commitModelResult(store, shared, result);
+    const responseEvent = store.listSessionEvents(shared.sessionId).find(event => event.type === 'model.responded');
+    assert.equal((responseEvent?.payload.usage as { cachedInputTokens?: number }).cachedInputTokens, 250);
+    assert.equal(responseEvent?.payload.tokenUsageSource, 'provider');
+
+    store.close();
+    store = new GoalAgentSessionStore(filename);
+    const messages = store.projectMessages(shared.sessionId).messages;
+    const restoredAssistant = messages.find(message => message.role === 'assistant');
+    assert.equal(restoredAssistant?.canonical?.source?.replay?.providerRoute, 'route-responses');
+    const exact = new ResponsesCodec().buildRequest({
+      messages: canonicalizeChatMessages(messages),
+      tools: [],
+    }, { routeId: 'route-responses', baseUrl: 'https://api.openai.com/v1', model: 'gpt-test' });
+    const input = exact.body.input as Array<Record<string, unknown>>;
+    assert.ok(input.some(item => item.type === 'reasoning' && item.encrypted_content === 'opaque'));
+    assert.ok(input.some(item => item.type === 'function_call' && item.call_id === 'call-r'));
+  } finally {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

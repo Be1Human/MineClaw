@@ -54,6 +54,15 @@ export interface ExampleDialog {
   character: string;
 }
 
+export type ProactiveCapabilityConfigScalar = boolean | number | string;
+
+export interface ProactiveCapabilityPreferenceV1 {
+  enabled?: boolean;
+  config?: Record<string, ProactiveCapabilityConfigScalar>;
+}
+
+export type ProactiveCapabilityPreferencesV1 = Record<string, ProactiveCapabilityPreferenceV1>;
+
 export interface PerformanceAndCapabilities {
   responseStyle: string;
   initiative: 'low' | 'medium' | 'high';
@@ -67,6 +76,8 @@ export interface PerformanceAndCapabilities {
     minecraft: boolean;
     voice?: boolean;
   };
+  /** FEAT-CROSS-25 · Catalog-driven proactive Tick switches and per-plugin settings. */
+  proactiveCapabilities?: ProactiveCapabilityPreferencesV1;
 }
 
 /** FEAT-CROSS-12: four-part role-play card. */

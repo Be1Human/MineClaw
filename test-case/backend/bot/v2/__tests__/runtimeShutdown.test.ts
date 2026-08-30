@@ -51,4 +51,40 @@ describe('BUG-CROSS-32 · V2Runtime stop', () => {
 
     runtime.stop();
   });
+
+  it('配置 LLM 时随 Runtime 启停周期记忆，能力关闭时不创建调度器', () => {
+    const bot = createMockBot();
+    const runtime = new V2Runtime({
+      game: bot.game,
+      nav: bot.nav,
+      embodied: false,
+      ownerName: 'TestOwner',
+      botName: 'MemoryScheduler',
+      dbPath: ':memory:',
+      worldMapDbPath: ':memory:',
+      chatMemoryDbPath: ':memory:',
+      llm: { apiKey: 'test-key', baseUrl: 'http://127.0.0.1:1', model: 'test-model' },
+    });
+    assert.ok(runtime.memoryConsolidationScheduler);
+    runtime.start();
+    assert.equal(runtime.memoryConsolidationScheduler?.status().running, true);
+    runtime.stop();
+    assert.equal(runtime.memoryConsolidationScheduler?.status().running, false);
+
+    const disabled = new V2Runtime({
+      game: bot.game,
+      nav: bot.nav,
+      embodied: false,
+      ownerName: 'TestOwner',
+      botName: 'MemoryDisabled',
+      dbPath: ':memory:',
+      worldMapDbPath: ':memory:',
+      chatMemoryDbPath: ':memory:',
+      chatMemoryAutoCapture: false,
+      llm: { apiKey: 'test-key', baseUrl: 'http://127.0.0.1:1', model: 'test-model' },
+    });
+    assert.equal(disabled.memoryConsolidationScheduler, null);
+    disabled.start();
+    disabled.stop();
+  });
 });

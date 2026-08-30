@@ -159,6 +159,82 @@ test('call detail returns the exact recorded request, context, tools and timing'
     assert.equal(call?.timing.durationMs, 12);
     assert.equal(call?.cacheStatus, 'unsupported');
     assert.equal(call?.cacheHitRate, null);
+    assert.equal(call?.request.api, 'openai-completions');
+  } finally {
+    store.close();
+  }
+});
+
+test('projects Responses wire input and usage without exposing opaque replay or credentials', () => {
+  const store = new LlmTraceEventStore({ filename: ':memory:', profileId: 'profile-responses' });
+  try {
+    append(store, 'responses-request', 'llm.request.recorded', {
+      interactionSessionId: 'responses-turn', turn: 1, callId: 'responses-call',
+      payload: {
+        request: {
+          provider: 'openai_compatible',
+          api: 'openai-responses',
+          path: '/responses',
+          model: 'gpt-5.4',
+          messages: [],
+          tools: [],
+          body: {
+            model: 'gpt-5.4',
+            input: [
+              { role: 'user', content: [{ type: 'input_text', text: '继续任务' }] },
+              { type: 'reasoning', encrypted_content: 'OPAQUE_REASONING_CANARY' },
+            ],
+            tools: [{ type: 'function', name: 'inspect_world', parameters: { type: 'object' } }],
+            authorization: 'Bearer CREDENTIAL_CANARY',
+            store: false,
+          },
+          replay: { nativeMessages: 1, rebuiltMessages: 0, reasons: [] },
+          context: { selected: [], omitted: [] },
+        },
+      },
+    });
+    append(store, 'responses-response', 'llm.response.recorded', {
+      interactionSessionId: 'responses-turn', turn: 1, callId: 'responses-call',
+      payload: {
+        usage: {
+          inputTokens: 100,
+          outputTokens: 20,
+          totalTokens: 120,
+          cachedInputTokens: 80,
+          cacheWriteInputTokens: 5,
+          reasoningOutputTokens: 12,
+          cacheMissInputTokens: 20,
+          cacheEligibleInputTokens: 100,
+          cacheStatus: 'reported',
+          source: 'responses.usage',
+        },
+      },
+    });
+
+    const query = new LlmTraceQueryService(store);
+    const call = query.getCall('responses-call')!;
+    const serializedCall = JSON.stringify(call);
+    assert.equal(call.request.api, 'openai-responses');
+    assert.equal(call.request.path, '/responses');
+    assert.deepEqual(call.tools, [
+      { type: 'function', name: 'inspect_world', parameters: { type: 'object' } },
+    ]);
+    assert.equal(call.usage.cacheWriteInputTokens, 5);
+    assert.equal(call.usage.reasoningOutputTokens, 12);
+    assert.equal(serializedCall.includes('OPAQUE_REASONING_CANARY'), false);
+    assert.equal(serializedCall.includes('CREDENTIAL_CANARY'), false);
+    assert.equal(serializedCall.includes('[opaque replay redacted]'), true);
+    assert.equal(serializedCall.includes('[credential redacted]'), true);
+
+    const event = query.listEvents({ sessionId: 'responses-turn' }).events[0]!;
+    assert.equal(event.payload.api, 'openai-responses');
+    assert.equal(event.payload.path, '/responses');
+    assert.deepEqual(event.payload.replay, { nativeMessages: 1, rebuiltMessages: 0, reasons: [] });
+
+    const exported = query.exportSession('responses-turn');
+    assert.equal(exported.includes('OPAQUE_REASONING_CANARY'), false);
+    assert.equal(exported.includes('CREDENTIAL_CANARY'), false);
+    assert.equal(exported.includes('[opaque replay redacted]'), true);
   } finally {
     store.close();
   }
@@ -273,7 +349,7 @@ test('distinguishes true zero from unsupported and counts calls without a turn a
   }
 });
 
-test('exports one session as ordered lossless JSONL and rejects oversized exports', () => {
+test('exports one session as ordered safe JSONL and rejects oversized exports', () => {
   const store = seededStore();
   try {
     const jsonl = new LlmTraceQueryService(store).exportSession('interaction-a');

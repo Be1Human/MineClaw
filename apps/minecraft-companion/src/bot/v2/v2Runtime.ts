@@ -25,6 +25,8 @@ import { NON_DURABLE_EVENT_TYPES, isDurableEventType } from './infra/eventDurabi
 import { MemoryV2 } from './infra/memory.js';
 import { BotMemoryStore } from './infra/botMemory.js';
 import { ChatMemoryService, LocalTokenEmbeddingProvider } from './infra/chatMemory.js';
+import { ChatMemoryConsolidator, LLMMemoryFactExtractor } from './infra/chatMemoryConsolidation.js';
+import { MemoryConsolidationScheduler } from './infra/memoryConsolidationScheduler.js';
 import { EpisodeAssembler, EpisodeStore, RuntimeEpisodeCapture } from './memory/episode/index.js';
 import { ChatMemoryRecallProvider, MemoryCatalog, MemorySystem, formatPlanningMemoryContext } from './memory/index.js';
 import { GoalAgentMemoryKnowledgeAdapter } from './memory/goalAgentMemoryKnowledge.js';
@@ -38,6 +40,7 @@ import { TaskRuntime } from './task/taskRuntime.js';
 import { PreconditionRegistry } from './task/preconditionRegistry.js';
 import { TriggerOutcomeMemory } from './decision/triggerOutcomeMemory.js';
 import { tuning } from './infra/tuning.js';
+import { gamePresenceFromWorld } from './gamePresenceContext.js';
 import type { FailureCode } from './task/failureReason.js';
 import { TaskRegistry } from './knowledge/taskRegistry.js';
 import {
@@ -163,6 +166,8 @@ export interface V2RuntimeConfig {
     apiKey: string;
     baseUrl: string;
     model: string;
+    api?: import('../../llm/api.js').LlmApi;
+    routeId?: string;
   };
   /** Bot 名 / 性格 · 写进 system prompt */
   botName?: string;
@@ -264,6 +269,8 @@ export class V2Runtime {
   readonly botMemory: BotMemoryStore;
   /** FEAT-MEM-09 · Profile 隔离的纯聊天分层记忆。 */
   readonly chatMemory: ChatMemoryService;
+  /** FEAT-MEM-09 · 默认五分钟一次的自然对话记忆整理；无 LLM 或能力关闭时不创建。 */
+  readonly memoryConsolidationScheduler: MemoryConsolidationScheduler | null;
   /** FEAT-CROSS-13 · 显著经历的持久化与运行时采集。 */
   readonly episodeStore: EpisodeStore;
   readonly episodeCapture: RuntimeEpisodeCapture;
@@ -404,9 +411,10 @@ export class V2Runtime {
           : join(runtimeDataDir, `llm-traces-${traceProfileFile}.db`)),
     });
     this.llmTraceQuery = new LlmTraceQueryService(this.llmTraceStore);
+    const memoryCapabilityEnabled = cfg.chatMemoryAutoCapture ?? true;
     this.chatMemory = new ChatMemoryService({
       profileId: chatProfileId,
-      autoCapture: cfg.chatMemoryAutoCapture ?? true,
+      autoCapture: () => memoryCapabilityEnabled && (!cfg.llm || !tuning().memoryConsolidation.enabled),
       embeddingProvider: cfg.chatMemorySemanticSearch === false ? null : new LocalTokenEmbeddingProvider(),
       dbPath: cfg.chatMemoryDbPath ?? join(
         dirname(cfg.dbPath ?? 'data/v2-memory.db'),
@@ -738,6 +746,15 @@ export class V2Runtime {
         { traceRecorder: this.llmTraceStore },
       );
     }
+    this.memoryConsolidationScheduler = memoryCapabilityEnabled && llmClient
+      ? new MemoryConsolidationScheduler(
+        new ChatMemoryConsolidator(this.chatMemory, new LLMMemoryFactExtractor(llmClient)),
+        {
+          getConfig: () => tuning().memoryConsolidation,
+          log: message => log(`[memory] ${message}`),
+        },
+      )
+      : null;
 
     // FEAT-L6-04 · 触发器结果记忆 · 订阅任务终态维护连败退避；IDLE trigger 立项前咨询
     this.triggerOutcomes = new TriggerOutcomeMemory();
@@ -931,6 +948,10 @@ export class V2Runtime {
           maxGraphReplans: Math.max(2, tuning().goalAgent.maxAttempt),
         },
         maxRoundsPerRun: tuning().goalAgent.maxRoundsPerRun,
+        getGamePresence: () => gamePresenceFromWorld(
+          this.isEmbodied(),
+          this.perception.getWorldState(),
+        ),
         publishEvent: event => {
           this.recordGoalAgentTrace(event);
           this.recordGoalAgentFact(event);
@@ -1233,8 +1254,12 @@ export class V2Runtime {
       llm: llmClient,
       llmTraceRecorder: this.llmTraceStore,
       asyncQueue: this.asyncQueue,
-        embodied: cfg.embodied !== false,
-        isEmbodied: cfg.isEmbodied,
+      embodied: cfg.embodied !== false,
+      isEmbodied: cfg.isEmbodied,
+      getGamePresence: () => gamePresenceFromWorld(
+        this.isEmbodied(),
+        this.perception.getWorldState(),
+      ),
       getRunningTaskCount: () => this.tasks.list().filter(t => t.state === 'running' || t.state === 'paused').length,
       getActiveTask: () => {
         const activeTask = this.tasks.active();
@@ -1691,6 +1716,7 @@ export class V2Runtime {
     }
 
     this.heart.start();
+    this.memoryConsolidationScheduler?.start();
     if (embodied) {
       // FEAT-L1-01: 启动地形采集
       this.worldMapCollector.start();
@@ -1732,6 +1758,7 @@ export class V2Runtime {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+    this.memoryConsolidationScheduler?.stop();
     this.taskRuntimeFactBridge?.close();
     this.taskRuntimeFactBridge = null;
     this.plannerPolicyInvalidationUnsub?.();

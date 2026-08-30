@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { CapabilityPackageRegistry } from '../../../../../../apps/minecraft-companion/src/bot/v2/capabilities/capabilityPackageRegistry.js';
 import type { CapabilityPackageDefinition } from '../../../../../../apps/minecraft-companion/src/bot/v2/capabilities/types.js';
+import { resolveProactiveCapabilityCatalog } from '../../../../../../apps/minecraft-companion/src/bot/v2/proactive/contracts.js';
 
 function environment() {
   return {
@@ -61,6 +62,89 @@ test('registers one complete package atomically', () => {
   assert.deepEqual(snapshot.actionProviders.map(value => value.id), ['agriculture.harvest']);
   assert.deepEqual(snapshot.worldFactProviders.map(value => value.id), ['agriculture.mature_crops']);
   assert.deepEqual(snapshot.predicateEvaluators.map(value => value.id), ['agriculture.harvest_to_chest']);
+  assert.deepEqual(snapshot.proactiveTicks, []);
+});
+
+test('registers manifest-owned proactive Tick metadata with a code-owned evaluator', async () => {
+  const registry = new CapabilityPackageRegistry(environment());
+  const value = packageDefinition();
+  Object.assign(value.manifest, { proactiveTicks: [{
+    id: 'auto_harvest',
+    label: '自动收田',
+    description: '空闲时收割成熟作物',
+    goalTarget: 'mineclaw:mature_crops_to_chest',
+    defaultEnabled: false,
+    rate: 'idle',
+    priority: 20,
+    decisionMode: 'deterministic',
+    conflictGroups: ['movement'],
+    configSchema: {
+      radius: { type: 'number', label: '范围', default: 16, min: 4, max: 32 },
+    },
+  }] });
+  Object.assign(value, { proactiveTicks: [{
+    id: 'auto_harvest',
+    evaluate: () => ({ kind: 'idle', reason: 'test' }),
+  }] });
+  registry.register(value);
+
+  const snapshot = registry.snapshot();
+  assert.deepEqual(snapshot.proactiveTicks.map(entry => entry.manifest.id), ['auto_harvest']);
+  assert.deepEqual(await snapshot.proactiveTicks[0]!.implementation.evaluate({
+    profileId: 'p1', now: 1, world: null, config: { radius: 16 }, foregroundBusy: false,
+    signal: new AbortController().signal,
+  }), { kind: 'idle', reason: 'test' });
+  assert.deepEqual(resolveProactiveCapabilityCatalog(snapshot.proactiveTicks), [{
+    packageId: 'agriculture.harvest',
+    id: 'auto_harvest',
+    label: '自动收田',
+    description: '空闲时收割成熟作物',
+    goalTarget: 'mineclaw:mature_crops_to_chest',
+    defaultEnabled: false,
+    enabled: false,
+    rate: 'idle',
+    priority: 20,
+    decisionMode: 'deterministic',
+    conflictGroups: ['movement'],
+    configSchema: { radius: { type: 'number', label: '范围', default: 16, min: 4, max: 32 } },
+    config: { radius: 16 },
+  }]);
+  assert.throws(() => resolveProactiveCapabilityCatalog(snapshot.proactiveTicks, {
+    auto_harvest: { enabled: true, config: { radius: 99 } },
+  }), /radius must be <= 32/);
+  assert.deepEqual(resolveProactiveCapabilityCatalog(snapshot.proactiveTicks, {
+    future_plugin: { enabled: true, config: { anything: 'retained' } },
+  })[0]!.enabled, false);
+});
+
+test('proactive Tick declarations fail atomically when incomplete or unsafe', () => {
+  const mutations: Array<(value: ReturnType<typeof packageDefinition>) => void> = [
+    value => {
+      Object.assign(value.manifest, { proactiveTicks: [proactiveManifest()] });
+    },
+    value => {
+      Object.assign(value, { proactiveTicks: [{ id: 'auto_harvest', evaluate: () => ({ kind: 'idle', reason: 'test' }) }] });
+    },
+    value => {
+      Object.assign(value.manifest, { proactiveTicks: [{ ...proactiveManifest(), goalTarget: 'mineclaw:missing' }] });
+      Object.assign(value, { proactiveTicks: [{ id: 'auto_harvest', evaluate: () => ({ kind: 'idle', reason: 'test' }) }] });
+    },
+    value => {
+      Object.assign(value.manifest, { proactiveTicks: [{
+        ...proactiveManifest(),
+        configSchema: { radius: { type: 'number', label: '范围', default: 99, min: 1, max: 32 } },
+      }] });
+      Object.assign(value, { proactiveTicks: [{ id: 'auto_harvest', evaluate: () => ({ kind: 'idle', reason: 'test' }) }] });
+    },
+  ];
+  for (const mutate of mutations) {
+    const registry = new CapabilityPackageRegistry(environment());
+    const value = packageDefinition();
+    mutate(value);
+    assert.throws(() => registry.register(value));
+    assert.equal(registry.snapshot().packages.length, 0);
+    assert.equal(registry.snapshot().proactiveTicks.length, 0);
+  }
 });
 
 test('rejects duplicate package, target, provider, evaluator and behavior ids', () => {
@@ -117,3 +201,16 @@ test('knowledge and skill declarations cannot add Atomic permissions', () => {
   assert.throws(() => registry.register(value), /unavailable Atomic: teleport_player/);
   assert.equal(registry.snapshot().packages.length, 0);
 });
+
+function proactiveManifest() {
+  return {
+    id: 'auto_harvest',
+    label: '自动收田',
+    description: '空闲时收割成熟作物',
+    goalTarget: 'mineclaw:mature_crops_to_chest',
+    defaultEnabled: false,
+    rate: 'idle' as const,
+    priority: 20,
+    decisionMode: 'deterministic' as const,
+  };
+}

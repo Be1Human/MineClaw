@@ -1,4 +1,5 @@
 import type { GoalReportV2 } from './contracts.js';
+import type { GamePresenceState } from '../../gamePresenceContext.js';
 
 export interface SpeechPolicyVerdict {
   pass: boolean;
@@ -13,16 +14,18 @@ const DELIVERY_CLAIM = /(?:给你|交给你|递给你|放到?你(?:那边|旁边
 const PROCESS_CLAIM = /(?:使用|用了?|用|拿着|挥动).{0,12}(?:剑|斧|镐|弓)|(?:攻击|击打|砍|射击)(?:了|过)|(?:吃了|进食|吃下|喝了|食用)|(?:全程|一直).{0,16}(?:保护|护着|没受伤|没有受伤|存活|活着)|(?:没有|没|未)(?:破坏|碰|挖).{0,12}(?:方块|场地|斗兽场)|(?:方块|场地|斗兽场).{0,12}(?:没有|没|未)(?:破坏|碰|挖)|(?:撤退|拉距|逃跑|回血|恢复了?血量)/i;
 const PLANNING_ONLY_CLAIM = /(?:还在|仍在|目前还在)?(?:规划|计划)(?:确认)?阶段|(?:规划|计划)好了?(?:就|再)(?:动手|开始|执行|收割)|还在(?:核对|确认)(?:范围|位置)?/i;
 const EXECUTING_CLAIM = /正在(?:执行|收割|挖|采集|拾取|归仓|存放|制作|移动|跟随)|已经开始(?:执行|收割|动手|制作|采集)/i;
+const UNSUPPORTED_PLAYER_PRESENCE_CLAIM = /(?:(?:请你|你(?:先|需要|得|要(?:先)?))(?:进入|进|登录|上线)(?:游戏|服务器|服))|(?:(?:你|玩家)(?:现在|当前|目前)?(?:处于)?(?:离线|不在线))|(?:(?:你|玩家)(?:还|尚|并)?没(?:有)?(?:进入|进|登录|上线)(?:游戏|服务器|服))/i;
 
 /** 将 GoalAgent 的状态机约束落实到玩家可见话术，防止 LLM 把进行中/失败改写成成功。 */
 export class GoalReportSpeechPolicy {
-  instruction(report: GoalReportV2): string {
+  instruction(report: GoalReportV2, presence?: GamePresenceState): string {
     const evidence = report.evidence.length > 0
       ? report.evidence.map(item => `${item.type}:${item.ref}@${item.observedAt}`).join(', ')
       : '无';
     return [
       `玩家可见回复必须与 GoalAgent.status=${report.status} 一致。`,
       `可引用的机器证据：${evidence}。`,
+      ...(presence ? [presenceInstruction(presence)] : []),
       report.status === 'running'
         ? runningInstruction(report)
         : report.status === 'communication_delayed'
@@ -39,7 +42,16 @@ export class GoalReportSpeechPolicy {
     ].join('\n');
   }
 
-  validate(report: GoalReportV2, text: string): SpeechPolicyVerdict {
+  validate(report: GoalReportV2, text: string, presence?: GamePresenceState): SpeechPolicyVerdict {
+    if (presence && presence.ownerObservation !== 'observed' && UNSUPPORTED_PLAYER_PRESENCE_CLAIM.test(text)) {
+      return {
+        pass: false,
+        reason: '没有观察到玩家，不等于玩家离线；回复错误地把身体状态归因给玩家',
+        hint: presence.embodied
+          ? '请改为“我当前没有观察或追踪到你的位置”；不要断言玩家离线。'
+          : '请改为“我现在还没进入游戏，所以暂时无法查看你的位置”；不要推断玩家在线状态。',
+      };
+    }
     const milestone = report.progress?.milestone;
     if (milestone === 'executing' && PLANNING_ONLY_CLAIM.test(text)) {
       return {
@@ -92,6 +104,16 @@ export class GoalReportSpeechPolicy {
     }
     return { pass: true };
   }
+}
+
+function presenceInstruction(presence: GamePresenceState): string {
+  if (!presence.embodied) {
+    return '机器事实：你自己的 Minecraft 身体当前未连接游戏。若需说明限制，必须用第一人称说“我还没进入游戏/我暂时看不到”；禁止让玩家“先进游戏”，也禁止断言玩家离线。';
+  }
+  if (presence.ownerObservation !== 'observed') {
+    return '机器事实：当前没有观察或追踪到玩家；这不证明玩家离线。只能陈述“我没有观察到你的位置”，禁止让玩家重新进游戏或断言玩家不在线。';
+  }
+  return '机器事实：当前新鲜世界快照中已观察到玩家。';
 }
 
 function runningInstruction(report: GoalReportV2): string {

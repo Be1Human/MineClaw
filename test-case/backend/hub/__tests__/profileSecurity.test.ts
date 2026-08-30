@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -42,6 +42,7 @@ test('FEAT-WEBUI-14 | public Profile and global config DTOs never expose API key
     assert.equal(JSON.stringify(publicConfig).includes(SECRET), false);
     assert.equal(Object.hasOwn(publicConfig, 'apiKey'), false);
     assert.equal(publicConfig.apiKeyConfigured, true);
+    assert.equal(publicConfig.api, 'openai-completions');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -79,11 +80,35 @@ test('FEAT-WEBUI-14 | legacy profile migration preserves each role config and is
       apiKey: 'first-key',
       baseUrl: 'https://first.example.test/v1',
       model: 'first-model',
+      api: 'openai-completions',
       createdAt: configs.get(migratedFirst.llmConfigId)!.createdAt,
       updatedAt: configs.get(migratedFirst.llmConfigId)!.updatedAt,
     });
     assert.equal(configs.get(migratedSecond.llmConfigId)?.model, 'second-model');
     assert.equal(configs.list().length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('FEAT-CROSS-22 | old stored configs default to Chat Completions without rewriting credentials', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mineclaw-llm-api-migration-'));
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'llm-agent-configs.json'), JSON.stringify([{
+      id: 'legacy-route',
+      name: 'Legacy route',
+      apiKey: SECRET,
+      baseUrl: 'https://legacy.example.test/v1',
+      model: 'legacy-model',
+      createdAt: 1,
+      updatedAt: 2,
+    }]), 'utf8');
+
+    const configs = new LlmAgentConfigStore(dir);
+    assert.equal(configs.get('legacy-route')?.api, 'openai-completions');
+    assert.equal(configs.get('legacy-route')?.apiKey, SECRET);
+    assert.equal(configs.toPublic(configs.get('legacy-route')!, 0).api, 'openai-completions');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -103,9 +128,31 @@ test('FEAT-WEBUI-14 | public profile and LLM config APIs are redacted and reject
       }),
     });
     assert.equal(createConfig.status, 201);
-    const config = await createConfig.json() as { id: string; apiKeyConfigured: boolean };
+    const config = await createConfig.json() as { id: string; api: string; apiKeyConfigured: boolean };
     assert.equal(JSON.stringify(config).includes(SECRET), false);
     assert.equal(config.apiKeyConfigured, true);
+    assert.equal(config.api, 'openai-completions');
+
+    const invalidApi = await fetch(`${origin}/api/llm-configs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Invalid API', apiKey: SECRET, baseUrl: 'https://api.example.test/v1',
+        model: 'test-model', api: 'anthropic-messages',
+      }),
+    });
+    assert.equal(invalidApi.status, 400);
+
+    const responsesConfig = await fetch(`${origin}/api/llm-configs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Responses Agent', apiKey: SECRET, baseUrl: 'https://api.example.test/v1',
+        model: 'test-model', api: 'openai-responses',
+      }),
+    });
+    assert.equal(responsesConfig.status, 201);
+    assert.equal((await responsesConfig.json() as { api: string }).api, 'openai-responses');
 
     const duplicateConfig = await fetch(`${origin}/api/llm-configs`, {
       method: 'POST',

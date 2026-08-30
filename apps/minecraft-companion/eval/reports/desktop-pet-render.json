@@ -1,0 +1,33 @@
+{
+  "canvas": true,
+  "width": 240,
+  "height": 480,
+  "alphaPixels": 65488,
+  "coloredPixels": 0,
+  "debug": {
+    "animation": "idle",
+    "textureLoaded": true,
+    "textureSize": [
+      64,
+      64
+    ],
+    "alpha": true,
+    "render": {
+      "frame": 1,
+      "calls": 20,
+      "triangles": 240,
+      "points": 0,
+      "lines": 0
+    },
+    "headY": 0,
+    "leftArmX": 0,
+    "rightLegX": 0
+  },
+  "rect": {
+    "width": 160,
+    "height": 320,
+    "x": 0,
+    "y": 0
+  },
+  "display": "block"
+}

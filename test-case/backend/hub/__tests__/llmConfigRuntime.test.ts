@@ -12,25 +12,42 @@ test('FEAT-WEBUI-14 | legacy resolver keeps endpoint and model from one configur
   const fallback = { apiKey: 'default-key', baseUrl: 'http://127.0.0.1:1234/v1', model: 'default-model' };
   assert.deepEqual(resolveProfileLlmConfig(
     { apiKey: 'legacy-placeholder', baseUrl: '', model: 'legacy-model' }, fallback,
-  ), fallback);
+  ), { ...fallback, api: 'openai-completions' });
   assert.deepEqual(resolveProfileLlmConfig(
     { apiKey: '', baseUrl: 'http://profile.test/v1', model: 'profile-model' }, fallback,
-  ), { apiKey: 'default-key', baseUrl: 'http://profile.test/v1', model: 'profile-model' });
+  ), {
+    apiKey: 'default-key', baseUrl: 'http://profile.test/v1', model: 'profile-model',
+    api: 'openai-completions',
+  });
 });
 
 test('FEAT-WEBUI-14 | updating a global Agent reloads only its referenced runtime', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mineclaw-global-llm-refresh-'));
-  const requests: Array<{ authorization: string; model: string }> = [];
+  const requests: Array<{ authorization: string; model: string; url: string; body: Record<string, unknown> }> = [];
   const provider = createServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/v1/chat/completions') { res.writeHead(404).end(); return; }
+    if (req.method !== 'POST' || (req.url !== '/v1/chat/completions' && req.url !== '/v1/responses')) { res.writeHead(404).end(); return; }
     let raw = '';
     req.setEncoding('utf8');
     req.on('data', chunk => { raw += chunk; });
     req.on('end', () => {
       const body = JSON.parse(raw || '{}') as { model?: string };
-      requests.push({ authorization: String(req.headers.authorization ?? ''), model: String(body.model ?? '') });
+      requests.push({
+        authorization: String(req.headers.authorization ?? ''),
+        model: String(body.model ?? ''),
+        url: String(req.url),
+        body,
+      });
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: `local reply ${requests.length}` } }] }));
+      res.end(req.url === '/v1/responses'
+        ? JSON.stringify({
+            id: `resp-${requests.length}`,
+            status: 'completed',
+            output: [{
+              type: 'message', role: 'assistant', status: 'completed',
+              content: [{ type: 'output_text', text: `local reply ${requests.length}`, annotations: [] }],
+            }],
+          })
+        : JSON.stringify({ choices: [{ message: { role: 'assistant', content: `local reply ${requests.length}` } }] }));
     });
   });
   await new Promise<void>(resolve => provider.listen(0, '127.0.0.1', resolve));
@@ -65,7 +82,9 @@ test('FEAT-WEBUI-14 | updating a global Agent reloads only its referenced runtim
     let reply = waitForReply(target.name);
     await hub.botManager.chat(target.id, 'owner', 'first');
     await reply;
-    assert.deepEqual(requests[0], { authorization: 'Bearer selected-key', model: 'selected-model' });
+    assert.equal(requests[0]?.authorization, 'Bearer selected-key');
+    assert.equal(requests[0]?.model, 'selected-model');
+    assert.equal(requests[0]?.url, '/v1/chat/completions');
 
     const targetStartedAt = hub.botManager.getStatus(target.id)?.startedAt ?? 0;
     const untouchedStartedAt = hub.botManager.getStatus(untouched.id)?.startedAt;
@@ -73,7 +92,11 @@ test('FEAT-WEBUI-14 | updating a global Agent reloads only its referenced runtim
     const response = await fetch(`${origin}/api/llm-configs/${selectedConfig.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: 'selected-key-2', model: 'selected-model-2' }),
+      body: JSON.stringify({
+        apiKey: 'selected-key-2',
+        model: 'selected-model-2',
+        api: 'openai-responses',
+      }),
     });
     assert.equal(response.status, 200);
     assert.equal((await response.json() as { restartedProfileCount: number }).restartedProfileCount, 1);
@@ -83,7 +106,11 @@ test('FEAT-WEBUI-14 | updating a global Agent reloads only its referenced runtim
     reply = waitForReply(target.name);
     await hub.botManager.chat(target.id, 'owner', 'second');
     await reply;
-    assert.deepEqual(requests[1], { authorization: 'Bearer selected-key-2', model: 'selected-model-2' });
+    assert.equal(requests[1]?.authorization, 'Bearer selected-key-2');
+    assert.equal(requests[1]?.model, 'selected-model-2');
+    assert.equal(requests[1]?.url, '/v1/responses');
+    assert.equal(requests[1]?.body.store, false);
+    assert.equal(Object.hasOwn(requests[1]?.body ?? {}, 'previous_response_id'), false);
 
     const blockedDelete = await fetch(`${origin}/api/llm-configs/${selectedConfig.id}`, { method: 'DELETE' });
     assert.equal(blockedDelete.status, 409);

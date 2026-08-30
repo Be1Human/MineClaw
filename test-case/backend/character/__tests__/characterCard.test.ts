@@ -13,6 +13,7 @@ describe('FEAT-CROSS-12 · CharacterCard v1', () => {
       const card = createCharacterTemplate(id, { characterName: '兰依', userName: 'qxy' });
       assert.deepEqual(Object.keys(card).sort(), ['character', 'performance', 'relationship', 'schemaVersion', 'world']);
       assert.deepEqual(validateCharacterCard(card), []);
+      assert.deepEqual(card.performance.proactiveCapabilities, {});
     }
   });
 
@@ -81,5 +82,23 @@ describe('FEAT-CROSS-12 · CharacterCard v1', () => {
     assert.deepEqual(validateCharacterCard(card), []);
     (card.performance as { progressReportLevel?: string }).progressReportLevel = 'always';
     assert.ok(validateCharacterCard(card).some(error => error.path === 'performance.progressReportLevel'));
+  });
+
+  it('FEAT-CROSS-25 · 主动能力配置按通用映射迁移并校验', () => {
+    const legacy = createCharacterTemplate('real_world_friend');
+    delete legacy.performance.proactiveCapabilities;
+    const migrated = resolveCharacterCard({ name: 'LanYi', characterCard: legacy });
+    assert.deepEqual(migrated.performance.proactiveCapabilities, {});
+
+    migrated.performance.proactiveCapabilities = {
+      auto_follow: { enabled: true, config: { graceMs: 5_000, quiet: true, mode: 'safe' } },
+      future_plugin: { enabled: false },
+    };
+    assert.deepEqual(validateCharacterCard(migrated), []);
+
+    migrated.performance.proactiveCapabilities.auto_follow!.config!.graceMs = Number.NaN;
+    assert.ok(validateCharacterCard(migrated).some(error => (
+      error.path === 'performance.proactiveCapabilities.auto_follow.config.graceMs'
+    )));
   });
 });

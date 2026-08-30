@@ -159,6 +159,28 @@ describe('MemorySystem unified recall', () => {
     episodes.close();
     catalog.close();
   });
+
+  test('ranks relevant official slots above duplicate dynamic facts without injecting empty slots', () => {
+    const catalog = new MemoryCatalog(':memory:');
+    const episodes = new EpisodeStore(':memory:');
+    const chat = new ChatMemoryService({ dbPath: ':memory:', profileId: 'profile-a', embeddingProvider: null, autoCapture: false });
+    chat.recordMessage({ id: 'food', sessionId: 's', role: 'owner', content: '我喜欢吃鱼', timestamp: 100 });
+    chat.putMemorySlotValue({ slotKey: 'preference.food.favorite', value: '鱼', sourceKind: 'conversation', sourceMessageIds: ['food'] });
+    chat.addFact({ scope: 'user', kind: 'preference', text: '我喜欢吃鱼', confidence: 0.8, importance: 0.7, sourceMessageIds: ['food'] });
+    const system = new MemorySystem('profile-a', catalog, episodes, {
+      liveProviders: [new ChatMemoryRecallProvider('profile-a', chat)],
+    });
+
+    const prepared = system.prepareContext('我喜欢吃什么');
+    const official = prepared.result.records.find(record => record.metadata.authorityType === 'official_slot');
+    assert.equal(official?.metadata.slotKey, 'preference.food.favorite');
+    assert.equal(prepared.result.records.some(record => record.metadata.authorityType === 'dynamic_memory_fact'), false);
+    assert.match(prepared.text, /喜欢的食物：鱼/);
+    assert.doesNotMatch(prepared.text, /不喜欢的食物/);
+    chat.close();
+    episodes.close();
+    catalog.close();
+  });
 });
 
 function record(profileId: string, kind: MemoryKind, summary: string, importance: number, index: number): MemoryRecord {

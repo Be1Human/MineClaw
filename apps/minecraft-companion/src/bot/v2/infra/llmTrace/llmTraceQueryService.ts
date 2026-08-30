@@ -17,6 +17,8 @@ export interface LlmTraceUsageProjection {
   outputTokens?: number;
   totalTokens?: number;
   cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  reasoningOutputTokens?: number;
   cacheMissInputTokens?: number;
   cacheEligibleInputTokens?: number;
   cacheStatus: LlmTraceCacheMetricStatus;
@@ -248,19 +250,32 @@ export class LlmTraceQueryService {
       'llm.call.cancelled',
       'trace.persistence_gap',
     ].includes(event.type)) ?? null;
-    const request = objectValue(requestEvent.payload.request);
-    const response = terminalEvent ? objectValue(terminalEvent.payload) : null;
+    const publicEvents = events.map(publicTraceEvent);
+    const publicRequestEvent = publicEvents.find(event => event.type === 'llm.request.recorded')!;
+    const publicTerminalEvent = publicEvents.find(event => [
+      'llm.response.recorded',
+      'llm.call.failed',
+      'llm.call.cancelled',
+      'trace.persistence_gap',
+    ].includes(event.type)) ?? null;
+    const request = publicRequestProjection(requestEvent.payload.request);
+    const response = publicTerminalEvent ? objectValue(publicTerminalEvent.payload) : null;
     const cache = callCacheProjection(terminalEvent);
+    const exactBody = objectValue(request.body);
     return {
       callId: normalized,
       status: callStatus(terminalEvent),
-      requestEvent,
-      terminalEvent,
-      events,
+      requestEvent: publicRequestEvent,
+      terminalEvent: publicTerminalEvent,
+      events: publicEvents,
       request,
       response,
       context: objectValue(request.context),
-      tools: Array.isArray(request.tools) ? request.tools : [],
+      tools: Array.isArray(exactBody.tools)
+        ? exactBody.tools
+        : Array.isArray(request.tools)
+          ? request.tools
+          : [],
       usage: cache.usage,
       cacheStatus: cache.cacheStatus,
       cacheHitRate: cache.cacheHitRate,
@@ -281,7 +296,7 @@ export class LlmTraceQueryService {
     if (!normalized) throw new LlmTraceQueryError('invalid_query', 'sessionId is required');
     const events = this.readAllEvents().filter(event => eventMatchesSession(event, normalized));
     if (events.length === 0) throw new LlmTraceQueryError('not_found', 'trace session not found');
-    const jsonl = `${events.map(event => JSON.stringify(event)).join('\n')}\n`;
+    const jsonl = `${events.map(event => JSON.stringify(publicTraceEvent(event))).join('\n')}\n`;
     if (Buffer.byteLength(jsonl, 'utf8') > this.maxExportBytes) {
       throw new LlmTraceQueryError('export_too_large', 'trace export exceeds size limit');
     }
@@ -337,12 +352,25 @@ function turnTitle(events: LlmTraceEventV1[]): string {
   }
   const requestEvent = events.find(event => event.type === 'llm.request.recorded');
   const request = objectValue(requestEvent?.payload.request);
-  const messages = Array.isArray(request.messages) ? request.messages : [];
+  const body = objectValue(request.body);
+  const messages = Array.isArray(request.messages)
+    ? request.messages
+    : Array.isArray(body.messages)
+      ? body.messages
+      : [];
   const user = [...messages].reverse().find(message => objectValue(message).role === 'user');
   const content = objectValue(user).content;
-  return typeof content === 'string' && content.trim()
-    ? content.trim().slice(0, 160)
-    : '内部续接回合';
+  if (typeof content === 'string' && content.trim()) return content.trim().slice(0, 160);
+  const responsesInput = Array.isArray(body.input) ? body.input : [];
+  const responsesUser = [...responsesInput].reverse().find(item => objectValue(item).role === 'user');
+  const inputParts: unknown[] = Array.isArray(objectValue(responsesUser).content)
+    ? objectValue(responsesUser).content
+    : [];
+  const inputText = inputParts
+    .map((part: unknown) => objectValue(part).text as unknown)
+    .filter((text: unknown): text is string => typeof text === 'string')
+    .join('');
+  return inputText.trim() ? inputText.trim().slice(0, 160) : '内部续接回合';
 }
 
 function summarizeEvent(event: LlmTraceEventV1, projections: CacheProjections): LlmTraceEventSummary {
@@ -350,11 +378,29 @@ function summarizeEvent(event: LlmTraceEventV1, projections: CacheProjections): 
   let payloadTruncated = false;
   if (event.type === 'llm.request.recorded') {
     const request = objectValue(event.payload.request);
+    const body = objectValue(request.body);
+    const messageCount = Array.isArray(body.input)
+      ? body.input.length
+      : Array.isArray(body.messages)
+        ? body.messages.length
+        : Array.isArray(request.messages)
+          ? request.messages.length
+          : 0;
+    const toolCount = Array.isArray(body.tools)
+      ? body.tools.length
+      : Array.isArray(request.tools)
+        ? request.tools.length
+        : 0;
     payload = {
       model: typeof request.model === 'string' ? request.model : 'unknown',
       provider: typeof request.provider === 'string' ? request.provider : 'unknown',
-      messageCount: Array.isArray(request.messages) ? request.messages.length : 0,
-      toolCount: Array.isArray(request.tools) ? request.tools.length : 0,
+      api: request.api === 'openai-responses' ? request.api : 'openai-completions',
+      path: typeof request.path === 'string' ? request.path : '',
+      messageCount,
+      toolCount,
+      ...(objectValue(request.replay).nativeMessages !== undefined
+        ? { replay: redactTraceValue(request.replay) }
+        : {}),
       inputHash: typeof event.payload.inputHash === 'string' ? event.payload.inputHash : '',
     };
     payloadTruncated = true;
@@ -503,6 +549,7 @@ function usageProjection(value: unknown): LlmTraceUsageProjection {
 
   const numericFields = [
     'inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens',
+    'cacheWriteInputTokens', 'reasoningOutputTokens',
     'cacheMissInputTokens', 'cacheEligibleInputTokens',
   ] as const;
   const projected: LlmTraceUsageProjection = { cacheStatus: status, source };
@@ -633,6 +680,46 @@ function eventSearchText(event: LlmTraceEventV1): string {
 
 function sessionSearchText(session: LlmTraceSessionSummary): string {
   return `${session.sessionId} ${session.title} ${session.taskId ?? ''} ${session.agents.join(' ')} ${session.nodes.join(' ')} ${session.turns.map(turn => turn.title).join(' ')}`.toLocaleLowerCase();
+}
+
+/** Public/query projection. The append-only store remains byte-for-byte replayable. */
+function publicTraceEvent(event: LlmTraceEventV1): LlmTraceEventV1 {
+  const payload = objectValue(redactTraceValue(event.payload)) as Record<string, LlmTraceJsonValue>;
+  if (event.type === 'llm.request.recorded' && 'request' in event.payload) {
+    payload.request = publicRequestProjection(event.payload.request) as LlmTraceJsonValue;
+  }
+  return { ...event, payload };
+}
+
+function publicRequestProjection(value: unknown): Record<string, unknown> {
+  const request = objectValue(redactTraceValue(value));
+  return {
+    ...request,
+    api: request.api === 'openai-responses' ? 'openai-responses' : 'openai-completions',
+  };
+}
+
+function redactTraceValue(value: unknown): LlmTraceJsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(redactTraceValue);
+  if (!value || typeof value !== 'object') return String(value ?? '');
+  const output: Record<string, LlmTraceJsonValue> = {};
+  for (const [key, child] of Object.entries(value)) {
+    const normalized = key.toLocaleLowerCase();
+    if (normalized === 'encrypted_content') {
+      output[key] = '[opaque replay redacted]';
+    } else if (normalized === 'authorization'
+      || normalized === 'apikey'
+      || normalized === 'api_key'
+      || normalized === 'credential') {
+      output[key] = '[credential redacted]';
+    } else if (child !== undefined) {
+      output[key] = redactTraceValue(child);
+    }
+  }
+  return output;
 }
 
 function objectValue(value: unknown): Record<string, any> {

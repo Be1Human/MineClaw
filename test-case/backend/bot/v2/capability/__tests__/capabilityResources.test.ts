@@ -28,11 +28,57 @@ test('FEAT-CROSS-19 · YAML manifest and Markdown Knowledge load as separate res
     'agriculture:harvest-to-chest',
   ]);
   assert.deepEqual(resources.manifest.requires.atomics, ['move_to', 'dig', 'deposit']);
+  assert.deepEqual(resources.manifest.proactiveTicks, []);
   assert.deepEqual(resources.knowledgeDocuments.map(value => value.id), [
     'agriculture:harvest-to-chest',
     'agriculture:wheat-maturity',
   ]);
   assert.equal(resources.knowledgeDocuments.every(value => value.sourcePath.endsWith('.md')), true);
+});
+
+test('FEAT-CROSS-25 · YAML manifest parses optional proactive Tick catalog metadata', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mineclaw-proactive-capability-'));
+  try {
+    const knowledgeDir = join(root, 'knowledge');
+    mkdirSync(knowledgeDir);
+    writeFileSync(join(knowledgeDir, 'valid.md'), knowledge('test:valid', '有效知识'));
+    writeFileSync(join(root, 'capability.yaml'), `${manifest(['test:valid'])}
+proactiveTicks:
+  - id: auto_test
+    label: 自动测试
+    description: 空闲时提出测试目标
+    goalTarget: mineclaw:test
+    defaultEnabled: false
+    rate: idle
+    priority: 10
+    decisionMode: deterministic
+    conflictGroups: [movement]
+    configSchema:
+      radius:
+        type: number
+        label: 范围
+        default: 16
+        min: 4
+        max: 32
+`);
+    const resources = loadCapabilityResourcePackage(root);
+    assert.deepEqual(resources.manifest.proactiveTicks, [{
+      id: 'auto_test',
+      label: '自动测试',
+      description: '空闲时提出测试目标',
+      goalTarget: 'mineclaw:test',
+      defaultEnabled: false,
+      rate: 'idle',
+      priority: 10,
+      decisionMode: 'deterministic',
+      conflictGroups: ['movement'],
+      configSchema: {
+        radius: { type: 'number', label: '范围', default: 16, min: 4, max: 32 },
+      },
+    }]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('FEAT-CROSS-19 · Domain Knowledge search/get is versioned and budget bounded', () => {

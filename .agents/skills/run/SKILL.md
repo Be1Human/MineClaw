@@ -5,21 +5,25 @@ description: Start MineClaw's local backend and control console using contributo
 
 # Run MineClaw Locally
 
-## Prerequisites
+If this checkout is the workspace private overlay (or the workspace root that contains `private/`), do not re-list startup checks here. Run the one-click script:
+
+```powershell
+.\Start-Dev.bat
+# or
+.\private\scripts\Start-DevEnvironment.ps1
+```
+
+That script starts the companion app (Hub + Web) and the imported Minecraft test server, skips ports that are already listening, and fails with the next command when local config or the test server is missing.
+
+## Public-only clone
 
 Copy `apps/minecraft-companion/.env.example` to a local `.env` and fill only your own server and provider values. Keep that file untracked.
-
-## Start Order
-
-In one terminal:
 
 ```bash
 cd apps/minecraft-companion
 npm ci
 npm run dev
 ```
-
-In another terminal:
 
 ```bash
 cd apps/minecraft-companion/web

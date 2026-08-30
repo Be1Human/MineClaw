@@ -169,7 +169,6 @@
             :worldState="currentWorldState"
             :skinTexture="selectedSkinTexture"
             :skinModel="selectedSkinModel"
-            :profileId="selectedProfile?.id || ''"
             :worldMode="worldMode"
             :visualWorldStore="visualWorldStore"
             :visualWorldRevision="visualWorldRevision"
@@ -177,6 +176,7 @@
             :visualWorldConfig="visualWorldConfig"
             v-model:followBot="followBot"
             @request-resync="requestVisualResync"
+            @visual-render-progress="handleVisualRenderProgress"
           />
         </div>
 
@@ -487,11 +487,13 @@
             <label class="mc-field"><span>MC 服务器地址</span><input v-model="form.host" class="mc-field-control" /></label>
             <label class="mc-field"><span>端口</span><input v-model.number="form.port" class="mc-field-control" type="number" /></label>
             <label class="mc-field"><span>验证方式</span><select v-model="form.auth" class="mc-field-control"><option value="offline">离线模式</option><option value="microsoft">微软登录</option></select></label>
+            <label class="mc-field"><span>游戏模式</span><select v-model="form.playMode" class="mc-field-control"><option value="survival">生存模式</option><option value="creative" disabled>创造模式（暂未开放）</option></select></label>
+            <p v-if="createProfileError" class="create-partner-error" role="alert">{{ createProfileError }}</p>
           </div>
         </div>
         <footer class="mc-dialog-footer">
           <button class="mc-button" type="button" @click="showCreateForm = false">取消</button>
-          <button class="mc-button primary" type="button" @click="createProfile">创建伙伴</button>
+          <button class="mc-button primary" type="button" :disabled="createProfileSubmitting" @click="createProfile">{{ createProfileSubmitting ? '创建中…' : '创建伙伴' }}</button>
         </footer>
       </section>
     </div>
@@ -697,11 +699,14 @@ const worldPreviewMode = computed({
 });
 
 const showCreateForm = ref(false);
+const createProfileError = ref('');
+const createProfileSubmitting = ref(false);
 const showSkinEditor = ref(false);
 const createDialog = ref(null);
 const skinDialog = ref(null);
 watch(showCreateForm, async (open) => {
   if (!open) return;
+  createProfileError.value = '';
   await nextTick();
   createDialog.value?.focus();
 });
@@ -731,7 +736,7 @@ const worldConnectionActions = reactive(new Map());
 const worldConnectionErrors = reactive(new Map());
 const visualWorldStore = ref(null);
 const visualWorldRevision = ref(0);
-const visualWorldStatus = ref({ state: 'idle', message: '' });
+const visualWorldStatus = ref({ state: 'idle', phase: 'idle', current: 0, total: 0, message: '' });
 const visualWorldConfig = ref(null);
 let subscribedVisualBotId = null;
 let visualSubscriptionRequest = 0;
@@ -792,6 +797,7 @@ const form = ref({
   host: '127.0.0.1',
   port: 25565,
   auth: 'offline',
+  playMode: 'survival',
 });
 
 const currentFullStatus = computed(() => {
@@ -879,7 +885,7 @@ socket.on('disconnect', () => {
   subscribedVisualBotId = null;
   visualWorldStore.value = null;
   visualWorldRevision.value += 1;
-  visualWorldStatus.value = { state: 'idle', message: 'Hub 已断开' };
+  visualWorldStatus.value = { state: 'idle', phase: 'idle', current: 0, total: 0, message: 'Hub 已断开' };
 });
 
 socket.on('bot:status', (data) => {
@@ -913,20 +919,79 @@ socket.on('bot:v2:worldState', (data) => {
   // Map.set 仍触发 currentWorldState 重算+重渲染（按引用变化），只是不再深响应内部。
   worldStates.set(data.botId, markRaw(data.worldState));
 });
-socket.on('bot:v2:visualWorld:bootstrap', data => {
+socket.on('bot:v2:visualWorld:bootstrap:start', data => {
   if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
-  const ok = visualWorldStore.value.applyBootstrap(data.bootstrap);
+  const ok = visualWorldStore.value.beginBootstrap(data);
+  if (!ok) {
+    visualResyncPending = false;
+    requestVisualResync();
+    return;
+  }
+  visualWorldStatus.value = {
+    state: 'loading', phase: 'receiving', current: 0, total: data.sectionCount,
+    message: `正在接收真实世界首帧… 0/${data.sectionCount}`,
+  };
+});
+socket.on('bot:v2:visualWorld:bootstrap:section', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.appendBootstrapSection(data);
+  if (!ok) {
+    visualWorldRevision.value += 1;
+    visualResyncPending = false;
+    requestVisualResync();
+    return;
+  }
+  const pending = visualWorldStore.value.pendingBootstrap;
+  visualWorldStatus.value = {
+    state: 'loading', phase: 'receiving', current: pending.sections.size, total: pending.sectionCount,
+    message: `正在接收真实世界首帧… ${pending.sections.size}/${pending.sectionCount}`,
+  };
+});
+socket.on('bot:v2:visualWorld:bootstrap:end', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.commitBootstrap(data);
   visualWorldRevision.value += 1;
   visualResyncPending = false;
   visualWorldStatus.value = ok
-    ? { state: 'ready', message: `真实世界 · ${data.bootstrap.gameVersion} · ${data.bootstrap.sections.length} 区段` }
-    : { state: 'error', message: `视觉世界重建失败：${visualWorldStore.value.resyncReason}` };
+    ? {
+        state: 'loading', phase: 'rendering', current: 0, total: data.sectionCount,
+        message: `正在渲染真实世界首帧… 0/${data.sectionCount}`,
+      }
+    : { state: 'error', phase: 'error', current: 0, total: data.sectionCount, message: `视觉世界重建失败：${visualWorldStore.value.resyncReason}` };
+  if (!ok) requestVisualResync();
 });
 socket.on('bot:v2:visualWorld:delta', data => {
   if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
   const ok = visualWorldStore.value.receiveBatch(data.batch);
   visualWorldRevision.value += 1;
   if (!ok) requestVisualResync();
+});
+socket.on('bot:v2:visualWorld:delta:start', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.beginDeltaBatch(data);
+  if (!ok) {
+    visualWorldRevision.value += 1;
+    visualResyncPending = false;
+    requestVisualResync();
+  }
+});
+socket.on('bot:v2:visualWorld:delta:section', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.appendDeltaSection(data);
+  if (!ok) {
+    visualWorldRevision.value += 1;
+    visualResyncPending = false;
+    requestVisualResync();
+  }
+});
+socket.on('bot:v2:visualWorld:delta:end', data => {
+  if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
+  const ok = visualWorldStore.value.commitDeltaBatch(data);
+  visualWorldRevision.value += 1;
+  if (!ok) {
+    visualResyncPending = false;
+    requestVisualResync();
+  }
 });
 
 async function ensureVisualWorldConfig() {
@@ -971,13 +1036,16 @@ async function syncVisualSubscription() {
     if (request !== visualSubscriptionRequest) return;
     visualWorldStore.value = markRaw(new VisualWorldStore(config));
     subscribedVisualBotId = botId;
-    visualWorldStatus.value = { state: 'loading', message: '正在构建真实世界首帧…' };
+    visualWorldStatus.value = {
+      state: 'loading', phase: 'preparing', current: 0, total: 0,
+      message: '正在准备真实世界首帧…',
+    };
     socket.emit('bot:v2:visualWorld:subscribe', { botId }, result => {
       if (request !== visualSubscriptionRequest || result?.ok) return;
       subscribedVisualBotId = null;
       visualWorldStore.value = null;
       visualWorldStatus.value = {
-        state: 'error',
+        state: 'error', phase: 'error', current: 0, total: 0,
         message: result?.reason === 'visual_world_unavailable' ? 'Bot 尚未进入可视世界' : '真实世界订阅失败',
       };
     });
@@ -985,18 +1053,56 @@ async function syncVisualSubscription() {
     if (request !== visualSubscriptionRequest) return;
     subscribedVisualBotId = null;
     visualWorldStore.value = null;
-    visualWorldStatus.value = { state: 'error', message: error.message };
+    visualWorldStatus.value = { state: 'error', phase: 'error', current: 0, total: 0, message: error.message };
   }
+}
+
+function handleVisualRenderProgress(progress) {
+  const store = visualWorldStore.value;
+  if (!store || worldMode.value !== 'authentic'
+    || progress?.sessionId !== store.sessionId
+    || progress?.generation !== store.generation) return;
+  const total = Math.max(0, Number(progress.totalSections) || 0);
+  const completed = Math.max(0, Number(progress.completedSections) || 0);
+  const failed = Math.max(0, Number(progress.failedSections) || 0);
+  // A renderer can briefly attach to the newly-created empty store while a
+  // rapid mode switch is starting a fresh subscription. Keep the higher-level
+  // preparing/receiving message until the bootstrap has a real section total.
+  if (total === 0) return;
+  const processed = Math.min(total, completed + failed);
+  if (progress.firstVisibleReady) {
+    visualWorldStatus.value = {
+      state: 'ready', phase: 'ready', current: processed, total,
+      message: processed < total
+        ? `真实世界已显示 · ${completed}/${total} 区段（其余后台加载）`
+        : `真实世界 · ${store.gameVersion} · ${completed}/${total} 区段`,
+    };
+    return;
+  }
+  if (total > 0 && processed >= total) {
+    visualWorldStatus.value = {
+      state: 'error', phase: 'error', current: processed, total,
+      message: '真实世界地形构建失败，请重试',
+    };
+    return;
+  }
+  visualWorldStatus.value = {
+    state: 'loading', phase: 'rendering', current: processed, total,
+    message: `正在渲染真实世界首帧… ${completed}/${total}`,
+  };
 }
 
 function requestVisualResync() {
   if (!subscribedVisualBotId || visualResyncPending || !socket.connected) return;
   visualResyncPending = true;
-  visualWorldStatus.value = { state: 'loading', message: '检测到序列缺口，正在重建世界…' };
+  visualWorldStatus.value = {
+    state: 'loading', phase: 'preparing', current: 0, total: 0,
+    message: '检测到序列缺口，正在重建世界…',
+  };
   socket.emit('bot:v2:visualWorld:resync', { botId: subscribedVisualBotId }, result => {
     if (result?.ok) return;
     visualResyncPending = false;
-    visualWorldStatus.value = { state: 'error', message: '真实世界重建失败' };
+    visualWorldStatus.value = { state: 'error', phase: 'error', current: 0, total: 0, message: '真实世界重建失败' };
   });
 }
 socket.on('bot:agentLoop', (data) => {
@@ -1206,16 +1312,27 @@ async function onProfileUpdated(updated) {
 }
 
 async function createProfile() {
+  if (createProfileSubmitting.value) return;
+  createProfileSubmitting.value = true;
+  createProfileError.value = '';
   const body = {
     name: form.value.name,
+    playMode: form.value.playMode,
     personality: { description: form.value.personality, style: 'lively' },
     server: { host: form.value.host, port: form.value.port, auth: form.value.auth },
   };
-  const res = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const profile = await res.json();
-  profiles.value.push(profile);
-  selectProfile(profile);
-  showCreateForm.value = false;
+  try {
+    const res = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const profile = await res.json();
+    if (!res.ok) throw new Error(profile?.error || `创建伙伴失败（HTTP ${res.status}）`);
+    profiles.value.push(profile);
+    selectProfile(profile);
+    showCreateForm.value = false;
+  } catch (error) {
+    createProfileError.value = error instanceof Error ? error.message : '创建伙伴失败，请稍后重试';
+  } finally {
+    createProfileSubmitting.value = false;
+  }
 }
 
 async function deleteProfile(id) {
@@ -1604,6 +1721,7 @@ onMounted(() => { loadProfiles(); });
 .partner-action-popover button { display:flex; width:100%; align-items:center; gap:7px; padding:8px; cursor:pointer; text-align:left; background:transparent; border:0; border-radius:var(--mc-radius-xs); color:var(--mc-text-secondary); font-size:var(--mc-type-body); }
 .partner-action-popover button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
 .partner-action-popover button.danger { color:var(--mc-danger); }
+.create-partner-error { grid-column:1 / -1; margin:0; color:var(--mc-danger); font-size:var(--mc-type-secondary); line-height:1.5; }
 .partner-current-state { display:flex; align-items:center; justify-content:space-between; margin-top:13px; padding:10px 12px; background:rgba(255,255,255,.025); border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); }
 .partner-current-state > span { color:var(--mc-text-muted); font-size:11px; font-weight:700; }
 .partner-current-state strong { display:flex; align-items:center; gap:8px; color:var(--mc-text-secondary); font-size:11px; }

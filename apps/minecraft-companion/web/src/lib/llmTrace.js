@@ -88,11 +88,13 @@ export function traceEventSummary(event = {}, payload = isPlainObject(event.payl
     case 'interaction.received':
       return firstTraceText(payload.message, payload.sender, '玩家输入');
     case 'llm.request.recorded': {
-      const parts = [firstTraceText(payload.model, payload.provider, '未知模型')];
+      const parts = [firstTraceText(payload.model, payload.provider, '未知模型'), llmApiLabel(payload.api)];
       if (Number.isFinite(payload.messageCount)) parts.push(`${payload.messageCount} messages`);
       if (Number.isFinite(payload.toolCount)) parts.push(`${payload.toolCount} tools`);
+      const replay = formatReplaySummary(payload.replay);
+      if (replay) parts.push(replay);
       if (event.cache?.cacheHitRate != null) parts.push(`命中 ${formatCachePercent(event.cache)}`);
-      return parts.join(' · ');
+      return parts.filter(Boolean).join(' · ');
     }
     case 'llm.response.recorded': {
       const toolNames = traceToolCallNames(payload.toolCalls);
@@ -198,6 +200,24 @@ export function formatCallCache(cache) {
 
 function trimDecimal(value) {
   return value.toFixed(1).replace(/\.0$/, '');
+}
+
+export function llmApiLabel(api) {
+  return api === 'openai-responses' ? 'OpenAI Responses' : 'Chat Completions';
+}
+
+export function formatReplaySummary(replay) {
+  if (!isPlainObject(replay)) return '';
+  const native = Number.isFinite(replay.nativeMessages) ? replay.nativeMessages : 0;
+  const rebuilt = Number.isFinite(replay.rebuiltMessages) ? replay.rebuiltMessages : 0;
+  if (!native && !rebuilt) return '';
+  const parts = [];
+  if (native) parts.push(`${native} native replay`);
+  if (rebuilt) parts.push(`${rebuilt} rebuilt`);
+  if (rebuilt && Array.isArray(replay.reasons) && replay.reasons.length) {
+    parts.push(replay.reasons.slice(0, 2).join(','));
+  }
+  return parts.join(' / ');
 }
 
 function normalizeTraceText(value, limit = 180) {

@@ -93,6 +93,7 @@ export type VisualWorldDelta =
 
 export interface VisualWorldSource {
   isAvailable(): boolean;
+  configure(options: VisualWorldSnapshotOptions): void;
   createBootstrap(options: VisualWorldSnapshotOptions): Promise<VisualWorldBootstrap | null>;
   subscribe(listener: (delta: VisualWorldDelta) => void): Unsubscribe;
 }

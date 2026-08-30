@@ -202,6 +202,69 @@ test('callWithTools snapshot matches provider model payload and request append f
   assert.deepEqual(failures, ['trace_unavailable']);
 });
 
+test('Responses records the exact endpoint and body before dispatch', async () => {
+  const recorder = new Recorder();
+  const originalFetch = globalThis.fetch;
+  let dispatchedUrl = '';
+  let dispatchedBody: unknown;
+  let requestWasDurable = false;
+  globalThis.fetch = (async (input, init) => {
+    dispatchedUrl = String(input);
+    dispatchedBody = JSON.parse(String(init?.body));
+    requestWasDurable = recorder.events[0]?.type === 'llm.request.recorded';
+    return new Response(JSON.stringify({
+      id: 'resp_trace',
+      status: 'completed',
+      output: [{
+        id: 'msg_trace',
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: '完成', annotations: [] }],
+      }],
+      usage: {
+        input_tokens: 12,
+        output_tokens: 3,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 8 },
+        output_tokens_details: { reasoning_tokens: 2 },
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+  try {
+    const client = new LLMClient({
+      apiKey: 'RESPONSES_SECRET_CANARY',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
+      api: 'openai-responses',
+      routeId: 'openai-primary',
+    }, () => {}, { traceRecorder: recorder, createId: () => 'call-responses-trace' });
+
+    const result = await client.callWithTools({
+      messages: [{ role: 'user', content: '给我一块石头' }],
+      tools: [],
+      maxTokens: 321,
+    });
+
+    const request = recorder.events[0]!.payload.request as Record<string, any>;
+    assert.equal(result?.content, '完成');
+    assert.equal(requestWasDurable, true);
+    assert.equal(dispatchedUrl, 'https://api.openai.com/v1/responses');
+    assert.equal(request.api, 'openai-responses');
+    assert.equal(request.routeId, 'openai-primary');
+    assert.equal(request.path, '/responses');
+    assert.deepEqual(request.body, dispatchedBody);
+    assert.deepEqual(request.body.input, [
+      { role: 'user', content: [{ type: 'input_text', text: '给我一块石头' }] },
+    ]);
+    assert.equal(request.body.store, false);
+    assert.equal(request.body.max_output_tokens, 321);
+    assert.equal(JSON.stringify(recorder.events).includes('RESPONSES_SECRET_CANARY'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('provider failure and caller abort close the already-recorded request with distinct events', async () => {
   const failureRecorder = new Recorder();
   const failed = new LLMClient(config, () => {}, {

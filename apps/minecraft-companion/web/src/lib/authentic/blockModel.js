@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 const DIRECTIONS = {
-  west:  { normal: [-1, 0, 0], corners: (f, t) => [[f[0], f[1], t[2]], [f[0], f[1], f[2]], [f[0], t[1], f[2]], [f[0], t[1], t[2]]] },
-  east:  { normal: [1, 0, 0], corners: (f, t) => [[t[0], f[1], f[2]], [t[0], f[1], t[2]], [t[0], t[1], t[2]], [t[0], t[1], f[2]]] },
+  west:  { normal: [-1, 0, 0], reverseWinding: true, corners: (f, t) => [[f[0], f[1], t[2]], [f[0], f[1], f[2]], [f[0], t[1], f[2]], [f[0], t[1], t[2]]] },
+  east:  { normal: [1, 0, 0], reverseWinding: true, corners: (f, t) => [[t[0], f[1], f[2]], [t[0], f[1], t[2]], [t[0], t[1], t[2]], [t[0], t[1], f[2]]] },
   down:  { normal: [0, -1, 0], corners: (f, t) => [[f[0], f[1], f[2]], [t[0], f[1], f[2]], [t[0], f[1], t[2]], [f[0], f[1], t[2]]] },
   up:    { normal: [0, 1, 0], corners: (f, t) => [[f[0], t[1], t[2]], [t[0], t[1], t[2]], [t[0], t[1], f[2]], [f[0], t[1], f[2]]] },
   north: { normal: [0, 0, -1], corners: (f, t) => [[t[0], f[1], f[2]], [f[0], f[1], f[2]], [f[0], t[1], f[2]], [t[0], t[1], f[2]]] },
@@ -49,6 +49,7 @@ export function bakeMinecraftBlockModel(model, application = {}, options = {}) {
   const materialIndex = new Map();
   const geometry = new THREE.BufferGeometry();
   const faceDirections = [];
+  const faceTintIndices = [];
   let transparent = false;
 
   for (const element of model?.elements ?? []) {
@@ -67,16 +68,24 @@ export function bakeMinecraftBlockModel(model, application = {}, options = {}) {
       }
 
       const vertexOffset = positions.length / 3;
-      for (const corner of definition.corners(from, to)) {
-        const point = transformPoint(corner, element.rotation, application);
+      const corners = definition.corners(from, to);
+      const transformedCorners = corners.map(corner => transformPoint(corner, element.rotation, application));
+      for (const point of transformedCorners) {
         positions.push(point.x, point.y, point.z);
         const normal = transformNormal(definition.normal, element.rotation, application);
         normals.push(normal.x, normal.y, normal.z);
       }
-      uvs.push(...faceUvs(face.uv, face.rotation));
-      indices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2, vertexOffset, vertexOffset + 2, vertexOffset + 3);
+      const rawUv = face.uv ?? defaultFaceUv(direction, from, to);
+      uvs.push(...(application.uvlock
+        ? lockedFaceUvs(transformedCorners, transformedDirection(direction, application), face.rotation)
+        : faceUvs(rawUv, face.rotation)));
+      const faceIndices = definition.reverseWinding
+        ? [0, 2, 1, 0, 3, 2]
+        : [0, 1, 2, 0, 2, 3];
+      indices.push(...faceIndices.map(index => vertexOffset + index));
       geometry.addGroup(indices.length - 6, 6, slot);
-      faceDirections.push(direction);
+      faceDirections.push(face.cullface ? transformedDirection(face.cullface, application) : null);
+      faceTintIndices.push(Number.isInteger(face.tintindex) ? face.tintindex : null);
     }
   }
 
@@ -89,6 +98,7 @@ export function bakeMinecraftBlockModel(model, application = {}, options = {}) {
   geometry.userData.materialKeys = materialKeys;
   geometry.userData.transparent = transparent;
   geometry.userData.faceDirections = faceDirections;
+  geometry.userData.faceTintIndices = faceTintIndices;
   return { geometry, materialKeys, transparent };
 }
 
@@ -157,8 +167,9 @@ function transformNormal(raw, elementRotation, application) {
 }
 
 function applyApplicationRotation(vector, application) {
-  if (application.x) vector.applyAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(Number(application.x)));
-  if (application.y) vector.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(Number(application.y)));
+  if (application.x) vector.applyAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(-Number(application.x)));
+  if (application.y) vector.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(-Number(application.y)));
+  if (application.z) vector.applyAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(-Number(application.z)));
 }
 
 function axisVector(axis) {
@@ -174,4 +185,59 @@ function faceUvs(rawUv, rotation = 0) {
   const turns = (((Number(rotation) || 0) / 90) % 4 + 4) % 4;
   for (let i = 0; i < turns; i++) corners.unshift(corners.pop());
   return corners.flat();
+}
+
+function defaultFaceUv(direction, from, to) {
+  switch (direction) {
+    case 'down': return [from[0], 16 - to[2], to[0], 16 - from[2]];
+    case 'up': return [from[0], from[2], to[0], to[2]];
+    case 'north': return [16 - to[0], 16 - to[1], 16 - from[0], 16 - from[1]];
+    case 'south': return [from[0], 16 - to[1], to[0], 16 - from[1]];
+    case 'west': return [16 - to[2], 16 - to[1], 16 - from[2], 16 - from[1]];
+    case 'east': return [from[2], 16 - to[1], to[2], 16 - from[1]];
+    default: return [0, 0, 16, 16];
+  }
+}
+
+function lockedFaceUvs(points, direction, rotation = 0) {
+  const radians = THREE.MathUtils.degToRad(Number(rotation) || 0);
+  const cos = Math.cos(radians);
+  const sin = -Math.sin(radians);
+  return points.flatMap(point => {
+    const [rawU, rawV] = projectUv(direction, point);
+    const centeredU = rawU - 8;
+    const centeredV = rawV - 8;
+    const u = centeredU * cos - centeredV * sin + 8;
+    const v = centeredU * sin + centeredV * cos + 8;
+    return [u / 16, 1 - v / 16];
+  });
+}
+
+function projectUv(direction, centeredPoint) {
+  const x = (centeredPoint.x + 0.5) * 16;
+  const y = (centeredPoint.y + 0.5) * 16;
+  const z = (centeredPoint.z + 0.5) * 16;
+  switch (direction) {
+    case 'down': return [x, 16 - z];
+    case 'up': return [x, z];
+    case 'north': return [16 - x, 16 - y];
+    case 'south': return [x, 16 - y];
+    case 'west': return [16 - z, 16 - y];
+    case 'east': return [z, 16 - y];
+    default: return [x, 16 - y];
+  }
+}
+
+function transformedDirection(direction, application) {
+  const definition = DIRECTIONS[direction];
+  if (!definition) return null;
+  const normal = new THREE.Vector3(...definition.normal);
+  applyApplicationRotation(normal, application);
+  const axes = [
+    ['west', -normal.x], ['east', normal.x],
+    ['down', -normal.y], ['up', normal.y],
+    ['north', -normal.z], ['south', normal.z],
+  ];
+  axes.sort((left, right) => right[1] - left[1]);
+  return axes[0][1] > 0.999 ? axes[0][0] : null;
 }

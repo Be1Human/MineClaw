@@ -26,6 +26,8 @@ import type { GoalCapabilityKnowledgePort } from '../../decision/goalAgentPort/g
 import type { ColdStartPlannerPort } from '../planner/planGraphBuilder.js';
 import { projectGoalAgentProgressReport } from './goalAgentProgressProjector.js';
 import { GoalAgentReflectionWorker } from './goalAgentReflectionWorker.js';
+import { GoalAgentContextCompiler } from './goalAgentContextCompiler.js';
+import type { GamePresenceState } from '../../gamePresenceContext.js';
 
 export interface GoalAgentOptions {
   profileId: string;
@@ -42,6 +44,7 @@ export interface GoalAgentOptions {
   sessionTimeoutMs?: number;
   /** Cooperative scheduling slice; yielding preserves the same GoalAgent session. */
   maxRoundsPerRun?: number;
+  getGamePresence?: () => GamePresenceState;
   publishEvent?: (event: GoalAgentLoopEvent) => void;
   publishReport?: (report: GoalReportV2) => void;
   onState?: (state: Readonly<GoalAgentStateV1>, event: GoalAgentLoopEvent) => void;
@@ -88,6 +91,7 @@ export class GoalAgent {
     this.store = new GoalAgentSessionStore(options.stateDbPath);
     const model = new GoalAgentModelRuntime(options.modelClient, {
       eventLog: this.store,
+      compiler: new GoalAgentContextCompiler({ getGamePresence: options.getGamePresence }),
       trace: trace => options.publishEvent?.({
         type: 'goalagent.model.called',
         sessionId: trace.sessionId,

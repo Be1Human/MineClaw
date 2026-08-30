@@ -40,6 +40,7 @@ export interface GoalAgentModelTrace {
   omittedHistoryMessages: number;
   promptTokens: number;
   completionTokens: number;
+  tokenUsageSource?: 'provider' | 'estimated' | 'mixed';
 }
 
 export interface GoalAgentModelRuntimeOptions {
@@ -56,6 +57,7 @@ export interface GoalAgentTerminalReflectionResult {
   summary: string;
   promptTokens: number;
   completionTokens: number;
+  tokenUsageSource?: 'provider' | 'estimated' | 'mixed';
 }
 
 export class GoalAgentModelBudgetExceededError extends Error {
@@ -191,6 +193,9 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
     }
 
     const normalizedContent = raw.content.trim() || JSON.stringify({ toolCalls: raw.toolCalls });
+    const estimatedPromptTokens = estimateTokens(compiled.messages.map(message => message.content).join('\n'));
+    const estimatedCompletionTokens = estimateTokens(normalizedContent);
+    const usage = selectTokenUsage(raw, estimatedPromptTokens, estimatedCompletionTokens);
     this.eventLog.appendSessionEvent({
       eventId: `${state.sessionId}:model-response:${callId}`,
       sessionId: state.sessionId,
@@ -204,13 +209,16 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
         modelCallIndex,
         content: raw.content,
         toolCalls: structuredClone(raw.toolCalls),
+        ...(raw.usage ? { usage: structuredClone(raw.usage) } : {}),
+        ...(raw.canonical ? { canonical: structuredClone(raw.canonical) } : {}),
+        tokenUsageSource: usage.source,
       },
     });
     const toolCalls = structuredClone(raw.toolCalls);
     const value = invocation.parse(normalizedContent, toolCalls);
     const assistant = assistantMessage(raw);
-    const promptTokens = estimateTokens(compiled.messages.map(message => message.content).join('\n'));
-    const completionTokens = estimateTokens(normalizedContent);
+    const promptTokens = usage.promptTokens;
+    const completionTokens = usage.completionTokens;
     const replayInstruction = invocation.historyInstruction?.trim();
     const historyInstructionMessage: LLMChatMessage = replayInstruction
       ? {
@@ -235,6 +243,7 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       omittedHistoryMessages: compiled.omittedHistoryMessages,
       promptTokens,
       completionTokens,
+      tokenUsageSource: usage.source,
     };
     this.options.trace?.(trace);
     return {
@@ -245,6 +254,7 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       budget: next.budget,
       promptTokens,
       completionTokens,
+      tokenUsageSource: usage.source,
       modelCallIndex,
       contextRevision: state.revision,
       toolCalls,
@@ -329,6 +339,9 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       this.recordModelFailure(state, 'terminal', callId, modelCallIndex, error);
       throw error;
     }
+    const estimatedPromptTokens = estimateTokens(compiled.messages.map(message => message.content).join('\n'));
+    const estimatedCompletionTokens = estimateTokens(raw.content);
+    const usage = selectTokenUsage(raw, estimatedPromptTokens, estimatedCompletionTokens);
     this.eventLog.appendSessionEvent({
       eventId: `${state.sessionId}:model-response:${callId}`,
       sessionId: state.sessionId,
@@ -340,17 +353,21 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       payload: {
         callId, modelCallIndex, purpose: 'quarantined_reflection',
         content: raw.content, toolCalls: structuredClone(raw.toolCalls),
+        ...(raw.usage ? { usage: structuredClone(raw.usage) } : {}),
+        ...(raw.canonical ? { canonical: structuredClone(raw.canonical) } : {}),
+        tokenUsageSource: usage.source,
       },
     });
     const summary = reflectionSummary(raw.content);
-    const promptTokens = estimateTokens(compiled.messages.map(message => message.content).join('\n'));
-    const completionTokens = estimateTokens(raw.content);
+    const promptTokens = usage.promptTokens;
+    const completionTokens = usage.completionTokens;
     this.options.trace?.({
       callId, sessionId: state.sessionId, node: 'terminal', contextRevision: state.revision,
       modelCallIndex, epoch: state.epoch, projectedMessages: compiled.projectedHistoryMessages,
       omittedHistoryMessages: compiled.omittedHistoryMessages, promptTokens, completionTokens,
+      tokenUsageSource: usage.source,
     });
-    return { callId, modelCallIndex, summary, promptTokens, completionTokens };
+    return { callId, modelCallIndex, summary, promptTokens, completionTokens, tokenUsageSource: usage.source };
   }
 
   private recordModelFailure(
@@ -395,6 +412,23 @@ function assistantMessage(result: LLMToolCallResult): LLMChatMessage {
   return {
     role: 'assistant',
     content: result.content,
+    ...(result.canonical
+      ? {
+          canonical: {
+            role: 'assistant' as const,
+            content: structuredClone(result.canonical.content),
+            ...(result.canonical.replay
+              ? {
+                  source: {
+                    providerRoute: result.canonical.replay.providerRoute,
+                    model: result.canonical.replay.model,
+                    replay: structuredClone(result.canonical.replay),
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(result.toolCalls.length
       ? {
           tool_calls: result.toolCalls.map(call => ({
@@ -405,6 +439,34 @@ function assistantMessage(result: LLMToolCallResult): LLMChatMessage {
         }
       : {}),
   };
+}
+
+function selectTokenUsage(
+  result: LLMToolCallResult,
+  estimatedPromptTokens: number,
+  estimatedCompletionTokens: number,
+): {
+  promptTokens: number;
+  completionTokens: number;
+  source: 'provider' | 'estimated' | 'mixed';
+} {
+  const reportedPrompt = validTokenCount(result.usage?.inputTokens);
+  const reportedCompletion = validTokenCount(result.usage?.outputTokens);
+  return {
+    promptTokens: reportedPrompt ?? estimatedPromptTokens,
+    completionTokens: reportedCompletion ?? estimatedCompletionTokens,
+    source: reportedPrompt !== undefined && reportedCompletion !== undefined
+      ? 'provider'
+      : reportedPrompt === undefined && reportedCompletion === undefined
+        ? 'estimated'
+        : 'mixed',
+  };
+}
+
+function validTokenCount(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined;
 }
 
 function totalTokens(state: Readonly<GoalAgentStateV1>): number {

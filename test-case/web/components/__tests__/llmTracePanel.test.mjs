@@ -12,8 +12,10 @@ import {
   formatCachePercent,
   formatCacheSummary,
   formatCallCache,
+  formatReplaySummary,
   formatTraceJson,
   formatTraceTokens,
+  llmApiLabel,
   mergeTraceEvents,
   orderTraceEventsNewestFirst,
   traceEventPresentation,
@@ -63,6 +65,10 @@ test('轨迹工作台包含三段式视图、五页签、完整复制和窄屏�
   assert.match(source, /本轮/);
   assert.match(source, /Timing \/ Usage/);
   assert.match(source, /cacheEligibleInputTokens/);
+  assert.match(source, /reasoningOutputTokens/);
+  assert.match(source, /cacheWriteInputTokens/);
+  assert.match(source, /openai-responses/);
+  assert.match(source, /body\?\.input/);
   assert.match(source, /对话累计/);
   assert.match(source, /全部回合/);
   assert.match(source, /selectedTurn/);
@@ -93,8 +99,17 @@ test('轨迹展示投影提供单行类型、Agent 之外的行为语义和工�
   });
   assert.deepEqual(
     { kind: request.kind, label: request.label, summary: request.summary },
-    { kind: 'model', label: '模型请求', summary: 'deepseek-chat · 12 messages · 8 tools · 命中 73.6%' },
+    { kind: 'model', label: '模型请求', summary: 'deepseek-chat · Chat Completions · 12 messages · 8 tools · 命中 73.6%' },
   );
+
+  const responsesRequest = traceEventPresentation({
+    type: 'llm.request.recorded',
+    payload: {
+      model: 'gpt-5.4', api: 'openai-responses', messageCount: 5, toolCount: 2,
+      replay: { nativeMessages: 1, rebuiltMessages: 1, reasons: ['model-mismatch'] },
+    },
+  });
+  assert.equal(responsesRequest.summary, 'gpt-5.4 · OpenAI Responses · 5 messages · 2 tools · 1 native replay / 1 rebuilt / model-mismatch');
 
   const tool = traceEventPresentation({
     type: 'tool.call', payload: { name: 'owner_ask', arguments: { item: '石镐', note: '要\n一把' } },
@@ -163,6 +178,9 @@ test('缓存指标格式化区分真实零命中、未提供和数据覆盖率',
   assert.equal(formatCallCache({ cacheStatus: 'reported', cacheHitRate: 0.736, usage: { cachedInputTokens: 8_200, cacheEligibleInputTokens: 11_500 } }), '命中 73.6% · 8.2k/11.5k');
   assert.equal(cacheStatusText('unavailable'), '不可用');
   assert.equal(formatTraceTokens(1_500_000), '1.5m');
+  assert.equal(llmApiLabel('openai-responses'), 'OpenAI Responses');
+  assert.equal(llmApiLabel(undefined), 'Chat Completions');
+  assert.equal(formatReplaySummary({ nativeMessages: 2, rebuiltMessages: 0, reasons: [] }), '2 native replay');
 });
 
 test('10,000 事件合并窗口有界、去重且可分别保留最新或最早页', () => {

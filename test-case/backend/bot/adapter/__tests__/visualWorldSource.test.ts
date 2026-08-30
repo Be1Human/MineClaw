@@ -23,7 +23,7 @@ test('FEAT-WEBUI-27-002 | 区段编码保留方块状态、属性、光照、生
   };
   const registry = {
     blocksByStateId: { 0: { name: 'air' }, 1: { name: 'oak_log' } },
-    biomesById: { 4: { name: 'forest' } },
+    biomes: { 4: { name: 'forest' } },
   };
 
   const section = encodeVisualSection(column as never, registry, 2, 0, -3);
@@ -123,6 +123,57 @@ test('FEAT-WEBUI-27-002 | bootstrap 带版本化 session/seq 且只编码视距�
   source.rebind(null);
 });
 
+test('BUG-WEBUI-28-001 | 实时列和方块只发布宽视野窗口，传送后旧窗口退出', async () => {
+  const botEntity = visualEntityFixture(1, { type: 'player', username: 'Bot', name: 'player' });
+  const column = emptyColumn();
+  const bot = Object.assign(new EventEmitter(), {
+    entity: botEntity,
+    game: { minY: 0, height: 16, dimension: 'overworld' },
+    version: '1.21.1',
+    registry: { blocksByStateId: { 0: { name: 'air' }, 1: { name: 'stone' } }, biomes: { 1: { name: 'plains' } } },
+    entities: { 1: botEntity },
+    players: {},
+    time: { timeOfDay: 6_000 }, isRaining: false, thunderState: 0,
+    world: {
+      getColumns: () => [],
+      getColumn: (chunkX: number, chunkZ: number) => (chunkZ === 0 && (chunkX === 3 || chunkX === 13) ? column : null),
+    },
+  });
+  const source = new MineflayerVisualWorldSource();
+  const deltas: VisualWorldDelta[] = [];
+  source.rebind(bot as never);
+  const unsubscribe = source.subscribe(delta => deltas.push(delta));
+  const snapshot = await source.createBootstrap({ viewDistanceChunks: 3, entityRenderDistance: 96 });
+  assert.equal(snapshot?.viewDistanceChunks, 3);
+  deltas.length = 0;
+
+  bot.emit('chunkColumnLoad', { x: 4 * 16, z: 0 });
+  bot.emit('blockUpdate', null, visualBlockFixture(4 * 16, 64, 0));
+  await settleAsyncWork();
+  assert.equal(deltas.length, 0, '半径 3 外的实时事件不得发布');
+
+  bot.emit('chunkColumnLoad', { x: 3 * 16, z: 0 });
+  bot.emit('blockUpdate', null, visualBlockFixture(3 * 16, 64, 0));
+  await settleAsyncWork();
+  assert.ok(deltas.some(delta => delta.kind === 'column_replace' && delta.chunkX === 3));
+  assert.ok(deltas.some(delta => delta.kind === 'block' && Math.floor(delta.position.x / 16) === 3));
+  deltas.length = 0;
+
+  bot.entity.position.x = 10 * 16;
+  bot.emit('move');
+  await settleAsyncWork();
+  assert.equal(deltas.filter(delta => delta.kind === 'column_unload').length, 49, '无重叠传送应完整卸载旧的 7×7 窗口');
+  assert.ok(deltas.some(delta => delta.kind === 'column_replace' && delta.chunkX === 13), '新窗口已加载列应渐进替换');
+
+  deltas.length = 0;
+  bot.emit('blockUpdate', null, visualBlockFixture(0, 64, 0));
+  bot.emit('blockUpdate', null, visualBlockFixture(10 * 16, 64, 0));
+  assert.deepEqual(deltas.filter(delta => delta.kind === 'block').map(delta => Math.floor(delta.position.x / 16)), [10]);
+
+  unsubscribe();
+  source.rebind(null);
+});
+
 function emptyColumn() {
   return {
     getBlockStateId: () => 0,
@@ -140,4 +191,15 @@ function visualEntityFixture(id: number, overrides: Record<string, unknown> = {}
     getDroppedItem: () => null,
     ...overrides,
   };
+}
+
+function visualBlockFixture(x: number, y: number, z: number) {
+  return {
+    position: { x, y, z }, stateId: 1, name: 'stone', light: 0, skyLight: 15,
+    biome: { id: 1 }, getProperties: () => ({}),
+  };
+}
+
+async function settleAsyncWork(turns = 24) {
+  for (let index = 0; index < turns; index += 1) await new Promise(resolve => setImmediate(resolve));
 }

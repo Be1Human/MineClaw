@@ -5,8 +5,11 @@
  * - 每个厂商实现一个 LLMProvider 文件（OCP：加新厂商只需新建文件 + 注册一行）
  * - 上层（Brain / LLMClient）不感知具体厂商
  */
+import type { LlmApi } from '../../../../llm/api.js';
 
 export interface LLMCallOptions {
+  routeId: string;
+  api: LlmApi;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -51,6 +54,8 @@ export interface LLMUsage {
   cachedInputTokens?: number;
   cacheMissInputTokens?: number;
   cacheEligibleInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  reasoningOutputTokens?: number;
   cacheStatus: LLMCacheMetricStatus;
   /** 稳定字段族，不保存完整 Provider 原始响应。 */
   source: string;
@@ -61,6 +66,8 @@ export interface LLMProviderResult<T> {
   value: T;
   usage: LLMUsage;
   finishReason?: string;
+  /** Protocol-neutral result used by migrated callers; legacy callers keep `value`. */
+  canonical?: CanonicalLlmResult;
 }
 
 export type LLMProviderCallResult = string | null | LLMProviderResult<string | null>;
@@ -97,6 +104,11 @@ export interface LLMToolSchema {
 export interface LLMChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /**
+   * Protocol-neutral durable form. GoalAgent persists this alongside the
+   * compatibility fields so Responses output items can be replayed safely.
+   */
+  canonical?: CanonicalLlmMessage;
   /** assistant 选择调用的工具列表 */
   tool_calls?: Array<{
     id: string;
@@ -108,6 +120,8 @@ export interface LLMChatMessage {
 }
 
 export interface LLMToolCallOptions {
+  routeId: string;
+  api: LlmApi;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -129,4 +143,67 @@ export interface LLMToolCallResult {
   }>;
   /** LLM 直接文字回复 · 无工具调用时使用 */
   content: string;
+  /** Actual provider usage when the provider reports it. */
+  usage?: LLMUsage;
+  /** Structured result and optional provider-native replay envelope. */
+  canonical?: CanonicalLlmResult;
 }
+
+// ── Protocol-neutral Agent contract ────────────────────────────────────────
+
+export type LlmContentBlock =
+  | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'tool-call'; id: string; name: string; arguments: unknown }
+  | { kind: 'tool-result'; callId: string; output: string };
+
+export interface LlmReplayEnvelope {
+  kind: 'openai-native';
+  version: 1;
+  api: LlmApi;
+  providerRoute: string;
+  model: string;
+  response?: Record<string, unknown>;
+  /** Opaque native metadata aligned one-to-one with the canonical blocks. */
+  blocks: Array<Record<string, unknown> | null>;
+}
+
+export interface CanonicalLlmMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: LlmContentBlock[];
+  source?: {
+    providerRoute: string;
+    model: string;
+    replay?: LlmReplayEnvelope;
+  };
+}
+
+export interface CanonicalLlmTool {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface CanonicalLlmCall {
+  messages: CanonicalLlmMessage[];
+  tools: CanonicalLlmTool[];
+  toolChoice?: 'auto' | 'none' | { name: string };
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface CanonicalLlmResult {
+  content: LlmContentBlock[];
+  usage: LLMUsage;
+  finishReason?: string;
+  replay?: LlmReplayEnvelope;
+}
+
+export type LlmStreamChunk =
+  | { type: 'block-start'; index: number; block: LlmContentBlock }
+  | { type: 'block-delta'; index: number; delta: string }
+  | { type: 'block-end'; index: number; block: LlmContentBlock }
+  | { type: 'usage'; usage: LLMUsage }
+  | { type: 'finish'; result: CanonicalLlmResult };

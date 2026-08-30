@@ -16,6 +16,7 @@ export class AuthenticEnvironmentRenderer {
     this.originalBackground = null;
     this.originalFog = null;
     this.originalLightIntensities = new Map();
+    this.ambientFillLight = null;
     this.rain = null;
   }
 
@@ -29,6 +30,7 @@ export class AuthenticEnvironmentRenderer {
       });
     }
     this.active = true;
+    this.ensureAmbientFillLight();
     this.update(environment, center);
   }
 
@@ -45,6 +47,8 @@ export class AuthenticEnvironmentRenderer {
     const baseDensity = this.config.fogDensity?.[densityKey] ?? this.config.fogDensity?.overworld ?? 0.004;
     const density = baseDensity * (environment.isRaining ? this.config.rainFogMultiplier : 1);
     this.scene.fog = new THREE.FogExp2(fogColor, density);
+    this.ensureAmbientFillLight();
+    this.ambientFillLight.intensity = Math.max(0, Number(this.config.ambientFillLightIntensity ?? 0.5));
     for (const [light, original] of this.originalLightIntensities) {
       light.intensity = original * dimension.light * (0.25 + daylight * 0.75)
         * (environment.isRaining ? 0.72 : 1) * (1 - thunder * 0.45);
@@ -56,6 +60,20 @@ export class AuthenticEnvironmentRenderer {
     if (environment.isRaining) this.ensureRain();
     else this.removeRain();
     this.positionRain();
+  }
+
+  ensureAmbientFillLight() {
+    if (this.ambientFillLight) return;
+    this.ambientFillLight = new THREE.HemisphereLight(0xc9ddff, 0x59493b, 0);
+    this.ambientFillLight.name = 'authenticAmbientFill';
+    this.scene.add(this.ambientFillLight);
+  }
+
+  removeAmbientFillLight() {
+    if (!this.ambientFillLight) return;
+    this.scene.remove(this.ambientFillLight);
+    this.ambientFillLight.dispose();
+    this.ambientFillLight = null;
   }
 
   tick(deltaSeconds = 1 / 60) {
@@ -105,6 +123,7 @@ export class AuthenticEnvironmentRenderer {
   deactivate() {
     if (!this.active) return;
     this.removeRain();
+    this.removeAmbientFillLight();
     this.scene.background = this.originalBackground;
     this.scene.fog = this.originalFog;
     for (const [light, intensity] of this.originalLightIntensities) light.intensity = intensity;

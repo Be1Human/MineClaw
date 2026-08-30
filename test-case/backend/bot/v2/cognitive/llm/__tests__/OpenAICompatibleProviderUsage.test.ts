@@ -50,6 +50,7 @@ test('OpenAI-compatible Provider 为普通调用和工具调用返回统一 usag
   try {
     const provider = new OpenAICompatibleProvider();
     const plain = await provider.call({
+      routeId: 'test', api: 'openai-completions',
       apiKey: 'secret', baseUrl: 'https://example.test/v1', model: 'model', user: 'hi',
     });
     assert.equal(isLLMProviderResult<string | null>(plain), true);
@@ -60,6 +61,7 @@ test('OpenAI-compatible Provider 为普通调用和工具调用返回统一 usag
     assert.equal(plainResult.usage.cacheEligibleInputTokens, 100);
 
     const tools = await provider.callWithTools({
+      routeId: 'test', api: 'openai-completions',
       apiKey: 'secret', baseUrl: 'https://example.test/v1', model: 'model',
       messages: [{ role: 'user', content: 'speak' }],
       tools: [],

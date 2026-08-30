@@ -103,5 +103,49 @@ export function validateCharacterCard(value: unknown): CharacterCardValidationEr
       errors.push({ path: `performance.capabilities.${name}`, code: 'invalid', message: '能力开关必须是布尔值' });
     }
   }
+  validateProactiveCapabilities(errors, card.performance?.proactiveCapabilities);
   return errors;
+}
+
+function validateProactiveCapabilities(
+  errors: CharacterCardValidationError[],
+  value: CharacterCardV1['performance']['proactiveCapabilities'],
+): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push({ path: 'performance.proactiveCapabilities', code: 'invalid', message: '主动能力配置必须是对象' });
+    return;
+  }
+  const entries = Object.entries(value);
+  if (entries.length > 100) {
+    errors.push({ path: 'performance.proactiveCapabilities', code: 'too_many', message: '主动能力配置最多 100 项' });
+  }
+  for (const [capabilityId, preference] of entries) {
+    const base = `performance.proactiveCapabilities.${capabilityId}`;
+    if (!capabilityId.trim() || capabilityId.length > LIMITS.short) {
+      errors.push({ path: base, code: 'invalid', message: '主动能力 ID 无效' });
+      continue;
+    }
+    if (!preference || typeof preference !== 'object' || Array.isArray(preference)) {
+      errors.push({ path: base, code: 'invalid', message: '主动能力配置项必须是对象' });
+      continue;
+    }
+    if (preference.enabled !== undefined && typeof preference.enabled !== 'boolean') {
+      errors.push({ path: `${base}.enabled`, code: 'invalid', message: '主动能力开关必须是布尔值' });
+    }
+    if (preference.config === undefined) continue;
+    if (!preference.config || typeof preference.config !== 'object' || Array.isArray(preference.config)) {
+      errors.push({ path: `${base}.config`, code: 'invalid', message: '主动能力参数必须是对象' });
+      continue;
+    }
+    for (const [key, configValue] of Object.entries(preference.config)) {
+      if (!key.trim() || key.length > LIMITS.short) {
+        errors.push({ path: `${base}.config.${key}`, code: 'invalid', message: '主动能力参数名无效' });
+      }
+      if (!['boolean', 'number', 'string'].includes(typeof configValue)
+        || (typeof configValue === 'number' && !Number.isFinite(configValue))) {
+        errors.push({ path: `${base}.config.${key}`, code: 'invalid', message: '主动能力参数只支持布尔、有限数字或文本' });
+      }
+    }
+  }
 }

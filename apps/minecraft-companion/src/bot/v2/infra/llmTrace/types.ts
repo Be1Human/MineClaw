@@ -43,8 +43,19 @@ export interface TraceContextOmission extends TraceContextSourceRef {
 
 export interface LlmRequestEnvelopeV1 {
   provider: string;
+  /** Missing on historical events; readers must treat absence as Chat Completions. */
+  api?: 'openai-completions' | 'openai-responses';
+  routeId?: string;
   baseUrlOrigin?: string;
   model: string;
+  /** Exact endpoint and JSON body durably recorded before provider dispatch. */
+  path?: string;
+  body?: LlmTraceJsonValue;
+  replay?: {
+    nativeMessages: number;
+    rebuiltMessages: number;
+    reasons: string[];
+  };
   messages: LlmTraceJsonValue[];
   tools: LlmTraceJsonValue[];
   toolChoice?: LlmTraceJsonValue;

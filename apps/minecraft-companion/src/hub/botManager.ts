@@ -4,6 +4,7 @@ import type { ChatMeta } from '../bot/v2/decision/speechThinkingCorrelator.js';
 import type { BotProfile } from './profileStore.js';
 import type { CompanionCoreState, InitiativePolicy } from '../bot/v2/companion/companionCore.js';
 import type { ChatMessage, FactKind, FactStatus, MemoryFact } from '../bot/v2/infra/chatMemory.js';
+import type { MemorySlotValue, MemorySlotView } from '../bot/v2/memory/profileSlots/index.js';
 import type { RunSummary, RunTraceEvent } from '../bot/v2/bench/runRecorder.js';
 import type {
   LlmTraceAgent,
@@ -36,7 +37,7 @@ export class BotManager {
     skinSyncRun: number;
   }>();
   private readonly skinSyncService: SkinSyncService;
-  defaultLlm: { apiKey: string; baseUrl: string; model: string } | null = null;
+  defaultLlm: { apiKey: string; baseUrl: string; model: string; api?: import('../llm/api.js').LlmApi } | null = null;
 
   constructor(
     private readonly dataDir = 'data',
@@ -181,7 +182,7 @@ export class BotManager {
     if (profile.llmConfigId) {
       const config = this.llmAgentConfigStore?.get(profile.llmConfigId);
       if (!config) throw new Error(`LLM Agent configuration not found: ${profile.llmConfigId}`);
-      return resolveProfileLlmConfig(config, this.defaultLlm);
+      return { ...resolveProfileLlmConfig(config, this.defaultLlm), routeId: config.id };
     }
     if (profile.llm) return resolveProfileLlmConfig(profile.llm, this.defaultLlm);
     return undefined;
@@ -294,6 +295,42 @@ export class BotManager {
     return this.instances.get(botId)?.runtime.getRecentChatMessages(limit) ?? null;
   }
 
+  getChatMemorySlotCatalog(botId: string, input: { group?: string; filledOnly?: boolean; status?: FactStatus } = {}): MemorySlotView[] | null {
+    return this.instances.get(botId)?.runtime.getChatMemorySlotCatalog(input) ?? null;
+  }
+
+  getChatMemorySlotValues(botId: string, input: { status?: FactStatus; slotKey?: string; query?: string } = {}): MemorySlotValue[] | null {
+    return this.instances.get(botId)?.runtime.getChatMemorySlotValues(input) ?? null;
+  }
+
+  putChatMemorySlotValue(botId: string, slotKey: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    return this.instances.get(botId)?.runtime.putChatMemorySlotValue(slotKey, value) ?? null;
+  }
+
+  replaceChatMemorySlotValue(botId: string, id: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    return this.instances.get(botId)?.runtime.replaceChatMemorySlotValue(id, value) ?? null;
+  }
+
+  removeChatMemorySlotValue(botId: string, id: string): boolean | null {
+    return this.instances.get(botId)?.runtime.removeChatMemorySlotValue(id) ?? null;
+  }
+
+  restoreChatMemorySlotValue(botId: string, id: string): MemorySlotValue | null {
+    return this.instances.get(botId)?.runtime.restoreChatMemorySlotValue(id) ?? null;
+  }
+
+  getChatMemorySlotValueSources(botId: string, id: string): ChatMessage[] | null {
+    return this.instances.get(botId)?.runtime.getChatMemorySlotValueSources(id) ?? null;
+  }
+
+  previewChatMemorySlotMigration(botId: string): import('../bot/v2/infra/chatMemory.js').LegacyFactSlotMigrationPreview[] | null {
+    return this.instances.get(botId)?.runtime.previewChatMemorySlotMigration() ?? null;
+  }
+
+  applyChatMemorySlotMigration(botId: string): { migrated: number; dynamicCandidates: number; rejected: number } | null {
+    return this.instances.get(botId)?.runtime.applyChatMemorySlotMigration() ?? null;
+  }
+
   addChatMemoryFact(botId: string, input: {
     scope?: 'user' | 'agent'; kind: FactKind; text: string; confidence?: number; importance?: number; sourceMessageIds?: string[];
   }): MemoryFact | { rejected: string } | null {
@@ -306,6 +343,18 @@ export class BotManager {
 
   removeChatMemoryFact(botId: string, id: string): boolean | null {
     return this.instances.get(botId)?.runtime.removeChatMemoryFact(id) ?? null;
+  }
+
+  approveChatMemoryFact(botId: string, id: string): MemoryFact | null {
+    return this.instances.get(botId)?.runtime.approveChatMemoryFact(id) ?? null;
+  }
+
+  rejectChatMemoryFact(botId: string, id: string): boolean | null {
+    return this.instances.get(botId)?.runtime.rejectChatMemoryFact(id) ?? null;
+  }
+
+  mapChatMemoryFactToSlot(botId: string, id: string, slotKey: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    return this.instances.get(botId)?.runtime.mapChatMemoryFactToSlot(id, slotKey, value) ?? null;
   }
 
   restoreChatMemoryFact(botId: string, id: string): MemoryFact | null {

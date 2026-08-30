@@ -3,6 +3,11 @@ import type {
   CapabilityPackageEnvironment,
   CapabilityPackageSnapshot,
 } from './types.js';
+import type {
+  ProactiveConfigFieldDefinition,
+  ProactiveTickManifestEntry,
+  RegisteredProactiveTickCapability,
+} from '../proactive/contracts.js';
 
 /**
  * Startup-only registry. Validation is completed before any map is mutated,
@@ -15,6 +20,7 @@ export class CapabilityPackageRegistry {
   private readonly providerIds = new Set<string>();
   private readonly worldFactProviderIds = new Set<string>();
   private readonly evaluatorIds = new Set<string>();
+  private readonly proactiveTickIds = new Set<string>();
   private readonly atomicIds: Set<string>;
   private readonly strategyIds: Set<string>;
   private readonly skillNames: Set<string>;
@@ -56,11 +62,17 @@ export class CapabilityPackageRegistry {
     const packageWorldFactProviderIds = ids(definition.worldFactProviders ?? [], 'world fact provider');
     const packageEvaluatorIds = ids(definition.predicateEvaluators, 'predicate evaluator');
     const packageTargetIds = targets.map(target => requiredId(target.registryId, 'goal target'));
+    const proactiveManifests = definition.manifest.proactiveTicks ?? [];
+    const proactiveImplementations = definition.proactiveTicks ?? [];
+    const proactiveManifestIds = proactiveManifests.map(value => requiredId(value.id, 'proactive Tick manifest'));
+    const proactiveImplementationIds = proactiveImplementations.map(value => requiredId(value.id, 'proactive Tick implementation'));
     rejectLocalDuplicates(packageBehaviorIds, 'behavior');
     rejectLocalDuplicates(packageProviderIds, 'action provider');
     rejectLocalDuplicates(packageWorldFactProviderIds, 'world fact provider');
     rejectLocalDuplicates(packageEvaluatorIds, 'predicate evaluator');
     rejectLocalDuplicates(packageTargetIds, 'goal target');
+    rejectLocalDuplicates(proactiveManifestIds, 'proactive Tick manifest');
+    rejectLocalDuplicates(proactiveImplementationIds, 'proactive Tick implementation');
     rejectLocalDuplicates(declaredSkills.map(value => requiredId(value, 'Skill reference')), 'Skill reference');
     rejectLocalDuplicates(declaredKnowledge.map(value => requiredId(value, 'Knowledge reference')), 'Knowledge reference');
     rejectLocalDuplicates(atomics.map(value => requiredId(value, 'Atomic reference')), 'Atomic reference');
@@ -70,6 +82,20 @@ export class CapabilityPackageRegistry {
     rejectExisting(packageWorldFactProviderIds, this.worldFactProviderIds, 'world fact provider');
     rejectExisting(packageEvaluatorIds, this.evaluatorIds, 'predicate evaluator');
     rejectExisting(packageTargetIds, this.goalTargetIds, 'goal target');
+    rejectExisting(proactiveManifestIds, this.proactiveTickIds, 'proactive Tick');
+
+    if (!sameIds(proactiveManifestIds, proactiveImplementationIds)) {
+      throw new Error(`capability package ${packageId} proactive Tick declarations and implementations must match`);
+    }
+    const availableTargets = new Set([...this.goalTargetIds, ...packageTargetIds]);
+    for (const manifest of proactiveManifests) {
+      validateProactiveManifest(packageId, manifest, availableTargets);
+    }
+    for (const implementation of proactiveImplementations) {
+      if (typeof implementation.evaluate !== 'function') {
+        throw new Error(`capability package ${packageId} proactive Tick ${implementation.id} has no evaluator`);
+      }
+    }
 
     for (const atomicId of atomics) requireAvailable(atomicId, this.atomicIds, packageId, 'Atomic');
     const availableBehaviors = new Set([...this.behaviorIds, ...packageBehaviorIds]);
@@ -105,6 +131,7 @@ export class CapabilityPackageRegistry {
     packageWorldFactProviderIds.forEach(id => this.worldFactProviderIds.add(id));
     packageEvaluatorIds.forEach(id => this.evaluatorIds.add(id));
     packageTargetIds.forEach(id => this.goalTargetIds.add(id));
+    proactiveManifestIds.forEach(id => this.proactiveTickIds.add(id));
   }
 
   snapshot(): CapabilityPackageSnapshot {
@@ -116,6 +143,7 @@ export class CapabilityPackageRegistry {
       actionProviders: Object.freeze(packages.flatMap(value => [...value.actionProviders])),
       worldFactProviders: Object.freeze(packages.flatMap(value => [...(value.worldFactProviders ?? [])])),
       predicateEvaluators: Object.freeze(packages.flatMap(value => [...value.predicateEvaluators])),
+      proactiveTicks: Object.freeze(packages.flatMap(toRegisteredProactiveTicks)),
     });
   }
 }
@@ -133,12 +161,99 @@ function freezePackage(definition: CapabilityPackageDefinition): CapabilityPacka
         ...(definition.manifest.requires.behaviors ? { behaviors: Object.freeze([...definition.manifest.requires.behaviors]) } : {}),
         ...(definition.manifest.requires.strategies ? { strategies: Object.freeze([...definition.manifest.requires.strategies]) } : {}),
       }),
+      proactiveTicks: Object.freeze([...(definition.manifest.proactiveTicks ?? [])].map(freezeProactiveManifest)),
     }),
     behaviors: Object.freeze([...(definition.behaviors ?? [])]),
     actionProviders: Object.freeze([...definition.actionProviders]),
     worldFactProviders: Object.freeze([...(definition.worldFactProviders ?? [])]),
     predicateEvaluators: Object.freeze([...definition.predicateEvaluators]),
+    proactiveTicks: Object.freeze([...(definition.proactiveTicks ?? [])]),
   });
+}
+
+function toRegisteredProactiveTicks(definition: CapabilityPackageDefinition): RegisteredProactiveTickCapability[] {
+  const implementations = new Map((definition.proactiveTicks ?? []).map(value => [value.id, value]));
+  return (definition.manifest.proactiveTicks ?? []).map(manifest => Object.freeze({
+    packageId: definition.manifest.id,
+    manifest,
+    implementation: implementations.get(manifest.id)!,
+  }));
+}
+
+function freezeProactiveManifest(value: ProactiveTickManifestEntry): ProactiveTickManifestEntry {
+  return Object.freeze({
+    ...value,
+    conflictGroups: Object.freeze([...(value.conflictGroups ?? [])]),
+    configSchema: Object.freeze(Object.fromEntries(Object.entries(value.configSchema ?? {}).map(([key, field]) => [
+      key,
+      Object.freeze({ ...field, ...(field.enum ? { enum: Object.freeze([...field.enum]) } : {}) }),
+    ]))),
+  });
+}
+
+function validateProactiveManifest(
+  packageId: string,
+  value: ProactiveTickManifestEntry,
+  availableTargets: ReadonlySet<string>,
+): void {
+  requiredId(value.label, 'proactive Tick label');
+  requiredId(value.description, 'proactive Tick description');
+  const target = requiredId(value.goalTarget, 'proactive Tick goal target');
+  if (!availableTargets.has(target)) {
+    throw new Error(`capability package ${packageId} proactive Tick ${value.id} references unavailable goal target: ${target}`);
+  }
+  if (typeof value.defaultEnabled !== 'boolean') {
+    throw new Error(`capability package ${packageId} proactive Tick ${value.id} defaultEnabled must be boolean`);
+  }
+  if (!['fast', 'std', 'slow', 'idle'].includes(value.rate)) {
+    throw new Error(`capability package ${packageId} proactive Tick ${value.id} has invalid rate`);
+  }
+  if (!Number.isFinite(value.priority)) {
+    throw new Error(`capability package ${packageId} proactive Tick ${value.id} has invalid priority`);
+  }
+  if (value.decisionMode !== 'deterministic' && value.decisionMode !== 'deliberative') {
+    throw new Error(`capability package ${packageId} proactive Tick ${value.id} has invalid decisionMode`);
+  }
+  const conflictGroups = [...(value.conflictGroups ?? [])].map(group => requiredId(group, 'proactive Tick conflict group'));
+  rejectLocalDuplicates(conflictGroups, 'proactive Tick conflict group');
+  for (const [key, field] of Object.entries(value.configSchema ?? {})) {
+    requiredId(key, 'proactive Tick config key');
+    validateConfigField(packageId, value.id, key, field);
+  }
+}
+
+function validateConfigField(
+  packageId: string,
+  tickId: string,
+  key: string,
+  field: ProactiveConfigFieldDefinition,
+): void {
+  if (!['boolean', 'number', 'string'].includes(field.type)) {
+    throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} has invalid type`);
+  }
+  requiredId(field.label, 'proactive Tick config label');
+  const matches = (field.type === 'boolean' && typeof field.default === 'boolean')
+    || (field.type === 'number' && typeof field.default === 'number' && Number.isFinite(field.default))
+    || (field.type === 'string' && typeof field.default === 'string');
+  if (!matches) throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} has invalid default`);
+  if (field.type !== 'number' && (field.min !== undefined || field.max !== undefined)) {
+    throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} has invalid bounds`);
+  }
+  if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+    throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} min exceeds max`);
+  }
+  if (field.type === 'number') {
+    const value = field.default as number;
+    if (field.min !== undefined && value < field.min) throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} default below min`);
+    if (field.max !== undefined && value > field.max) throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} default above max`);
+  }
+  if (field.enum && (field.type !== 'string' || !field.enum.includes(field.default as string))) {
+    throw new Error(`capability package ${packageId} proactive Tick ${tickId} config ${key} has invalid enum default`);
+  }
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every(value => right.includes(value));
 }
 
 function ids(values: readonly { readonly id: string }[], label: string): string[] {

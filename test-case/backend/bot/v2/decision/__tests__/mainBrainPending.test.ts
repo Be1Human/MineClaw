@@ -12,6 +12,9 @@
 
 import { describe, it, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { MainBrain, type MainBrainConfig } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/mainBrain.js';
 import type { MainBrainDeps } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/mainBrain.js';
@@ -27,6 +30,7 @@ import type { LLMClient } from '../../../../../../apps/minecraft-companion/src/b
 import type { LLMToolCallResult } from '../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/types.js';
 import { TickRate } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/tickRegistry.js';
 import { CompanionCore } from '../../../../../../apps/minecraft-companion/src/bot/v2/companion/companionCore.js';
+import type { GamePresenceState } from '../../../../../../apps/minecraft-companion/src/bot/v2/gamePresenceContext.js';
 
 /**
  * Parse the legacy JSON-string response (used by the old prompt-completion mock)
@@ -55,7 +59,7 @@ function parseLegacyAsToolCall(raw: string | null): LLMToolCallResult | null {
   }
   return { toolCalls: [], content: raw };
 }
-import type { MemoryV2 } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/memory.js';
+import { MemoryV2 } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/memory.js';
 
 // ──────────────────────────────────────────────────────────────────
 // Helpers
@@ -248,10 +252,12 @@ function buildMainBrain(
     onOwnerCancellation?: (message: string) => number;
     companion?: CompanionCore;
     isEmbodied?: () => boolean;
+    getGamePresence?: () => GamePresenceState;
+    memory?: MemoryV2;
   },
 ): { brain: MainBrain; bus: EventBusV2 } {
   const bus = new EventBusV2();
-  const memory = makeStubMemory();
+  const memory = opts?.memory ?? makeStubMemory();
   const game = makeStubGame();
   const perception = makeStubPerception(world);
   const tasks = new TaskRuntime(memory, bus);
@@ -274,6 +280,8 @@ function buildMainBrain(
     onOwnerCancellation: opts?.onOwnerCancellation,
     companion: opts?.companion,
     isEmbodied: opts?.isEmbodied,
+    getGamePresence: opts?.getGamePresence,
+    memory,
   };
 
   const brain = new MainBrain(deps, cfg);
@@ -488,6 +496,76 @@ describe('MainBrain · pendingHistory', () => {
     assert.deepEqual(started, Array.from({ length: 10 }, (_, i) => `MineFriend 消息-${i}`));
   });
 
+  it('FEAT-CROSS-22 · SQLite restart restores pending replay then closes the pending lifecycle', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mainbrain-responses-pending-'));
+    const filename = join(root, 'memory.sqlite');
+    const replayUsage = {
+      inputTokens: 20, outputTokens: 5, totalTokens: 25,
+      cacheStatus: 'reported' as const, source: 'openai-responses',
+    };
+    let memory = new MemoryV2(filename);
+    let firstBrain: MainBrain | undefined;
+    let secondBrain: MainBrain | undefined;
+    try {
+      const firstLLM = {
+        callWithTools: async (): Promise<LLMToolCallResult> => ({
+          content: '',
+          toolCalls: [{ id: 'pending-call', name: 'ask_master', arguments: { text: '要 A 还是 B？' } }],
+          usage: replayUsage,
+          canonical: {
+            content: [
+              { kind: 'reasoning', text: '' },
+              { kind: 'tool-call', id: 'pending-call', name: 'ask_master', arguments: { text: '要 A 还是 B？' } },
+            ],
+            usage: replayUsage,
+            replay: {
+              kind: 'openai-native', version: 1, api: 'openai-responses',
+              providerRoute: 'route-responses', model: 'gpt-test',
+              blocks: [
+                { type: 'reasoning', encrypted_content: 'opaque-pending', summary: [] },
+                { type: 'function_call', call_id: 'pending-call' },
+              ],
+            },
+          },
+        }),
+      } as unknown as LLMClient;
+      const first = buildMainBrain(firstLLM, makeWorld(), { memory });
+      firstBrain = first.brain;
+      await sendChat(first.bus, 'MineFriend 帮我选方案');
+      const pending = memory.query('conversation', { isPending: true });
+      assert.equal(pending.length, 1);
+      assert.match(pending[0]?.meta?.llmContinuation ?? '', /opaque-pending/);
+
+      firstBrain.shutdown('restart-test');
+      memory.close();
+      memory = new MemoryV2(filename);
+      let restoredMessages: Array<{ role: string; content: string; canonical?: unknown }> = [];
+      const secondLLM = {
+        callWithTools: async (args: { messages: typeof restoredMessages }): Promise<LLMToolCallResult> => {
+          restoredMessages = structuredClone(args.messages);
+          return {
+            content: '',
+            toolCalls: [{ id: 'say-after-restart', name: 'say', arguments: { text: '选 A 就好' } }],
+          };
+        },
+      } as unknown as LLMClient;
+      const second = buildMainBrain(secondLLM, makeWorld(), { memory });
+      secondBrain = second.brain;
+      await sendChat(second.bus, 'MineFriend 选 A');
+
+      const restoredAssistant = restoredMessages.find(message => message.role === 'assistant') as {
+        canonical?: { source?: { replay?: { blocks?: Array<Record<string, unknown> | null> } } };
+      } | undefined;
+      assert.equal(restoredAssistant?.canonical?.source?.replay?.blocks?.[0]?.encrypted_content, 'opaque-pending');
+      assert.equal(memory.query('conversation', { isPending: true }).length, 0);
+    } finally {
+      firstBrain?.shutdown('test-cleanup');
+      secondBrain?.shutdown('test-cleanup');
+      memory.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
 });
 
 test('FEAT-CROSS-04：TestBench 运行期间，IDLE 节拍不会发起额外 LLM turn', async () => {
@@ -571,4 +649,29 @@ test('BUG-CROSS-73-005: 纯取消先执行硬栅栏，仍保留 MainBrain 协议
 
   assert.deepEqual(cancelledMessages, ['别跟了']);
   assert.equal(llmCalls, 1, '硬取消后仍应进入 MainBrain 协议回合，不能直接 return');
+});
+
+test('BUG-CROSS-82: MainBrain 每轮现读身体态，且 owner 未观察不等于玩家离线', async () => {
+  const systems: string[] = [];
+  let presence: GamePresenceState = { embodied: false, ownerObservation: 'unknown' };
+  const llm = {
+    callWithTools: async (args: { messages: Array<{ role: string; content: string }> }) => {
+      systems.push(args.messages[0]?.content ?? '');
+      return parseLegacyAsToolCall(sayResponse());
+    },
+  } as unknown as LLMClient;
+  const { brain, bus } = buildMainBrain(llm, makeWorld(), {
+    getGamePresence: () => presence,
+  });
+
+  await sendChat(bus, '你现在在哪？');
+  presence = { embodied: true, ownerObservation: 'not_observed' };
+  await sendChat(bus, '你看到我了吗？');
+
+  assert.match(systems[0], /MinecraftBodyState=unembodied/);
+  assert.match(systems[0], /does not prove the configured player is offline/);
+  assert.doesNotMatch(systems[0], /^You are an embodied AI player/);
+  assert.match(systems[1], /You are an embodied AI player operating inside a live Minecraft game world/);
+  assert.match(systems[1], /owner=null does not prove the player is offline/);
+  brain.shutdown('test_done');
 });

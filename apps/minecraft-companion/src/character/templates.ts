@@ -14,6 +14,7 @@ export function createCharacterTemplate(id: CharacterTemplateId, input: { charac
       progressReportLevel: 'balanced' as const,
       exampleDialogs: [],
       capabilities: { chat: true, memory: true, minecraft: true, voice: false },
+      proactiveCapabilities: {},
     },
   };
 

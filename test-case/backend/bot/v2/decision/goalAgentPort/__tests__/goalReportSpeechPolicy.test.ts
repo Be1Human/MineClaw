@@ -102,4 +102,25 @@ describe('GoalReportSpeechPolicy', () => {
     const noEvidence = report('completed', false);
     assert.equal(policy.validate(noEvidence, '任务完成，给你放那儿了').pass, false);
   });
+
+  it('BUG-CROSS-82 · 无身体时禁止把自身离线错说成玩家未进游戏', () => {
+    const presence = { embodied: false, ownerObservation: 'unknown' as const };
+    const blocked = policy.validate(report('answered', false), '你先进游戏里，我再找你。', presence);
+    assert.equal(blocked.pass, false);
+    assert.match(blocked.hint ?? '', /我现在还没进入游戏/);
+    assert.equal(policy.validate(
+      report('answered', false),
+      '我现在没在游戏里，所以暂时看不到你的位置。',
+      presence,
+    ).pass, true);
+    assert.match(policy.instruction(report('answered', false), presence), /必须用第一人称/);
+  });
+
+  it('BUG-CROSS-82 · owner 未被观察到不等于玩家离线', () => {
+    const presence = { embodied: true, ownerObservation: 'not_observed' as const };
+    assert.equal(policy.validate(report('answered', false), '你离线了。', presence).pass, false);
+    assert.equal(policy.validate(report('answered', false), '玩家没进游戏。', presence).pass, false);
+    assert.equal(policy.validate(report('answered', false), '我目前没观察到你的位置。', presence).pass, true);
+    assert.match(policy.instruction(report('answered', false), presence), /这不证明玩家离线/);
+  });
 });

@@ -15,3 +15,8 @@ export type {
   CapabilityWorldFact,
   CapabilityWorldFactProvider,
 } from './types.js';
+export type {
+  ProactiveTickCapabilityImplementation,
+  ProactiveTickManifestEntry,
+  RegisteredProactiveTickCapability,
+} from '../proactive/contracts.js';

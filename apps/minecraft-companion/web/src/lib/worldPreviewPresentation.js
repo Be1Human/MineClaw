@@ -136,7 +136,7 @@ export function projectWorldPreview({
     const message = normalizedMode === 'radar'
       ? '世界已连接，当前保持低负载雷达；选择简略或真实即可打开 3D。'
       : normalizedMode === 'authentic'
-        ? '正在显示真实世界预览，可在场景内管理资源包与缺失素材。'
+        ? '正在显示由内置资源渲染的真实世界预览。'
         : '正在显示来自当前 Minecraft 世界的简略 3D 预览。';
     return {
       ...base,

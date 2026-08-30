@@ -19,6 +19,7 @@ import type {
 
 type VisualRegistry = {
   blocksByStateId?: Record<number, { name?: string }>;
+  biomes?: Record<number, { name?: string }>;
   biomesById?: Record<number, { name?: string }>;
 };
 
@@ -33,6 +34,8 @@ type LooseBotEmitter = {
   removeListener(event: string, listener: (...args: unknown[]) => void): void;
 };
 
+type VisualWindowCenter = { chunkX: number; chunkZ: number };
+
 export class MineflayerVisualWorldSource implements VisualWorldSource {
   private bot: Bot | null = null;
   private generation = 0;
@@ -42,6 +45,9 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
   private readonly listeners = new Set<(delta: VisualWorldDelta) => void>();
   private readonly boundListeners: Array<{ event: string; listener: (...args: unknown[]) => void }> = [];
   private readonly columnEpoch = new Map<string, number>();
+  private readonly visibleEntityIds = new Set<number>();
+  private snapshotOptions: VisualWorldSnapshotOptions | null = null;
+  private windowCenter: VisualWindowCenter | null = null;
 
   rebind(bot: Bot | null): void {
     this.detachBotListeners();
@@ -51,12 +57,28 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
     this.sessionId = randomUUID();
     this.serverResourcePack = null;
     this.columnEpoch.clear();
+    this.visibleEntityIds.clear();
+    this.windowCenter = null;
     if (bot && this.listeners.size > 0) this.attachBotListeners(bot);
     this.emit({ kind: 'reset', reason: 'connection_rebind' });
   }
 
   isAvailable(): boolean {
     return this.bot !== null;
+  }
+
+  configure(options: VisualWorldSnapshotOptions): void {
+    const next = normalizeSnapshotOptions(options);
+    const previous = this.snapshotOptions;
+    this.snapshotOptions = next;
+    const bot = this.bot;
+    if (!bot?.entity?.position || !this.windowCenter || !previous) return;
+    const center = chunkCenterOf(bot.entity.position);
+    if (previous.viewDistanceChunks !== next.viewDistanceChunks
+      || center.chunkX !== this.windowCenter.chunkX
+      || center.chunkZ !== this.windowCenter.chunkZ) {
+      this.shiftWindow(bot, center, previous.viewDistanceChunks);
+    }
   }
 
   subscribe(listener: (delta: VisualWorldDelta) => void): () => void {
@@ -72,19 +94,21 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
   async createBootstrap(options: VisualWorldSnapshotOptions): Promise<VisualWorldBootstrap | null> {
     const bot = this.bot;
     if (!bot?.entity?.position) return null;
+    this.configure(options);
     const generation = this.generation;
     const sessionId = this.sessionId;
     const snapshotSequence = this.sequence;
     const game = bot.game as VisualGameState;
     const minY = Number.isFinite(game.minY) ? Number(game.minY) : 0;
     const height = Number.isFinite(game.height) ? Number(game.height) : 256;
-    const center = {
-      chunkX: Math.floor(bot.entity.position.x / 16),
-      chunkZ: Math.floor(bot.entity.position.z / 16),
-    };
+    const center = chunkCenterOf(bot.entity.position);
+    if (!this.windowCenter) this.windowCenter = center;
+    else if (center.chunkX !== this.windowCenter.chunkX || center.chunkZ !== this.windowCenter.chunkZ) {
+      this.shiftWindow(bot, center, this.snapshotOptions?.viewDistanceChunks ?? options.viewDistanceChunks);
+    }
+    const effectiveOptions = this.snapshotOptions ?? normalizeSnapshotOptions(options);
     const columns = bot.world.getColumns()
-      .filter(({ chunkX, chunkZ }) => Math.abs(chunkX - center.chunkX) <= options.viewDistanceChunks
-        && Math.abs(chunkZ - center.chunkZ) <= options.viewDistanceChunks)
+      .filter(({ chunkX, chunkZ }) => isChunkInWindow(chunkX, chunkZ, center, effectiveOptions.viewDistanceChunks))
       .sort((left, right) => chunkDistanceSq(left, center) - chunkDistanceSq(right, center));
     const sections: VisualSection[] = [];
     for (const entry of columns) {
@@ -105,11 +129,9 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
       minY,
       height,
       center,
-      viewDistanceChunks: options.viewDistanceChunks,
+      viewDistanceChunks: effectiveOptions.viewDistanceChunks,
       sections,
-      entities: Object.values(bot.entities)
-        .map(entity => toVisualEntity(entity, bot))
-        .filter(entity => distanceSq(entity.position, bot.entity.position) <= options.entityRenderDistance ** 2),
+      entities: this.captureVisibleEntities(bot, effectiveOptions.entityRenderDistance),
       environment: toVisualEnvironment(bot),
       serverResourcePack: this.serverResourcePack,
       createdAt: Date.now(),
@@ -119,6 +141,9 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
   private attachBotListeners(bot: Bot): void {
     this.bind(bot, 'blockUpdate', (_oldBlock: Block | null, newBlock: Block | null) => {
       if (!newBlock) return;
+      const chunkX = Math.floor(newBlock.position.x / 16);
+      const chunkZ = Math.floor(newBlock.position.z / 16);
+      if (!this.isChunkVisible(chunkX, chunkZ)) return;
       const registry = bot.registry as VisualRegistry;
       this.emit({
         kind: 'block',
@@ -132,20 +157,31 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
     this.bind(bot, 'chunkColumnLoad', (corner: { x: number; z: number }) => {
       const chunkX = Math.floor(corner.x / 16);
       const chunkZ = Math.floor(corner.z / 16);
+      if (!this.isChunkVisible(chunkX, chunkZ)) return;
       void this.replaceColumn(bot, chunkX, chunkZ);
     });
     this.bind(bot, 'chunkColumnUnload', (corner: { x: number; z: number }) => {
       const chunkX = Math.floor(corner.x / 16);
       const chunkZ = Math.floor(corner.z / 16);
       this.bumpColumnEpoch(chunkX, chunkZ);
+      if (!this.isChunkVisible(chunkX, chunkZ)) return;
       this.emit({ kind: 'column_unload', chunkX, chunkZ });
     });
-    const upsert = (entity: Entity) => this.emit({ kind: 'entity_upsert', entity: toVisualEntity(entity, bot) });
+    const upsert = (entity: Entity) => this.upsertVisibleEntity(bot, entity);
     this.bind(bot, 'entitySpawn', upsert);
     this.bind(bot, 'entityMoved', upsert);
     this.bind(bot, 'entityUpdate', upsert);
     this.bind(bot, 'entityEquip', upsert);
-    this.bind(bot, 'entityGone', (entity: Entity) => this.emit({ kind: 'entity_remove', entityId: entity.id }));
+    this.bind(bot, 'entityGone', (entity: Entity) => {
+      if (!this.visibleEntityIds.delete(entity.id)) return;
+      this.emit({ kind: 'entity_remove', entityId: entity.id });
+    });
+    this.bind(bot, 'move', () => {
+      if (!bot.entity?.position || !this.windowCenter || !this.snapshotOptions) return;
+      const center = chunkCenterOf(bot.entity.position);
+      if (center.chunkX === this.windowCenter.chunkX && center.chunkZ === this.windowCenter.chunkZ) return;
+      this.shiftWindow(bot, center, this.snapshotOptions.viewDistanceChunks);
+    });
     this.bind(bot, 'time', () => this.emit({ kind: 'environment', environment: toVisualEnvironment(bot) }));
     this.bind(bot, 'weatherUpdate', () => this.emit({ kind: 'environment', environment: toVisualEnvironment(bot) }));
     this.bind(bot, 'resourcePack', (url: string, hash?: string, uuid?: string) => {
@@ -158,16 +194,20 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
       this.sequence = 0;
       this.sessionId = randomUUID();
       this.columnEpoch.clear();
+      this.visibleEntityIds.clear();
+      this.windowCenter = null;
       this.emit({ kind: 'reset', reason: 'dimension_change' });
     });
   }
 
   private async replaceColumn(bot: Bot, chunkX: number, chunkZ: number): Promise<void> {
+    if (!this.isChunkVisible(chunkX, chunkZ)) return;
     const generation = this.generation;
     const epoch = this.bumpColumnEpoch(chunkX, chunkZ);
     await yieldToEventLoop();
     const column = bot.world.getColumn(chunkX, chunkZ) as PCChunk | null;
-    if (!column || this.bot !== bot || generation !== this.generation || epoch !== this.currentColumnEpoch(chunkX, chunkZ)) return;
+    if (!column || this.bot !== bot || generation !== this.generation || epoch !== this.currentColumnEpoch(chunkX, chunkZ)
+      || !this.isChunkVisible(chunkX, chunkZ)) return;
     const game = bot.game as VisualGameState;
     const minY = Number.isFinite(game.minY) ? Number(game.minY) : 0;
     const height = Number.isFinite(game.height) ? Number(game.height) : 256;
@@ -176,9 +216,70 @@ export class MineflayerVisualWorldSource implements VisualWorldSource {
       const section = encodeVisualSection(column, bot.registry as VisualRegistry, chunkX, sectionY, chunkZ);
       if (section.nonAirBlocks > 0) sections.push(section);
       await yieldToEventLoop();
-      if (this.bot !== bot || generation !== this.generation || epoch !== this.currentColumnEpoch(chunkX, chunkZ)) return;
+      if (this.bot !== bot || generation !== this.generation || epoch !== this.currentColumnEpoch(chunkX, chunkZ)
+        || !this.isChunkVisible(chunkX, chunkZ)) return;
     }
     this.emit({ kind: 'column_replace', chunkX, chunkZ, sections });
+  }
+
+  private isChunkVisible(chunkX: number, chunkZ: number): boolean {
+    return Boolean(this.windowCenter && this.snapshotOptions
+      && isChunkInWindow(chunkX, chunkZ, this.windowCenter, this.snapshotOptions.viewDistanceChunks));
+  }
+
+  private shiftWindow(bot: Bot, nextCenter: VisualWindowCenter, previousRadius: number): void {
+    const previousCenter = this.windowCenter;
+    const nextRadius = this.snapshotOptions?.viewDistanceChunks ?? previousRadius;
+    this.windowCenter = nextCenter;
+    if (!previousCenter) return;
+    forEachWindowChunk(previousCenter, previousRadius, (chunkX, chunkZ) => {
+      if (isChunkInWindow(chunkX, chunkZ, nextCenter, nextRadius)) return;
+      this.bumpColumnEpoch(chunkX, chunkZ);
+      this.emit({ kind: 'column_unload', chunkX, chunkZ });
+    });
+    forEachWindowChunk(nextCenter, nextRadius, (chunkX, chunkZ) => {
+      if (isChunkInWindow(chunkX, chunkZ, previousCenter, previousRadius)) return;
+      void this.replaceColumn(bot, chunkX, chunkZ);
+    });
+    this.syncVisibleEntities(bot);
+  }
+
+  private captureVisibleEntities(bot: Bot, renderDistance: number): VisualEntity[] {
+    const entities = Object.values(bot.entities)
+      .map(entity => toVisualEntity(entity, bot))
+      .filter(entity => distanceSq(entity.position, bot.entity.position) <= renderDistance ** 2);
+    this.visibleEntityIds.clear();
+    for (const entity of entities) this.visibleEntityIds.add(entity.id);
+    return entities;
+  }
+
+  private upsertVisibleEntity(bot: Bot, entity: Entity): void {
+    const renderDistance = this.snapshotOptions?.entityRenderDistance;
+    if (!renderDistance || !bot.entity?.position) return;
+    const visual = toVisualEntity(entity, bot);
+    if (distanceSq(visual.position, bot.entity.position) <= renderDistance ** 2) {
+      this.visibleEntityIds.add(entity.id);
+      this.emit({ kind: 'entity_upsert', entity: visual });
+      return;
+    }
+    if (this.visibleEntityIds.delete(entity.id)) this.emit({ kind: 'entity_remove', entityId: entity.id });
+  }
+
+  private syncVisibleEntities(bot: Bot): void {
+    const renderDistance = this.snapshotOptions?.entityRenderDistance;
+    if (!renderDistance || !bot.entity?.position) return;
+    const nextVisible = new Set<number>();
+    for (const entity of Object.values(bot.entities)) {
+      const visual = toVisualEntity(entity, bot);
+      if (distanceSq(visual.position, bot.entity.position) > renderDistance ** 2) continue;
+      nextVisible.add(entity.id);
+      this.emit({ kind: 'entity_upsert', entity: visual });
+    }
+    for (const entityId of this.visibleEntityIds) {
+      if (!nextVisible.has(entityId)) this.emit({ kind: 'entity_remove', entityId });
+    }
+    this.visibleEntityIds.clear();
+    for (const entityId of nextVisible) this.visibleEntityIds.add(entityId);
   }
 
   private bind<Args extends unknown[]>(bot: Bot, event: string, listener: (...args: Args) => void): void {
@@ -288,7 +389,7 @@ function blockToVisualState(block: Block | null, registry: VisualRegistry, fallb
 }
 
 function biomeFromRegistry(registry: VisualRegistry, id: number): VisualBiome {
-  return { id, name: registry.biomesById?.[id]?.name ?? `unknown_${id}` };
+  return { id, name: registry.biomes?.[id]?.name ?? registry.biomesById?.[id]?.name ?? `unknown_${id}` };
 }
 
 function toVisualEntity(entity: Entity, bot?: Bot): VisualEntity {
@@ -349,6 +450,27 @@ function isAirName(name: string): boolean {
 
 function chunkDistanceSq(entry: { chunkX: number; chunkZ: number }, center: { chunkX: number; chunkZ: number }): number {
   return (entry.chunkX - center.chunkX) ** 2 + (entry.chunkZ - center.chunkZ) ** 2;
+}
+
+function normalizeSnapshotOptions(options: VisualWorldSnapshotOptions): VisualWorldSnapshotOptions {
+  return {
+    viewDistanceChunks: Math.max(1, Math.floor(finite(options.viewDistanceChunks, 3))),
+    entityRenderDistance: Math.max(1, finite(options.entityRenderDistance, 96)),
+  };
+}
+
+function chunkCenterOf(position: { x: number; z: number }): VisualWindowCenter {
+  return { chunkX: Math.floor(position.x / 16), chunkZ: Math.floor(position.z / 16) };
+}
+
+function isChunkInWindow(chunkX: number, chunkZ: number, center: VisualWindowCenter, radius: number): boolean {
+  return Math.abs(chunkX - center.chunkX) <= radius && Math.abs(chunkZ - center.chunkZ) <= radius;
+}
+
+function forEachWindowChunk(center: VisualWindowCenter, radius: number, visit: (chunkX: number, chunkZ: number) => void): void {
+  for (let chunkX = center.chunkX - radius; chunkX <= center.chunkX + radius; chunkX++) {
+    for (let chunkZ = center.chunkZ - radius; chunkZ <= center.chunkZ + radius; chunkZ++) visit(chunkX, chunkZ);
+  }
 }
 
 function distanceSq(left: { x: number; y: number; z: number }, right: { x: number; y: number; z: number }): number {

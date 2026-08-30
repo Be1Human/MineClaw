@@ -17,8 +17,19 @@ interface DesktopPetConfig {
   profileValid?: boolean;
 }
 
-const PET_WIDTH = 220;
+const PET_WIDTH = 160;
 const PET_HEIGHT = 320;
+
+interface DesktopPetPointer {
+  screenX: number;
+  screenY: number;
+}
+
+interface DesktopPetDragState extends DesktopPetPointer {
+  senderId: number;
+  windowX: number;
+  windowY: number;
+}
 
 export class DesktopPetController {
   private window: BrowserWindow | null = null;
@@ -30,6 +41,7 @@ export class DesktopPetController {
   private targetX: number | null = null;
   private facing: 'left' | 'right' = 'right';
   private savingPosition = false;
+  private dragState: DesktopPetDragState | null = null;
 
   constructor(
     private readonly hubUrl: string,
@@ -68,6 +80,40 @@ export class DesktopPetController {
     if (!this.window) return;
     const area = screen.getPrimaryDisplay().workArea;
     this.window.setPosition(area.x + area.width - PET_WIDTH - 24, area.y + area.height - PET_HEIGHT - 12);
+    void this.savePosition();
+  }
+
+  setMousePassthrough(senderId: number, passthrough: boolean): void {
+    if (!this.isCurrentPetSender(senderId)) return;
+    this.window?.setIgnoreMouseEvents(passthrough, { forward: true });
+  }
+
+  beginDrag(senderId: number, pointer: DesktopPetPointer): void {
+    if (!this.isCurrentPetSender(senderId) || this.config?.mode !== 'fixed' || !isPointer(pointer)) return;
+    const [windowX, windowY] = this.window!.getPosition();
+    this.dragState = { senderId, screenX: pointer.screenX, screenY: pointer.screenY, windowX, windowY };
+    this.window!.setIgnoreMouseEvents(false, { forward: true });
+  }
+
+  updateDrag(senderId: number, pointer: DesktopPetPointer): void {
+    if (!this.window || !this.dragState || this.dragState.senderId !== senderId || !isPointer(pointer)) return;
+    const area = screen.getDisplayNearestPoint({ x: pointer.screenX, y: pointer.screenY }).workArea;
+    const x = clamp(
+      this.dragState.windowX + pointer.screenX - this.dragState.screenX,
+      area.x,
+      area.x + area.width - PET_WIDTH,
+    );
+    const y = clamp(
+      this.dragState.windowY + pointer.screenY - this.dragState.screenY,
+      area.y,
+      area.y + area.height - PET_HEIGHT,
+    );
+    this.window.setPosition(Math.round(x), Math.round(y));
+  }
+
+  endDrag(senderId: number): void {
+    if (!this.dragState || this.dragState.senderId !== senderId) return;
+    this.dragState = null;
     void this.savePosition();
   }
 
@@ -113,6 +159,7 @@ export class DesktopPetController {
       },
     });
     this.window.setAlwaysOnTop(true, 'floating');
+    this.window.setIgnoreMouseEvents(true, { forward: true });
     const page = this.rendererUrl
       ? `${this.rendererUrl.replace(/\/$/, '')}/desktop-pet.html`
       : `${this.hubUrl}/desktop-pet.html`;
@@ -121,17 +168,17 @@ export class DesktopPetController {
       this.pushRenderState();
       setTimeout(() => void this.logTransparencyEvidence(), 2000);
     });
-    this.window.on('moved', () => {
-      if (this.config?.mode === 'fixed' && !this.savingPosition) void this.savePosition();
-    });
     this.window.on('closed', () => {
       this.window = null;
+      this.dragState = null;
       this.stopMotion();
     });
     this.applyConfig(config);
   }
 
   private applyConfig(config: DesktopPetConfig): void {
+    this.dragState = null;
+    this.window?.setIgnoreMouseEvents(true, { forward: true });
     this.stopMotion();
     this.recoverToVisibleArea();
     this.pushRenderState();
@@ -277,12 +324,25 @@ export class DesktopPetController {
   }
 
   private destroyWindow(): void {
+    this.dragState = null;
     this.stopMotion();
     this.window?.destroy();
     this.window = null;
+  }
+
+  private isCurrentPetSender(senderId: number): boolean {
+    return Boolean(this.window && !this.window.isDestroyed() && this.window.webContents.id === senderId);
   }
 }
 
 function clampRatio(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isPointer(value: DesktopPetPointer): boolean {
+  return Boolean(value && Number.isFinite(value.screenX) && Number.isFinite(value.screenY));
 }

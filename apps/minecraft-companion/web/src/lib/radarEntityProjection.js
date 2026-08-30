@@ -1,3 +1,5 @@
+import { mineflayerYawBasis } from './minecraftOrientation.js';
+
 const RADAR_RADIUS_PERCENT = 44;
 const RANGE_EPSILON = 1;
 
@@ -14,9 +16,7 @@ export function projectRadarEntities(worldState) {
   const selfPosition = worldState?.self?.position;
   if (!hasFiniteHorizontalPosition(selfPosition)) return emptyProjection();
 
-  const yaw = finiteNumber(worldState?.self?.yaw, 0);
-  const cosYaw = Math.cos(yaw);
-  const sinYaw = Math.sin(yaw);
+  const basis = mineflayerYawBasis(worldState?.self?.yaw);
   const entities = Array.isArray(worldState?.entities) ? worldState.entities : [];
   const candidates = [];
 
@@ -39,8 +39,8 @@ export function projectRadarEntities(worldState) {
       categoryLabel: presentation.label,
       distance: Math.max(0, measuredDistance),
       horizontalDistance,
-      right: dx * cosYaw + dz * sinYaw,
-      forward: -dx * sinYaw + dz * cosYaw,
+      right: dx * basis.right.x + dz * basis.right.z,
+      forward: dx * basis.forward.x + dz * basis.forward.z,
     });
   }
 

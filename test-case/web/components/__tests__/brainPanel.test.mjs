@@ -105,9 +105,18 @@ test('全局设置移除无效 Hermes 配置空壳', async () => {
   for (const label of ['LLM Agent 配置', '服务器配置', '桌面角色', '高级 / 调试']) {
     assert.match(html, new RegExp(label.replace('/', '\\/')));
   }
+  assert.match(html, /Chat Completions/);
+  assert.match(html, /Responses/);
   assert.doesNotMatch(html, /Hermes|Bridge/i);
 
   const source = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/components/SettingsPanel.vue', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /activeSection === 'hermes'|loadHermesStatus|\/api\/hermes\/status/);
   assert.doesNotMatch(source, /hermesEnabled|hermesMemory|hermesTimeout|重启 Bridge|导出技能包/);
+  assert.match(source, /v-model="llmConfigForm\.api"/);
+  assert.match(source, /value: 'openai-completions'/);
+  assert.match(source, /value: 'openai-responses'/);
+  assert.match(source, /store:false/);
+  assert.match(source, /历史由 MineClaw 本地保存/);
+  assert.match(source, /api: llmConfigForm\.api/);
+  assert.match(source, /llmApiLabel\(data\.api\)/);
 });

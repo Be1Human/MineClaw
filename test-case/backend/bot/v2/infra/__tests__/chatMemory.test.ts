@@ -151,6 +151,80 @@ describe('ChatMemoryService', () => {
     } finally { memory.close(); }
   }));
 
+  test('周期整理批次只返回当前 Profile 未处理的 owner 消息并遵守正文预算', () => withDatabase(dbPath => {
+    const a = new ChatMemoryService({ dbPath, profileId: 'a', autoCapture: false });
+    const b = new ChatMemoryService({ dbPath, profileId: 'b', autoCapture: false });
+    try {
+      a.recordMessages([
+        { id: 'a-owner-1', sessionId: 's', role: 'owner', content: '1234567890', timestamp: 1 },
+        { id: 'a-bot', sessionId: 's', role: 'bot', content: '不应进入整理批次', timestamp: 2 },
+        { id: 'a-owner-2', sessionId: 's', role: 'owner', content: 'abcdefghij', timestamp: 3 },
+      ]);
+      b.recordMessage({ id: 'b-owner', sessionId: 's', role: 'owner', content: '另一伙伴的消息', timestamp: 1 });
+
+      const pending = a.pendingOwnerMessages(10, 12);
+      assert.deepEqual(pending.map(message => message.id), ['a-owner-1']);
+      assert.equal(pending[0]?.content, '1234567890');
+      assert.equal(a.pendingOwnerMessageCount(), 2);
+      assert.deepEqual(b.pendingOwnerMessages(10, 100).map(message => message.id), ['b-owner']);
+    } finally { b.close(); a.close(); }
+  }));
+
+  test('周期整理把事实和处理账本原子提交，重放与重启保持幂等', () => withDatabase(dbPath => {
+    const first = new ChatMemoryService({ dbPath, profileId: 'p', autoCapture: false });
+    let reopened: ChatMemoryService | undefined;
+    let firstClosed = false;
+    try {
+      first.recordMessage({ id: 'fish-source', sessionId: 's', role: 'owner', content: '还可以，我喜欢吃鱼嘻嘻', timestamp: 1 });
+      const batch = first.pendingOwnerMessages(10, 1_000);
+      const committed = first.commitConsolidation(batch, [{
+        action: 'add', kind: 'preference', text: '我喜欢吃鱼', sourceMessageIds: ['fish-source'], confidence: 0.95, importance: 0.8,
+      }], 'run-1');
+      assert.deepEqual(committed, { processed: 1, added: 0, reinforced: 0, replaced: 0, candidates: 1, ignored: 0 });
+      assert.equal(first.pendingOwnerMessageCount(), 0);
+      assert.deepEqual(first.getFacts({ status: 'candidate' }).map(item => item.text), ['我喜欢吃鱼']);
+      assert.deepEqual(first.commitConsolidation(batch, [{
+        action: 'add', kind: 'preference', text: '我喜欢吃鱼', sourceMessageIds: ['fish-source'],
+      }], 'run-replay'), { processed: 0, added: 0, reinforced: 0, replaced: 0, candidates: 0, ignored: 0 });
+
+      first.close();
+      firstClosed = true;
+      reopened = new ChatMemoryService({ dbPath, profileId: 'p', autoCapture: false });
+      assert.equal(reopened.pendingOwnerMessageCount(), 0);
+      assert.equal(reopened.getFacts({ status: 'candidate' }).length, 1);
+    } finally { reopened?.close(); if (!firstClosed) first.close(); }
+  }));
+
+  test('周期整理任一操作来源越权时整批回滚并保留待处理消息', () => withDatabase(dbPath => {
+    const memory = new ChatMemoryService({ dbPath, profileId: 'p', autoCapture: false });
+    try {
+      memory.recordMessage({ id: 'owner-1', sessionId: 's', role: 'owner', content: '我喜欢吃鱼', timestamp: 1 });
+      const batch = memory.pendingOwnerMessages(10, 1_000);
+      assert.throws(() => memory.commitConsolidation(batch, [
+        { action: 'add', kind: 'preference', text: '我喜欢吃鱼', sourceMessageIds: ['owner-1'] },
+        { action: 'add', kind: 'preference', text: '越权事实', sourceMessageIds: ['outside-batch'] },
+      ], 'run-invalid'), /outside its batch/);
+      assert.equal(memory.getFacts().length, 0);
+      assert.equal(memory.pendingOwnerMessageCount(), 1);
+    } finally { memory.close(); }
+  }));
+
+  test('周期整理 reinforce 合并新来源而不创建重复 Active 事实', () => withDatabase(dbPath => {
+    const memory = new ChatMemoryService({ dbPath, profileId: 'p', autoCapture: false });
+    try {
+      const existing = memory.addFact(fact('我喜欢吃鱼', ['old-source']));
+      assert.ok(!('rejected' in existing));
+      if ('rejected' in existing) return;
+      memory.recordMessage({ id: 'new-source', sessionId: 's', role: 'owner', content: '鱼我也一直很喜欢', timestamp: 2 });
+      const result = memory.commitConsolidation(memory.pendingOwnerMessages(10, 1_000), [{
+        action: 'reinforce', targetFactId: existing.id, sourceMessageIds: ['new-source'],
+      }], 'run-reinforce');
+      assert.equal(result.reinforced, 1);
+      assert.equal(memory.getFacts({ status: 'active' }).length, 1);
+      assert.deepEqual(memory.getFact(existing.id)?.sourceMessageIds.sort(), ['new-source', 'old-source']);
+    } finally { memory.close(); }
+  }));
+
   test('敏感、注入、短暂内容会被拒绝，Prompt 始终受预算限制', () => withDatabase(dbPath => {
     const memory = new ChatMemoryService({ dbPath, profileId: 'p', promptBudgetChars: 110 });
     try {
@@ -263,6 +337,37 @@ describe('ChatMemoryService', () => {
       assert.match(active[0]!.text, /dislike coffee/);
       assert.equal(memory.getFacts({ status: 'superseded' }).length, 1);
       assert.doesNotMatch(memory.toPromptContext('coffee'), /I like coffee/);
+    } finally { memory.close(); }
+  }));
+
+  test('自动 Capture 可随周期整理热开关动态降级，显式记住始终即时生效', () => withDatabase(dbPath => {
+    let fallbackEnabled = false;
+    const memory = new ChatMemoryService({ dbPath, profileId: 'p', autoCapture: () => fallbackEnabled });
+    try {
+      memory.recordMessage({ id: 'implicit-off', sessionId: 's', role: 'owner', content: '我喜欢红色', timestamp: 1 });
+      assert.equal(memory.getFacts({ status: 'active' }).length, 0);
+      memory.recordMessage({ id: 'explicit', sessionId: 's', role: 'owner', content: '记住我喜欢吃鱼', timestamp: 2 });
+      assert.equal(memory.getMemorySlotValues({ status: 'active', slotKey: 'preference.food.favorite' })[0]?.value, '鱼');
+      assert.deepEqual(memory.getFacts({ status: 'active' }).map(item => item.text), []);
+      fallbackEnabled = true;
+      memory.recordMessage({ id: 'implicit-on', sessionId: 's', role: 'owner', content: '我喜欢蓝色', timestamp: 3 });
+      assert.ok(memory.getFacts({ status: 'active' }).some(item => item.text === '我喜欢蓝色'));
+    } finally { memory.close(); }
+  }));
+
+  test('槽位优先 Capture 拒绝疑问，并把明确食物偏好写入官方槽位', () => withDatabase(dbPath => {
+    const memory = new ChatMemoryService({ dbPath, profileId: 'p' });
+    try {
+      memory.recordMessage({ id: 'question', sessionId: 's', role: 'owner', content: '我喜欢什么？', timestamp: 1 });
+      assert.equal(memory.getFacts().length, 0);
+      assert.equal(memory.getMemorySlotValues().length, 0);
+      memory.recordMessage({ id: 'food', sessionId: 's', role: 'owner', content: '我喜欢吃鱼', timestamp: 2 });
+      assert.equal(memory.getMemorySlotValues({ status: 'active', slotKey: 'preference.food.favorite' })[0]?.value, '鱼');
+      assert.equal(memory.getFacts().length, 0);
+      memory.recordMessage({ id: 'food-dislike', sessionId: 's', role: 'owner', content: '我不喜欢吃鱼', timestamp: 3 });
+      assert.equal(memory.getMemorySlotValues({ status: 'active', slotKey: 'preference.food.favorite' }).length, 0);
+      assert.equal(memory.getMemorySlotValues({ status: 'active', slotKey: 'preference.food.dislike' })[0]?.value, '鱼');
+      assert.equal(memory.getMemorySlotValues({ status: 'superseded', slotKey: 'preference.food.favorite' })[0]?.value, '鱼');
     } finally { memory.close(); }
   }));
 

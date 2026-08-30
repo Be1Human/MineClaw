@@ -10,6 +10,19 @@ import {
   openSqliteDatabase,
   type SqliteDatabase,
 } from './sqliteDatabase.js';
+import {
+  ProfileMemorySlotStore,
+  classifyOwnerMemorySpeech,
+  getMemorySlotDefinition,
+  isExplicitMemoryStatement,
+  routeDeterministicMemorySlot,
+  searchMemorySlotDefinitions,
+  type MemorySlotSourceKind,
+  type MemorySlotValue,
+  type MemorySlotView,
+  type PutMemorySlotValueInput,
+} from '../memory/profileSlots/index.js';
+import { tuning } from './tuning.js';
 
 export type ChatRole = 'owner' | 'bot' | 'system';
 export type FactStatus = 'candidate' | 'active' | 'superseded' | 'deleted' | 'rejected' | 'expired';
@@ -49,6 +62,29 @@ export interface ConversationSummary {
   createdAt: number;
 }
 
+export type MemoryConsolidationAction = 'add' | 'reinforce' | 'replace' | 'candidate' | 'ignore';
+
+export interface MemoryConsolidationOperation {
+  action: MemoryConsolidationAction;
+  kind?: FactKind;
+  text?: string;
+  slotKey?: string;
+  value?: unknown;
+  sourceMessageIds: string[];
+  targetFactId?: string;
+  confidence?: number;
+  importance?: number;
+}
+
+export interface MemoryConsolidationCommitResult {
+  processed: number;
+  added: number;
+  reinforced: number;
+  replaced: number;
+  candidates: number;
+  ignored: number;
+}
+
 export interface EmbeddingProvider {
   readonly id: string;
   embed(text: string): readonly number[];
@@ -74,7 +110,7 @@ export interface ChatMemoryConfig {
   dbPath: string;
   profileId: string;
   promptBudgetChars?: number;
-  autoCapture?: boolean;
+  autoCapture?: boolean | (() => boolean);
   /** 同一会话累计达到该字符数时，先保留原文并生成摘要。0 表示关闭自动 Flush。 */
   flushThresholdChars?: number;
   embeddingProvider?: EmbeddingProvider | null;
@@ -95,6 +131,7 @@ export interface MemoryPromptContext {
   text: string;
   retrievalMode: 'fts5' | 'hybrid';
   retrievedFactIds: string[];
+  retrievedSlotValueIds: string[];
   retrievedMessageIds: string[];
   includedSummary: boolean;
 }
@@ -137,9 +174,10 @@ export class ChatMemoryService {
   private readonly db: SqliteDatabase;
   private readonly profileId: string;
   private readonly budget: number;
-  private readonly autoCapture: boolean;
+  private readonly autoCapture: () => boolean;
   private readonly flushThresholdChars: number;
   private readonly embeddingProvider: EmbeddingProvider | null;
+  private readonly slotStore: ProfileMemorySlotStore;
   private readonly metrics: ChatMemoryMetrics = {
     captured: 0,
     rejected: {},
@@ -159,10 +197,14 @@ export class ChatMemoryService {
     this.db = openSqliteDatabase(cfg.dbPath);
     this.profileId = cfg.profileId;
     this.budget = cfg.promptBudgetChars ?? 6000;
-    this.autoCapture = cfg.autoCapture ?? true;
+    const autoCapture = cfg.autoCapture;
+    this.autoCapture = typeof autoCapture === 'function'
+      ? autoCapture
+      : () => autoCapture ?? true;
     this.flushThresholdChars = cfg.flushThresholdChars ?? 12000;
     this.embeddingProvider = cfg.embeddingProvider ?? null;
     this.init();
+    this.slotStore = new ProfileMemorySlotStore(this.db, this.profileId);
   }
 
   private init(): void {
@@ -199,6 +241,16 @@ export class ChatMemoryService {
         PRIMARY KEY(profile_id, message_id, provider_id)
       );
       CREATE INDEX IF NOT EXISTS idx_chat_embeddings_provider ON chat_message_embeddings(profile_id, provider_id, ts DESC);
+      CREATE TABLE IF NOT EXISTS chat_memory_consolidation_messages (
+        profile_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        processed_at INTEGER NOT NULL,
+        run_id TEXT NOT NULL,
+        PRIMARY KEY(profile_id, message_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_memory_consolidation_run
+        ON chat_memory_consolidation_messages(profile_id, processed_at DESC);
     `);
   }
 
@@ -218,7 +270,7 @@ export class ChatMemoryService {
     if (message.role === 'owner') {
       this.lastQuery = message.content;
       this.applyExplicitIntent(message);
-      if (this.autoCapture) this.captureCandidate(message);
+      if (this.autoCapture()) this.captureCandidate(message);
     }
   }
 
@@ -243,7 +295,7 @@ export class ChatMemoryService {
         if (message.role === 'owner') {
           this.lastQuery = message.content;
           this.applyExplicitIntent(message);
-          if (this.autoCapture) this.captureCandidate(message);
+          if (this.autoCapture()) this.captureCandidate(message);
         }
       }
     })();
@@ -268,12 +320,20 @@ export class ChatMemoryService {
     const verdict = validateFactText(input.text);
     if (!verdict.ok) return { rejected: verdict.reason };
     const now = Date.now();
-    const existing = this.getFacts({ status: 'active' }).find(f => f.scope === input.scope && f.text === verdict.text);
+    const requestedStatus = input.status ?? 'active';
+    const existing = this.getFacts().find(f =>
+      f.scope === input.scope
+      && f.text === verdict.text
+      && (f.status === requestedStatus || (requestedStatus === 'candidate' && f.status === 'active')));
     if (existing) {
       const merged = [...new Set([...existing.sourceMessageIds, ...input.sourceMessageIds])];
-      this.db.prepare(`UPDATE memory_facts SET source_ids_json=?,confidence=?,importance=?,updated_at=? WHERE id=?`)
-        .run(JSON.stringify(merged), Math.max(existing.confidence, input.confidence), Math.max(existing.importance, input.importance), now, existing.id);
-      return { ...existing, sourceMessageIds: merged, confidence: Math.max(existing.confidence, input.confidence), importance: Math.max(existing.importance, input.importance), updatedAt: now };
+      const promotionCount = Math.max(1, Math.floor(tuning().memoryConsolidation.dynamicPromotionEvidenceCount));
+      const nextStatus = existing.status === 'candidate' && requestedStatus === 'candidate' && merged.length >= promotionCount
+        ? 'active'
+        : existing.status;
+      this.db.prepare(`UPDATE memory_facts SET source_ids_json=?,status=?,confidence=?,importance=?,updated_at=? WHERE id=?`)
+        .run(JSON.stringify(merged), nextStatus, Math.max(existing.confidence, input.confidence), Math.max(existing.importance, input.importance), now, existing.id);
+      return { ...existing, status: nextStatus, sourceMessageIds: merged, confidence: Math.max(existing.confidence, input.confidence), importance: Math.max(existing.importance, input.importance), updatedAt: now };
     }
     const fact: MemoryFact = {
       id: `fact-${now}-${++this.seq}`, profileId: this.profileId, scope: input.scope, kind: input.kind,
@@ -285,7 +345,18 @@ export class ChatMemoryService {
   }
 
   /** save_memory 兼容入口：由调用方传入已经落库的对话来源，保证事实可追溯。 */
-  saveToolFact(text: string, scope: 'user' | 'agent', sourceMessageIds: string[]): MemoryFact | { rejected: string } {
+  saveToolFact(text: string, scope: 'user' | 'agent', sourceMessageIds: string[]): MemoryFact | MemorySlotValue | { rejected: string } {
+    const route = scope === 'user' ? routeDeterministicMemorySlot(text) : null;
+    if (route?.operation === 'add') {
+      return this.putMemorySlotValue({
+        slotKey: route.slotKey,
+        value: route.value,
+        confidence: 1,
+        importance: 0.9,
+        sourceKind: 'explicit_tool',
+        sourceMessageIds,
+      });
+    }
     const result = this.addFact({
       scope,
       kind: scope === 'agent' ? 'agent_note' : inferKind(text),
@@ -400,6 +471,305 @@ export class ChatMemoryService {
     const rows = this.db.prepare(`SELECT id,session_id,role,content,ts FROM chat_messages WHERE profile_id=? AND id IN (${unique.map(() => '?').join(',')}) ORDER BY ts ASC`)
       .all(this.profileId, ...unique) as Array<{ id: string; session_id: string; role: ChatRole; content: string; ts: number }>;
     return rows.map(row => ({ id: row.id, sessionId: row.session_id, role: row.role, content: row.content, timestamp: row.ts }));
+  }
+
+  approveFact(id: string): MemoryFact | null {
+    const fact = this.getFact(id);
+    if (!fact || fact.status !== 'candidate') return null;
+    const now = Date.now();
+    this.db.prepare(`UPDATE memory_facts SET status='active',confidence=1,updated_at=? WHERE id=? AND profile_id=? AND status='candidate'`)
+      .run(now, id, this.profileId);
+    return { ...fact, status: 'active', confidence: 1, updatedAt: now };
+  }
+
+  rejectFact(id: string): boolean {
+    return this.db.prepare(`UPDATE memory_facts SET status='rejected',updated_at=? WHERE id=? AND profile_id=? AND status='candidate'`)
+      .run(Date.now(), id, this.profileId).changes > 0;
+  }
+
+  mapFactToMemorySlot(id: string, slotKey: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    const fact = this.getFact(id);
+    if (!fact || !['candidate', 'active'].includes(fact.status) || fact.scope !== 'user') return null;
+    const mapped = this.putMemorySlotValue({
+      slotKey,
+      value,
+      confidence: 1,
+      importance: fact.importance,
+      sourceKind: 'manual_edit',
+      sourceMessageIds: fact.sourceMessageIds,
+    });
+    if (!('rejected' in mapped)) {
+      this.db.prepare(`UPDATE memory_facts SET status='superseded',updated_at=? WHERE id=? AND profile_id=?`)
+        .run(Date.now(), id, this.profileId);
+    }
+    return mapped;
+  }
+
+  getMemorySlotCatalog(input: { group?: string; filledOnly?: boolean; status?: FactStatus } = {}): MemorySlotView[] {
+    return this.slotStore.catalog(input);
+  }
+
+  getMemorySlotValues(input: { status?: FactStatus; slotKey?: string; query?: string } = {}): MemorySlotValue[] {
+    return this.slotStore.values(input);
+  }
+
+  putMemorySlotValue(input: PutMemorySlotValueInput): MemorySlotValue | { rejected: string } {
+    const result = this.slotStore.put(input);
+    if ('rejected' in result) this.noteRejected(`slot_${result.rejected}`);
+    return result;
+  }
+
+  putManualMemorySlotValue(input: Omit<PutMemorySlotValueInput, 'sourceKind' | 'sourceMessageIds'>): MemorySlotValue | { rejected: string } {
+    const now = Date.now();
+    const sourceId = `manual-slot-${now}-${++this.seq}`;
+    this.recordMessage({
+      id: sourceId,
+      sessionId: 'memory-control-plane',
+      role: 'owner',
+      content: `记忆控制面手工填写槽位 ${input.slotKey}：${formatSlotValue(input.value)}`,
+      timestamp: now,
+    });
+    return this.putMemorySlotValue({ ...input, sourceKind: 'manual_edit', sourceMessageIds: [sourceId] });
+  }
+
+  replaceMemorySlotValue(id: string, value: unknown, sourceMessageIds: string[] = [], sourceKind: MemorySlotSourceKind = 'manual_edit'): MemorySlotValue | { rejected: string } | null {
+    const sources = [...new Set(sourceMessageIds.filter(Boolean))];
+    if (sources.length === 0) {
+      const old = this.slotStore.get(id);
+      if (!old) return null;
+      const now = Date.now();
+      const sourceId = `manual-slot-edit-${now}-${++this.seq}`;
+      this.recordMessage({
+        id: sourceId,
+        sessionId: 'memory-control-plane',
+        role: 'owner',
+        content: `记忆控制面修改槽位 ${old.slotKey}：${formatSlotValue(value)}`,
+        timestamp: now,
+      });
+      sources.push(sourceId);
+    }
+    return this.slotStore.replace(id, value, sources, sourceKind);
+  }
+
+  removeMemorySlotValue(id: string): boolean {
+    return this.slotStore.remove(id);
+  }
+
+  restoreMemorySlotValue(id: string): MemorySlotValue | null {
+    return this.slotStore.restore(id);
+  }
+
+  getMemorySlotValueSources(id: string): ChatMessage[] | null {
+    const value = this.slotStore.get(id);
+    return value ? this.getMessagesByIds(value.sourceMessageIds) : null;
+  }
+
+  countActiveMemorySlots(): number {
+    return this.slotStore.countActiveSlots();
+  }
+
+  searchActiveMemorySlots(query: string, limit = tuning().memoryConsolidation.recallSlotLimit): MemorySlotValue[] {
+    const keys = new Set(searchMemorySlotDefinitions(query, limit).map(definition => definition.slotKey));
+    if (this.getMemorySlotValues({ status: 'active', slotKey: 'identity.preferred_name' }).length > 0) {
+      keys.add('identity.preferred_name');
+    }
+    return this.getMemorySlotValues({ status: 'active' })
+      .filter(value => keys.has(value.slotKey))
+      .slice(0, Math.max(1, Math.floor(limit)));
+  }
+
+  previewLegacyFactSlotMigration(): LegacyFactSlotMigrationPreview[] {
+    return this.getFacts({ status: 'active' }).filter(fact => fact.scope === 'user').map(fact => {
+      const speechAct = classifyOwnerMemorySpeech(fact.text);
+      if (!['statement', 'explicit_statement'].includes(speechAct)) {
+        return { factId: fact.id, text: fact.text, outcome: 'rejected', reason: speechAct };
+      }
+      const route = routeDeterministicMemorySlot(fact.text);
+      if (!route || route.operation !== 'add') {
+        return { factId: fact.id, text: fact.text, outcome: 'dynamic_candidate' };
+      }
+      return { factId: fact.id, text: fact.text, outcome: 'official_slot', slotKey: route.slotKey, value: route.value };
+    });
+  }
+
+  applyLegacyFactSlotMigration(): { migrated: number; dynamicCandidates: number; rejected: number } {
+    const result = { migrated: 0, dynamicCandidates: 0, rejected: 0 };
+    for (const preview of this.previewLegacyFactSlotMigration()) {
+      if (preview.outcome === 'rejected') { result.rejected += 1; continue; }
+      if (preview.outcome === 'dynamic_candidate') { result.dynamicCandidates += 1; continue; }
+      const fact = this.getFact(preview.factId);
+      if (!fact || !preview.slotKey) continue;
+      const migrated = this.putMemorySlotValue({
+        slotKey: preview.slotKey,
+        value: preview.value,
+        confidence: fact.confidence,
+        importance: fact.importance,
+        sourceKind: 'migration',
+        sourceMessageIds: fact.sourceMessageIds,
+      });
+      if (!('rejected' in migrated)) result.migrated += 1;
+    }
+    return result;
+  }
+
+  /** 返回尚未经过周期整理的主人消息；正文预算是软上限，绝不截断并误结算原文。 */
+  pendingOwnerMessages(limit: number, maxChars: number): ChatMessage[] {
+    const safeLimit = Math.max(1, Math.floor(limit));
+    const safeChars = Math.max(1, Math.floor(maxChars));
+    const rows = this.db.prepare(`
+      SELECT m.id,m.session_id,m.role,m.content,m.ts
+      FROM chat_messages m
+      LEFT JOIN chat_memory_consolidation_messages c
+        ON c.profile_id=m.profile_id AND c.message_id=m.id
+      WHERE m.profile_id=? AND m.role='owner' AND c.message_id IS NULL
+      ORDER BY m.ts ASC,m.id ASC
+      LIMIT ?
+    `).all(this.profileId, safeLimit) as Array<{ id: string; session_id: string; role: ChatRole; content: string; ts: number }>;
+    const messages: ChatMessage[] = [];
+    let usedChars = 0;
+    for (const row of rows) {
+      if (!row.content) continue;
+      if (messages.length > 0 && usedChars + row.content.length > safeChars) break;
+      messages.push({ id: row.id, sessionId: row.session_id, role: row.role, content: row.content, timestamp: row.ts });
+      usedChars += row.content.length;
+    }
+    return messages;
+  }
+
+  pendingOwnerMessageCount(): number {
+    return (this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM chat_messages m
+      LEFT JOIN chat_memory_consolidation_messages c
+        ON c.profile_id=m.profile_id AND c.message_id=m.id
+      WHERE m.profile_id=? AND m.role='owner' AND c.message_id IS NULL
+    `).get(this.profileId) as { count: number }).count;
+  }
+
+  /**
+   * 事实操作与消息处理账本同事务提交。任何来源、目标或安全校验失败都会让整批回滚，
+   * 因而下一个周期能够安全重试同一批原始消息。
+   */
+  commitConsolidation(
+    batch: ChatMessage[],
+    operations: MemoryConsolidationOperation[],
+    runId: string,
+  ): MemoryConsolidationCommitResult {
+    const cleanRunId = runId.trim();
+    if (!cleanRunId) throw new Error('memory consolidation runId is required');
+    const batchIds = [...new Set(batch.map(message => message.id).filter(Boolean))];
+    if (batchIds.length === 0) return emptyConsolidationResult();
+
+    const commit = this.db.transaction((): MemoryConsolidationCommitResult => {
+      const placeholders = batchIds.map(() => '?').join(',');
+      const sourceRows = this.db.prepare(`
+        SELECT id,role,content FROM chat_messages
+        WHERE profile_id=? AND id IN (${placeholders})
+      `).all(this.profileId, ...batchIds) as Array<{ id: string; role: ChatRole; content: string }>;
+      const authorized = new Set(sourceRows.filter(row => row.role === 'owner').map(row => row.id));
+      const sourceContent = new Map(sourceRows.map(row => [row.id, row.content]));
+      if (authorized.size !== batchIds.length) throw new Error('memory consolidation source is not current-profile owner evidence');
+
+      const processedRows = this.db.prepare(`
+        SELECT message_id FROM chat_memory_consolidation_messages
+        WHERE profile_id=? AND message_id IN (${placeholders})
+      `).all(this.profileId, ...batchIds) as Array<{ message_id: string }>;
+      if (processedRows.length === batchIds.length) return emptyConsolidationResult();
+      if (processedRows.length > 0) throw new Error('memory consolidation batch mixes processed and pending messages');
+
+      const result = emptyConsolidationResult();
+      for (const operation of operations) {
+        const sources = [...new Set(operation.sourceMessageIds.filter(Boolean))];
+        if (operation.action !== 'ignore' && sources.length === 0) throw new Error('memory consolidation fact requires owner evidence');
+        if (sources.some(id => !authorized.has(id))) throw new Error('memory consolidation operation referenced evidence outside its batch');
+
+        if (operation.action === 'ignore') {
+          result.ignored += 1;
+          continue;
+        }
+
+        if (operation.slotKey) {
+          const evidence = sources.map(id => sourceContent.get(id) ?? '');
+          if (evidence.every(text => !['statement', 'explicit_statement'].includes(classifyOwnerMemorySpeech(text)))) {
+            result.ignored += 1;
+            continue;
+          }
+          if (operation.value === undefined) throw new Error('memory consolidation slot operation requires value');
+          const slotResult = this.putMemorySlotValue({
+            slotKey: operation.slotKey,
+            value: operation.value,
+            status: operation.action === 'candidate' ? 'candidate' : 'active',
+            confidence: operation.confidence,
+            importance: operation.importance,
+            sourceKind: evidence.some(isExplicitMemoryStatement) ? 'explicit_tool' : 'conversation',
+            sourceMessageIds: sources,
+          });
+          if ('rejected' in slotResult) {
+            if (['explicit_capture_required', 'invalid_slot_value'].includes(slotResult.rejected)) {
+              result.ignored += 1;
+              continue;
+            }
+            throw new Error(`memory consolidation slot rejected: ${slotResult.rejected}`);
+          }
+          if (operation.action === 'candidate') result.candidates += 1;
+          else if (operation.action === 'reinforce') result.reinforced += 1;
+          else if (operation.action === 'replace') result.replaced += 1;
+          else result.added += 1;
+          continue;
+        }
+
+        if (operation.action === 'reinforce') {
+          const target = operation.targetFactId ? this.getFact(operation.targetFactId) : null;
+          if (!target || target.status !== 'active') throw new Error('memory consolidation reinforce target is not active');
+          const reinforced = this.addFact({
+            scope: target.scope,
+            kind: target.kind,
+            text: target.text,
+            confidence: operation.confidence ?? target.confidence,
+            importance: operation.importance ?? target.importance,
+            sourceMessageIds: sources,
+          });
+          if ('rejected' in reinforced) throw new Error(`memory consolidation rejected: ${reinforced.rejected}`);
+          result.reinforced += 1;
+          continue;
+        }
+
+        if (operation.action === 'replace') {
+          if (!operation.targetFactId || !operation.text?.trim()) throw new Error('memory consolidation replace requires target and text');
+          const replaced = this.replaceFact(operation.targetFactId, operation.text, sources);
+          if (!replaced) throw new Error('memory consolidation replace target is not active');
+          if ('rejected' in replaced) throw new Error(`memory consolidation rejected: ${replaced.rejected}`);
+          result.replaced += 1;
+          continue;
+        }
+
+        if (!operation.kind || !operation.text?.trim()) throw new Error('memory consolidation add requires kind and text');
+        const explicitDynamic = sources.some(id => isExplicitMemoryStatement(sourceContent.get(id) ?? ''));
+        const dynamicCandidate = operation.action === 'candidate' || !explicitDynamic;
+        const added = this.addFact({
+          scope: operation.kind === 'agent_note' ? 'agent' : 'user',
+          kind: operation.kind,
+          text: operation.text,
+          status: dynamicCandidate ? 'candidate' : 'active',
+          confidence: operation.confidence ?? (dynamicCandidate ? 0.5 : 0.85),
+          importance: operation.importance ?? 0.65,
+          sourceMessageIds: sources,
+        });
+        if ('rejected' in added) throw new Error(`memory consolidation rejected: ${added.rejected}`);
+        if (dynamicCandidate) result.candidates += 1;
+        else result.added += 1;
+      }
+
+      const processedAt = Date.now();
+      const insertLedger = this.db.prepare(`
+        INSERT INTO chat_memory_consolidation_messages(profile_id,message_id,status,processed_at,run_id)
+        VALUES(?,?,'processed',?,?)
+      `);
+      for (const id of batchIds) insertLedger.run(this.profileId, id, processedAt, cleanRunId);
+      result.processed = batchIds.length;
+      return result;
+    });
+    return commit();
   }
 
   /** 从权威原始消息重建当前 Profile 的 FTS5 派生索引。 */
@@ -720,11 +1090,17 @@ export class ChatMemoryService {
       return true;
     };
     const retrievedFactIds: string[] = [];
+    const retrievedSlotValueIds: string[] = [];
     const retrievedMessageIds: string[] = [];
     let includedSummary = false;
-    const stableFacts = this.getFacts({ status: 'active' }).filter(f => f.kind === 'boundary' || f.kind === 'identity');
+    const relevantSlotDefinitions = searchMemorySlotDefinitions(query, tuning().memoryConsolidation.recallSlotLimit);
+    const slotValues = this.searchActiveMemorySlots(query);
+    const officialSlotKeys = new Set(slotValues.map(value => value.slotKey));
+    const stableFacts = this.getFacts({ status: 'active' }).filter(f => (f.kind === 'boundary' || f.kind === 'identity')
+      && !isFactCoveredByOfficialSlot(f, officialSlotKeys));
     const relevantFacts = this.searchFacts(query, 5);
-    const facts = [...stableFacts, ...relevantFacts.filter(f => !stableFacts.some(s => s.id === f.id))];
+    const facts = [...stableFacts, ...relevantFacts.filter(f => !stableFacts.some(s => s.id === f.id)
+      && !isFactCoveredByOfficialSlot(f, officialSlotKeys))];
     const supersededSourceIds = new Set(
       this.getFacts().filter(fact => fact.status === 'superseded' || fact.status === 'deleted')
         .flatMap(fact => fact.sourceMessageIds),
@@ -735,13 +1111,20 @@ export class ChatMemoryService {
       .filter(message => !supersededSourceIds.has(message.id));
     const evidenceGaps = evidenceQualifierGaps(query, [
       ...facts.filter(fact => fact.scope === 'user').map(fact => fact.text),
+      ...slotValues.map(value => formatSlotValue(value.value)),
       ...messages.filter(message => message.role === 'owner').map(message => message.content),
     ]);
     if (evidenceGaps.length > 0) {
       push(`证据缺口（以下问题限定词未在 user/owner 证据中出现）：${evidenceGaps.join('、')}。不得用近似经历或 bot/agent 内容补齐。`);
     }
+    for (const value of slotValues) {
+      const definition = getMemorySlotDefinition(value.slotKey);
+      if (!definition) continue;
+      if (definition.sensitivity === 'restricted' && !relevantSlotDefinitions.some(item => item.slotKey === value.slotKey)) continue;
+      if (push(`官方记忆槽（${definition.title}）：${formatSlotValue(value.value)}`)) retrievedSlotValueIds.push(value.id);
+    }
     for (const fact of facts) {
-      if (push(`已确认事实（${fact.scope}）：${fact.text}`)) retrievedFactIds.push(fact.id);
+      if (push(`已确认事实（${fact.scope}）：${fact.text} [来源层：模型扩展]`)) retrievedFactIds.push(fact.id);
     }
     const summaries = this.db.prepare(`SELECT summary,open_loops_json,commitments_json FROM conversation_summaries WHERE profile_id=? ORDER BY created_at DESC LIMIT 1`).all(this.profileId) as Array<{ summary: string; open_loops_json: string; commitments_json: string }>;
     for (const summary of summaries) {
@@ -757,6 +1140,7 @@ export class ChatMemoryService {
       text: parts.length === 1 ? '' : parts.join('\n'),
       retrievalMode,
       retrievedFactIds,
+      retrievedSlotValueIds,
       retrievedMessageIds,
       includedSummary,
     };
@@ -779,6 +1163,25 @@ export class ChatMemoryService {
     const text = message.content.trim();
     const remember = text.match(/^(?:请)?记住[，,:：]?\s*(.+)$/);
     if (remember) {
+      const route = routeDeterministicMemorySlot(text);
+      if (route) {
+        if (route.operation === 'remove') {
+          const target = this.getMemorySlotValues({ status: 'active', slotKey: route.slotKey })
+            .find(value => String(value.value).trim().toLowerCase() === route.value.trim().toLowerCase());
+          if (target) this.removeMemorySlotValue(target.id);
+        } else {
+          const slotResult = this.putMemorySlotValue({
+            slotKey: route.slotKey,
+            value: route.value,
+            confidence: 1,
+            importance: 0.9,
+            sourceKind: 'explicit_tool',
+            sourceMessageIds: [message.id],
+          });
+          if ('rejected' in slotResult) this.noteRejected(`slot_${slotResult.rejected}`);
+        }
+        return;
+      }
       const result = this.addFact({ scope: 'user', kind: inferKind(remember[1]!), text: remember[1]!, confidence: 1, importance: 0.9, sourceMessageIds: [message.id] });
       if ('rejected' in result) this.noteRejected(result.rejected);
       return;
@@ -820,6 +1223,27 @@ export class ChatMemoryService {
 
   private captureCandidate(message: ChatMessage): void {
     const text = message.content.trim();
+    if (!['statement', 'explicit_statement'].includes(classifyOwnerMemorySpeech(text))) return;
+    const route = routeDeterministicMemorySlot(text);
+    if (route) {
+      if (route.operation === 'remove') {
+        const target = this.getMemorySlotValues({ status: 'active', slotKey: route.slotKey })
+          .find(value => String(value.value).trim().toLowerCase() === route.value.trim().toLowerCase());
+        if (target) this.removeMemorySlotValue(target.id);
+      } else {
+        const result = this.putMemorySlotValue({
+          slotKey: route.slotKey,
+          value: route.value,
+          confidence: 0.75,
+          importance: 0.65,
+          sourceKind: isExplicitMemoryStatement(text) ? 'explicit_tool' : 'conversation',
+          sourceMessageIds: [message.id],
+        });
+        if ('rejected' in result) this.noteRejected(`slot_${result.rejected}`);
+        else this.metrics.captured += 1;
+      }
+      return;
+    }
     const signature = preferenceSignature(text);
     if (signature) {
       const conflict = this.getFacts({ status: 'active' }).find(fact =>
@@ -845,7 +1269,27 @@ function rowToFact(row: FactRow): MemoryFact {
     status: row.status, confidence: row.confidence, importance: row.importance, sourceMessageIds: JSON.parse(row.source_ids_json),
     supersedesId: row.supersedes_id ?? undefined, createdAt: row.created_at, updatedAt: row.updated_at };
 }
+
+export interface LegacyFactSlotMigrationPreview {
+  factId: string;
+  text: string;
+  outcome: 'official_slot' | 'dynamic_candidate' | 'rejected';
+  slotKey?: string;
+  value?: unknown;
+  reason?: string;
+}
+function emptyConsolidationResult(): MemoryConsolidationCommitResult {
+  return { processed: 0, added: 0, reinforced: 0, replaced: 0, candidates: 0, ignored: 0 };
+}
 function clamp(value: number): number { return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)); }
+function formatSlotValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+function isFactCoveredByOfficialSlot(fact: MemoryFact, officialSlotKeys: ReadonlySet<string>): boolean {
+  const route = routeDeterministicMemorySlot(fact.text);
+  return Boolean(route && officialSlotKeys.has(route.slotKey));
+}
 
 function normalizedTokens(text: string): string[] {
   const normalized = text.toLowerCase()

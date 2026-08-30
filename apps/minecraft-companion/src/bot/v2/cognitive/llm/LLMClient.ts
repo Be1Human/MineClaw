@@ -6,6 +6,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import type {
+  CanonicalLlmCall,
   LLMCallOptions,
   LLMChatMessage,
   LLMProvider,
@@ -14,7 +15,11 @@ import type {
   LLMToolSchema,
 } from './types.js';
 import { ArkProvider } from './arkProvider.js';
-import { OpenAICompatibleProvider } from './openaiCompatibleProvider.js';
+import {
+  OpenAICompatibleProvider,
+  prepareOpenAIRequest,
+} from './openaiCompatibleProvider.js';
+import { canonicalizeChatMessages, canonicalizeChatTools } from './canonical.js';
 import {
   failureFromError,
   isAbortError,
@@ -28,13 +33,39 @@ import type {
   LlmTraceRecorderPort,
 } from '../../infra/llmTrace/index.js';
 import { asProviderResult } from './usage.js';
+import { DEFAULT_LLM_API, type LlmApi } from '../../../../llm/api.js';
 
 export interface LLMClientConfig {
+  /** Global configuration id; legacy/inline clients use `inline`. */
+  routeId?: string;
   apiKey: string;
   baseUrl: string;
   model: string;
+  api?: LlmApi;
   /** 显式指定 function calling 模型；不按模型名猜测。 */
   toolModel?: string;
+}
+
+export interface PreparedLlmRouteSnapshot {
+  readonly routeId: string;
+  readonly adapterId: 'openai-http';
+  readonly api: LlmApi;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly credential: string;
+  readonly toolModel?: string;
+}
+
+export function prepareLlmRoute(config: LLMClientConfig): PreparedLlmRouteSnapshot {
+  return Object.freeze({
+    routeId: config.routeId?.trim() || 'inline',
+    adapterId: 'openai-http' as const,
+    api: config.api ?? DEFAULT_LLM_API,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    credential: config.apiKey,
+    ...(config.toolModel ? { toolModel: config.toolModel } : {}),
+  });
 }
 
 export interface CallWithToolsArgs {
@@ -58,16 +89,18 @@ export interface LLMClientRuntimeOptions {
 
 export class LLMClient {
   private providers: LLMProvider[] = [];
+  private readonly config: PreparedLlmRouteSnapshot;
   private readonly traceRecorder?: LlmTraceRecorderPort;
   private readonly now: () => Date;
   private readonly createId: () => string;
   private readonly pendingPersistenceGaps: LlmTraceEventInputV1[] = [];
 
   constructor(
-    private readonly config: LLMClientConfig,
+    config: LLMClientConfig,
     private readonly log: (category: string, message: string) => void,
     options: LLMClientRuntimeOptions = {},
   ) {
+    this.config = prepareLlmRoute(config);
     this.traceRecorder = options.traceRecorder;
     this.now = options.now ?? (() => new Date());
     this.createId = options.createId ?? randomUUID;
@@ -87,7 +120,7 @@ export class LLMClient {
     system?: string,
     traceContext?: LlmTraceCallContext,
   ): Promise<string | null> {
-    const { apiKey, baseUrl, model } = this.config;
+    const { credential: apiKey, baseUrl, model, api, routeId } = this.prepareCall();
     if (!apiKey || !baseUrl) {
       this.log('brain:llm', 'LLM 未配置');
       return null;
@@ -100,6 +133,8 @@ export class LLMClient {
 
     const timeoutMs = 90_000;
     const providerRequest: LLMCallOptions = {
+      routeId,
+      api,
       apiKey,
       baseUrl,
       model,
@@ -109,10 +144,30 @@ export class LLMClient {
       maxTokens: 1_500,
       timeoutMs,
     };
+    const canonicalCall: CanonicalLlmCall = {
+      messages: [
+        ...(system ? [{ role: 'system' as const, content: [{ kind: 'text' as const, text: system }] }] : []),
+        { role: 'user', content: [{ kind: 'text', text: prompt }] },
+      ],
+      tools: [],
+      temperature: providerRequest.temperature,
+      maxTokens: providerRequest.maxTokens,
+      timeoutMs,
+    };
+    const wire = provider instanceof OpenAICompatibleProvider
+      ? prepareOpenAIRequest(providerRequest, canonicalCall)
+      : null;
     const request: LlmRequestEnvelopeV1 = {
       provider: provider.name,
+      api,
+      routeId,
       baseUrlOrigin: safeBaseUrlOrigin(baseUrl),
       model,
+      ...(wire ? {
+        path: wire.exact.path,
+        body: jsonClone(wire.exact.body) as LlmTraceJsonValue,
+        ...(wire.exact.replay ? { replay: jsonClone(wire.exact.replay) } : {}),
+      } : {}),
       messages: jsonClone([
         ...(system ? [{ role: 'system', content: system }] : []),
         { role: 'user', content: prompt },
@@ -159,7 +214,8 @@ export class LLMClient {
 
   /** Function calling 调用；请求持久化失败时 provider 调用被硬阻断。 */
   async callWithTools(args: CallWithToolsArgs): Promise<LLMToolCallResult | null> {
-    const { apiKey, baseUrl } = this.config;
+    const route = this.prepareCall();
+    const { credential: apiKey, baseUrl, api, routeId } = route;
     if (!apiKey || !baseUrl) {
       this.log('brain:llm', 'LLM 未配置');
       args.onError?.({ kind: 'not_configured' });
@@ -172,10 +228,12 @@ export class LLMClient {
       return null;
     }
 
-    const model = this.resolveToolModel();
+    const model = this.resolveToolModel(route);
     const timeoutMs = args.timeoutMs ?? 90_000;
     const toolChoice: NonNullable<CallWithToolsArgs['toolChoice']> = args.toolChoice ?? 'auto';
     const providerRequest: LLMToolCallOptions = {
+      routeId,
+      api,
       apiKey,
       baseUrl,
       model,
@@ -187,10 +245,31 @@ export class LLMClient {
       timeoutMs,
       signal: args.signal,
     };
+    const canonicalCall: CanonicalLlmCall = {
+      messages: canonicalizeChatMessages(args.messages),
+      tools: canonicalizeChatTools(args.tools),
+      toolChoice: args.tools.length
+        ? (typeof toolChoice === 'object' ? { name: toolChoice.function.name } : toolChoice)
+        : undefined,
+      temperature: providerRequest.temperature,
+      maxTokens: providerRequest.maxTokens,
+      timeoutMs,
+      signal: args.signal,
+    };
+    const wire = provider instanceof OpenAICompatibleProvider
+      ? prepareOpenAIRequest(providerRequest, canonicalCall)
+      : null;
     const request: LlmRequestEnvelopeV1 = {
       provider: provider.name,
+      api,
+      routeId,
       baseUrlOrigin: safeBaseUrlOrigin(baseUrl),
       model,
+      ...(wire ? {
+        path: wire.exact.path,
+        body: jsonClone(wire.exact.body) as LlmTraceJsonValue,
+        ...(wire.exact.replay ? { replay: jsonClone(wire.exact.replay) } : {}),
+      } : {}),
       messages: jsonClone(args.messages) as unknown as LlmTraceJsonValue[],
       tools: jsonClone(args.tools) as unknown as LlmTraceJsonValue[],
       toolChoice: jsonClone(toolChoice) as unknown as LlmTraceJsonValue,
@@ -208,7 +287,15 @@ export class LLMClient {
 
     try {
       const providerResult = asProviderResult(await provider.callWithTools(providerRequest));
-      const result = providerResult.value;
+      const result = providerResult.value
+        ? {
+            ...providerResult.value,
+            usage: jsonClone(providerResult.usage),
+            ...(providerResult.canonical
+              ? { canonical: jsonClone(providerResult.canonical) }
+              : {}),
+          }
+        : null;
       if (!result) this.log('brain:llm', `${provider.name} callWithTools 返回空`);
       await this.recordTerminal({
         type: 'llm.response.recorded',
@@ -250,8 +337,14 @@ export class LLMClient {
     }
   }
 
-  private resolveToolModel(): string {
-    return this.config.toolModel ?? this.config.model;
+  private prepareCall(): PreparedLlmRouteSnapshot {
+    // Copy before the first async boundary. No mutable Store/config object can
+    // change the route, model, API or credential of this in-flight request.
+    return Object.freeze({ ...this.config });
+  }
+
+  private resolveToolModel(route: PreparedLlmRouteSnapshot): string {
+    return route.toolModel ?? route.model;
   }
 
   private async recordRequest(

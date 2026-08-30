@@ -4,7 +4,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { appendFileSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { ProfileStore, toPublicBotProfile, type BotProfile } from './profileStore.js';
+import { ProfileStore, toPublicBotProfile, validateCompanionPlayMode, type BotProfile } from './profileStore.js';
 import { LlmAgentConfigStore, type LlmAgentConfigInput, type LlmAgentConfigPatch } from './llmAgentConfigStore.js';
 import { ServerPresetStore, resolveSkinSyncMode } from './serverPresetStore.js';
 import { DesktopPetConfigStore, type DesktopPetConfigInput } from './desktopPetConfigStore.js';
@@ -17,7 +17,11 @@ import { acceptChatSubmit, rejectChatSubmit, type ChatSubmitAck } from './chatSu
 import { ResourcePackStore, registerResourcePackRoutes, seedBuiltinResourcePack } from './resourcePacks/index.js';
 import { tuning } from '../bot/v2/infra/tuning.js';
 import { VisualWorldDeltaBatcher } from './visualWorldDeltaBatcher.js';
+import { emitVisualWorldBootstrap, emitVisualWorldDeltaBatch } from './visualWorldBootstrapEmitter.js';
 import { registerInventoryIconRoutes } from './inventoryIconRoutes.js';
+import { DEFAULT_LLM_API, isLlmApi, type LlmApi } from '../llm/api.js';
+import { LLMClient } from '../bot/v2/cognitive/llm/LLMClient.js';
+import type { LLMFailure } from '../bot/v2/cognitive/llm/errors.js';
 
 export interface HubConfig {
   port: number;
@@ -30,6 +34,15 @@ export interface DefaultLlmConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  api?: LlmApi;
+}
+
+function connectionTestFailureMessage(failure: LLMFailure | undefined): string {
+  if (!failure) return '请求失败';
+  if (failure.kind === 'timeout') return '请求超时（20s）';
+  if (failure.kind === 'unsupported') return '所选 API 暂不受该 Adapter 支持';
+  if (failure.status) return `HTTP ${failure.status}`;
+  return `请求失败（${failure.kind}）`;
 }
 
 export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig) {
@@ -55,7 +68,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   const visualWorldRoom = (botId: string): string => `visual-world:${botId}`;
   const visualWorldBatcher = new VisualWorldDeltaBatcher(
     () => tuning().worldVisual,
-    (botId, batch) => io.to(visualWorldRoom(botId)).emit('bot:v2:visualWorld:delta', { botId, batch }),
+    (botId, batch) => emitVisualWorldDeltaBatch(io.to(visualWorldRoom(botId)), botId, batch),
   );
 
   // 文件日志：每日滚动，写到 <dataDir>/logs/runtime-YYYYMMDD.log
@@ -116,71 +129,55 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     status?: number;
     baseUrl: string;
     model: string;
+    api: LlmApi;
     preview?: string;
     error?: string;
   }> => {
     const apiKey = llm.apiKey?.trim() ?? '';
     const baseUrl = llm.baseUrl?.trim().replace(/\/$/, '') ?? '';
     const model = llm.model?.trim() ?? '';
-    if (!apiKey) return { ok: false, status: 400, baseUrl, model, error: '缺少 API Key；请填写或配置服务端 LLM_API_KEY' };
-    if (!baseUrl) return { ok: false, status: 400, baseUrl, model, error: '缺少 Base URL' };
-    if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, status: 400, baseUrl, model, error: 'Base URL 必须以 http:// 或 https:// 开头' };
+    const api = llm.api ?? DEFAULT_LLM_API;
+    if (!apiKey) return { ok: false, status: 400, baseUrl, model, api, error: '缺少 API Key；请填写或配置服务端 LLM_API_KEY' };
+    if (!baseUrl) return { ok: false, status: 400, baseUrl, model, api, error: '缺少 Base URL' };
+    if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, status: 400, baseUrl, model, api, error: 'Base URL 必须以 http:// 或 https:// 开头' };
     if (/api\.anthropic\.com/i.test(baseUrl)) {
-      return { ok: false, status: 400, baseUrl, model, error: '当前接口只支持 OpenAI-compatible；Claude 请使用 OpenRouter/LiteLLM/OneAPI 的 /v1 地址' };
+      return { ok: false, status: 400, baseUrl, model, api, error: '当前接口只支持 OpenAI-compatible；Claude 请使用 OpenRouter/LiteLLM/OneAPI 的 /v1 地址' };
     }
-    if (!model) return { ok: false, status: 400, baseUrl, model, error: '缺少模型名' };
+    if (!model) return { ok: false, status: 400, baseUrl, model, api, error: '缺少模型名' };
 
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 20_000);
-    const url = `${baseUrl}/chat/completions`;
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: 'You are a connection test endpoint. Reply exactly OK.' },
-            { role: 'user', content: 'Reply OK' },
-          ],
-          temperature: 0,
-          max_tokens: 16,
-        }),
-        signal: ctrl.signal,
-      });
-
-      if (!response.ok) {
-        let detail = '';
-        try { detail = (await response.text()).slice(0, 400); } catch { /* ignore */ }
-        return {
-          ok: false,
-          status: response.status,
-          baseUrl,
-          model,
-          error: detail ? `HTTP ${response.status}: ${detail}` : `HTTP ${response.status} ${response.statusText}`,
-        };
-      }
-
-      const data = await response.json() as {
-        choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
-      };
-      const msg = data.choices?.[0]?.message;
-      const preview = (msg?.content || msg?.reasoning_content || '').trim().slice(0, 80);
-      return { ok: true, status: response.status, baseUrl, model, preview: preview || '(empty)' };
-    } catch (e) {
-      const err = e as Error;
+    let failure: LLMFailure | undefined;
+    const client = new LLMClient({
+      routeId: 'hub-connection-test', apiKey, baseUrl, model, api,
+    }, () => {});
+    const result = await client.callWithTools({
+      messages: [
+        { role: 'system', content: 'You are a connection test endpoint. Reply exactly OK.' },
+        { role: 'user', content: 'Reply OK' },
+      ],
+      tools: [],
+      temperature: 0,
+      maxTokens: 16,
+      timeoutMs: 20_000,
+      onError: current => { failure = current; },
+    });
+    if (result) {
       return {
-        ok: false,
+        ok: true,
+        status: 200,
         baseUrl,
         model,
-        error: err.name === 'AbortError' ? '请求超时（20s）' : (err.message || '请求失败'),
+        api,
+        preview: result.content.trim().slice(0, 80) || '(empty)',
       };
-    } finally {
-      clearTimeout(timer);
     }
+    return {
+      ok: false,
+      ...(failure?.status ? { status: failure.status } : {}),
+      baseUrl,
+      model,
+      api,
+      error: connectionTestFailureMessage(failure),
+    };
   };
 
   botManager.onStatusChange = (botId, status) => {
@@ -216,8 +213,10 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     const visual = tuning().worldVisual;
     res.json({
       enabled: visual.enabled,
+      viewDistanceChunks: visual.viewDistanceChunks,
       sectionBuildBudgetMs: visual.sectionBuildBudgetMs,
       maxSectionBuildsPerFrame: visual.maxSectionBuildsPerFrame,
+      maxPendingSectionBuilds: visual.maxPendingSectionBuilds,
       maxResidentSections: visual.maxResidentSections,
       maxQueuedDeltaBatches: visual.maxQueuedDeltaBatches,
       maxAuthenticEntities: visual.maxAuthenticEntities,
@@ -227,6 +226,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       weatherFallSpeed: visual.weatherFallSpeed,
       fogDensity: visual.fogDensity,
       rainFogMultiplier: visual.rainFogMultiplier,
+      ambientFillLightIntensity: visual.ambientFillLightIntensity,
     });
   });
 
@@ -243,6 +243,11 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     return semanticSearch === undefined || typeof semanticSearch === 'boolean'
       ? null
       : 'memory.semanticSearch must be boolean';
+  };
+
+  const validateProfilePlayMode = (body: unknown): string | null => {
+    if (!body || typeof body !== 'object' || !Object.hasOwn(body, 'playMode')) return null;
+    return validateCompanionPlayMode((body as { playMode?: unknown }).playMode);
   };
 
   const profilesUsingLlmConfig = (llmConfigId: string): BotProfile[] => (
@@ -264,6 +269,9 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     }
     if (value.apiKey !== undefined && typeof value.apiKey !== 'string') return 'apiKey must be a string';
     if (value.clearApiKey !== undefined && typeof value.clearApiKey !== 'boolean') return 'clearApiKey must be boolean';
+    if (value.api !== undefined && !isLlmApi(value.api)) {
+      return 'api must be openai-completions or openai-responses';
+    }
     const baseUrl = typeof value.baseUrl === 'string' ? value.baseUrl.trim() : '';
     if (baseUrl && !/^https?:\/\//i.test(baseUrl)) return 'Base URL must start with http:// or https://';
     if (baseUrl && /api\.anthropic\.com/i.test(baseUrl)) return 'Anthropic native endpoint is not supported; use an OpenAI-compatible /v1 endpoint';
@@ -302,7 +310,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   });
 
   app.post('/api/profiles', async (req, res) => {
-    const validationError = validateProfileMemoryConfig(req.body) ?? validateProfileLlmConfig(req.body) ?? validateProfileCharacterCard(req.body) ?? rejectLegacyProfileLlm(req.body);
+    const validationError = validateProfilePlayMode(req.body) ?? validateProfileMemoryConfig(req.body) ?? validateProfileLlmConfig(req.body) ?? validateProfileCharacterCard(req.body) ?? rejectLegacyProfileLlm(req.body);
     if (validationError) { res.status(400).json({ error: validationError }); return; }
     const profile = profileStore.create(req.body);
     try {
@@ -317,7 +325,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   app.patch('/api/profiles/:id', async (req, res) => {
     const existing = profileStore.get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'not found' }); return; }
-    const validationError = validateProfileMemoryConfig(req.body) ?? validateProfileLlmConfig(req.body) ?? validateProfileCharacterCard(req.body) ?? rejectLegacyProfileLlm(req.body);
+    const validationError = validateProfilePlayMode(req.body) ?? validateProfileMemoryConfig(req.body) ?? validateProfileLlmConfig(req.body) ?? validateProfileCharacterCard(req.body) ?? rejectLegacyProfileLlm(req.body);
     if (validationError) { res.status(400).json({ error: validationError }); return; }
     const updated = profileStore.update(req.params.id, req.body);
     const profile = updated ?? existing;
@@ -379,7 +387,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   });
 
   app.put('/api/profiles/:id', async (req, res) => {
-    const validationError = validateProfileMemoryConfig(req.body) ?? validateProfileLlmConfig(req.body) ?? validateProfileCharacterCard(req.body) ?? rejectLegacyProfileLlm(req.body);
+    const validationError = validateProfilePlayMode(req.body) ?? validateProfileMemoryConfig(req.body) ?? validateProfileLlmConfig(req.body) ?? validateProfileCharacterCard(req.body) ?? rejectLegacyProfileLlm(req.body);
     if (validationError) { res.status(400).json({ error: validationError }); return; }
     const p = profileStore.update(req.params.id, req.body);
     if (!p) { res.status(404).json({ error: 'not found' }); return; }
@@ -545,6 +553,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       apiKey: override.apiKey?.trim() || config.apiKey || '',
       baseUrl: override.baseUrl?.trim() || config.baseUrl,
       model: override.model?.trim() || config.model,
+      api: override.api ?? config.api,
     });
     res.status(result.ok ? 200 : (result.status && result.status < 500 ? result.status : 502)).json(result);
   });
@@ -643,6 +652,59 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   const factKinds = new Set(['preference', 'identity', 'relationship', 'commitment', 'boundary', 'project', 'agent_note']);
   const factStatuses = new Set(['candidate', 'active', 'superseded', 'deleted', 'rejected', 'expired']);
 
+  app.get('/api/bots/:botId/chat-memory/slots', (req, res) => {
+    const group = typeof req.query.group === 'string' ? req.query.group.slice(0, 80) : undefined;
+    const filledOnly = req.query.filledOnly === 'true' || req.query.filledOnly === '1';
+    const status = typeof req.query.status === 'string' && factStatuses.has(req.query.status)
+      ? req.query.status as import('../bot/v2/infra/chatMemory.js').FactStatus
+      : undefined;
+    const slots = botManager.getChatMemorySlotCatalog(req.params.botId, { group, filledOnly, status });
+    if (!slots) { res.status(404).json({ error: 'chat memory not active' }); return; }
+    const filled = slots.filter(slot => slot.values.length > 0).length;
+    res.json({ catalogVersion: 1, total: 100, filled, slots });
+  });
+
+  app.post('/api/bots/:botId/chat-memory/slots/:slotKey/values', (req, res) => {
+    const body = req.body as { value?: unknown };
+    if (!Object.prototype.hasOwnProperty.call(body, 'value')) { res.status(400).json({ error: 'value required' }); return; }
+    const result = botManager.putChatMemorySlotValue(req.params.botId, req.params.slotKey, body.value);
+    if (!result) { res.status(404).json({ error: 'chat memory not active' }); return; }
+    'rejected' in result ? res.status(422).json(result) : res.status(201).json(result);
+  });
+
+  app.patch('/api/bots/:botId/chat-memory/slot-values/:valueId', (req, res) => {
+    const body = req.body as { value?: unknown };
+    if (!Object.prototype.hasOwnProperty.call(body, 'value')) { res.status(400).json({ error: 'value required' }); return; }
+    const result = botManager.replaceChatMemorySlotValue(req.params.botId, req.params.valueId, body.value);
+    if (!result) { res.status(404).json({ error: 'active slot value or chat memory not found' }); return; }
+    'rejected' in result ? res.status(422).json(result) : res.json(result);
+  });
+
+  app.delete('/api/bots/:botId/chat-memory/slot-values/:valueId', (req, res) => {
+    const removed = botManager.removeChatMemorySlotValue(req.params.botId, req.params.valueId);
+    removed === true ? res.json({ ok: true }) : res.status(404).json({ error: 'active slot value or chat memory not found' });
+  });
+
+  app.post('/api/bots/:botId/chat-memory/slot-values/:valueId/restore', (req, res) => {
+    const restored = botManager.restoreChatMemorySlotValue(req.params.botId, req.params.valueId);
+    restored ? res.json(restored) : res.status(404).json({ error: 'restorable slot value or chat memory not found' });
+  });
+
+  app.get('/api/bots/:botId/chat-memory/slot-values/:valueId/sources', (req, res) => {
+    const sources = botManager.getChatMemorySlotValueSources(req.params.botId, req.params.valueId);
+    sources ? res.json({ sources }) : res.status(404).json({ error: 'slot value or chat memory not found' });
+  });
+
+  app.get('/api/bots/:botId/chat-memory/slot-migration/preview', (req, res) => {
+    const preview = botManager.previewChatMemorySlotMigration(req.params.botId);
+    preview ? res.json({ preview }) : res.status(404).json({ error: 'chat memory not active' });
+  });
+
+  app.post('/api/bots/:botId/chat-memory/slot-migration/apply', (req, res) => {
+    const result = botManager.applyChatMemorySlotMigration(req.params.botId);
+    result ? res.json(result) : res.status(404).json({ error: 'chat memory not active' });
+  });
+
   app.get('/api/bots/:botId/chat-memory/facts', (req, res) => {
     const status = typeof req.query.status === 'string' && factStatuses.has(req.query.status) ? req.query.status as import('../bot/v2/infra/chatMemory.js').FactStatus : undefined;
     const query = typeof req.query.query === 'string' ? req.query.query.slice(0, 280) : undefined;
@@ -688,6 +750,26 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   app.delete('/api/bots/:botId/chat-memory/facts/:factId', (req, res) => {
     const removed = botManager.removeChatMemoryFact(req.params.botId, req.params.factId);
     removed === true ? res.json({ ok: true }) : res.status(404).json({ error: 'active fact or chat memory not found' });
+  });
+
+  app.post('/api/bots/:botId/chat-memory/facts/:factId/approve', (req, res) => {
+    const approved = botManager.approveChatMemoryFact(req.params.botId, req.params.factId);
+    approved ? res.json(approved) : res.status(404).json({ error: 'candidate fact or chat memory not found' });
+  });
+
+  app.post('/api/bots/:botId/chat-memory/facts/:factId/reject', (req, res) => {
+    const rejected = botManager.rejectChatMemoryFact(req.params.botId, req.params.factId);
+    rejected === true ? res.json({ ok: true }) : res.status(404).json({ error: 'candidate fact or chat memory not found' });
+  });
+
+  app.post('/api/bots/:botId/chat-memory/facts/:factId/map-to-slot', (req, res) => {
+    const body = req.body as { slotKey?: unknown; value?: unknown };
+    if (typeof body.slotKey !== 'string' || !body.slotKey.trim() || !Object.prototype.hasOwnProperty.call(body, 'value')) {
+      res.status(400).json({ error: 'slotKey and value required' }); return;
+    }
+    const mapped = botManager.mapChatMemoryFactToSlot(req.params.botId, req.params.factId, body.slotKey, body.value);
+    if (!mapped) { res.status(404).json({ error: 'candidate fact or chat memory not found' }); return; }
+    'rejected' in mapped ? res.status(422).json(mapped) : res.json(mapped);
   });
 
   app.post('/api/bots/:botId/chat-memory/facts/:factId/restore', (req, res) => {
@@ -1056,7 +1138,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
         await socket.join(room);
         const bootstrap = await botManager.getVisualWorldBootstrap(botId);
         if (!bootstrap) throw new Error('visual_world_unavailable');
-        socket.emit('bot:v2:visualWorld:bootstrap', { botId, bootstrap });
+        emitVisualWorldBootstrap(socket, botId, bootstrap);
         acknowledge?.({ ok: true });
       } catch {
         await socket.leave(room);

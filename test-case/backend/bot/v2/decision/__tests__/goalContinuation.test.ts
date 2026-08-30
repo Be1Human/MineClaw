@@ -10,6 +10,7 @@ import type { LLMClient } from '../../../../../../apps/minecraft-companion/src/b
 import type { GameAdapter } from '../../../../../../apps/minecraft-companion/src/bot/adapter/GameAdapter.js';
 import type { PerceptionPipeline } from '../../../../../../apps/minecraft-companion/src/bot/v2/perception/pipeline.js';
 import type { GoalContinuationV2 } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
+import type { GamePresenceState } from '../../../../../../apps/minecraft-companion/src/bot/v2/gamePresenceContext.js';
 
 function continuation(state: GoalContinuationV2['session']['state']): GoalContinuationV2 {
   return {
@@ -32,7 +33,7 @@ function continuation(state: GoalContinuationV2['session']['state']): GoalContin
   };
 }
 
-function build(llm: LLMClient) {
+function build(llm: LLMClient, opts?: { getGamePresence?: () => GamePresenceState }) {
   const bus = new EventBusV2();
   const world = {
     tick: 1, timestamp: Date.now(),
@@ -54,6 +55,7 @@ function build(llm: LLMClient) {
   const lifecycle: string[] = [];
   const deps: MainBrainDeps = {
     bus, game, ownerName: 'Owner', llm, memory,
+    getGamePresence: opts?.getGamePresence,
     goalAgentPort: {
       request: () => { throw new Error('not expected'); },
       beginContinuation: (_turnId, sessionId) => lifecycle.push(`begin:${sessionId}`),
@@ -137,5 +139,31 @@ describe('BUG-CROSS-51 · GoalContinuationV2 turn', () => {
     const second = structuredClone(first);
     second.triggeringReport.update!.dedupeKey = 'decision:replan';
     assert.notEqual(goalContinuationDedupeKey(first), goalContinuationDedupeKey(second));
+  });
+
+  it('BUG-CROSS-82 · 续接回复拦截“你先进游戏里”并要求改成第一人称身体事实', async () => {
+    let calls = 0;
+    const llm = {
+      callWithTools: async () => {
+        calls += 1;
+        return calls === 1
+          ? { toolCalls: [{ id: 'bad-say', name: 'say', arguments: { text: '你先进游戏里，我再看看你在哪。' } }], content: '' }
+          : { toolCalls: [{ id: 'safe-say', name: 'say', arguments: { text: '我现在还没进入游戏，所以暂时无法查看你的位置。' } }], content: '' };
+      },
+    } as unknown as LLMClient;
+    const { brain, bus } = build(llm, {
+      getGamePresence: () => ({ embodied: false, ownerObservation: 'unknown' }),
+    });
+    const spoken: string[] = [];
+    bus.on('speech.committed', event => spoken.push(String((event.payload as { text?: string }).text ?? '')));
+    const next = continuation('ready_for_decision');
+    next.triggeringReport.summary = '世界观察暂不可用：dimension=offline, owner=null。';
+    const run = brain as unknown as { runTurn: (m: string, k: string, s: undefined, c: GoalContinuationV2) => Promise<unknown> };
+
+    await run.runTurn.call(brain, 'continue', 'goal_continuation', undefined, next);
+
+    assert.equal(calls, 2);
+    assert.deepEqual(spoken, ['我现在还没进入游戏，所以暂时无法查看你的位置。']);
+    brain.shutdown('test_done');
   });
 });

@@ -33,6 +33,7 @@ export interface GoalAgentModelResponse<T> {
   budget: GoalAgentStateV1['budget'];
   promptTokens: number;
   completionTokens: number;
+  tokenUsageSource?: 'provider' | 'estimated' | 'mixed';
   modelCallIndex: number;
   contextRevision: number;
   toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;

@@ -116,6 +116,8 @@ export interface ConversationEntry {
     source?: 'game_chat' | 'web_ui';
     isPending?: boolean;         // ask_master 挂起状态
     taskContext?: string;
+    /** Internal MainBrain continuation; excluded from public memory adapters. */
+    llmContinuation?: string;
   };
 }
 
@@ -184,6 +186,7 @@ interface ConversationRow {
   source: string | null;
   is_pending: number;
   task_context: string | null;
+  continuation_json: string | null;
   ts: number;
 }
 
@@ -317,9 +320,16 @@ export class MemoryV2 {
           source          TEXT DEFAULT 'game_chat',
           is_pending      INTEGER DEFAULT 0,
           task_context    TEXT,
+          continuation_json TEXT,
           ts              INTEGER NOT NULL
         )
       `).run();
+      // Existing profiles predate durable MainBrain continuation.
+      try {
+        this.db.prepare(`ALTER TABLE conversations ADD COLUMN continuation_json TEXT`).run();
+      } catch {
+        // Duplicate-column is the expected steady-state path.
+      }
 
       // FEAT-MEM-05 · 位置轨迹时序表
       this.db.prepare(`
@@ -568,6 +578,7 @@ export class MemoryV2 {
     }
     if (type === 'conversation') {
       const c = entry as ConversationEntry;
+      this.conversations = this.conversations.filter(existing => existing.id !== c.id);
       this.conversations.push(c);
       if (this.conversations.length > MemoryV2.MAX_CONV_ENTRIES) {
         this.conversations = this.conversations.slice(-MemoryV2.MAX_CONV_ENTRIES);
@@ -696,8 +707,8 @@ export class MemoryV2 {
     try {
       this.db.prepare(`
         INSERT OR REPLACE INTO conversations
-          (id, turn_id, role, content, tool_calls_json, source, is_pending, task_context, ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, turn_id, role, content, tool_calls_json, source, is_pending, task_context, continuation_json, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         c.id,
         c.turnId,
@@ -707,6 +718,7 @@ export class MemoryV2 {
         c.meta?.source ?? 'game_chat',
         c.meta?.isPending ? 1 : 0,
         c.meta?.taskContext ?? null,
+        c.meta?.llmContinuation ?? null,
         c.timestamp,
       );
     } catch (err) {
@@ -745,6 +757,7 @@ export class MemoryV2 {
         source: (row.source as 'game_chat' | 'web_ui') ?? 'game_chat',
         isPending: row.is_pending === 1,
         taskContext: row.task_context ?? undefined,
+        llmContinuation: row.continuation_json ?? undefined,
       },
     };
   }

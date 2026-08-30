@@ -86,10 +86,10 @@
             <div class="detail-scroll">
               <section v-if="detailTab === 'input'" class="detail-section">
                 <div class="detail-toolbar"><strong>模型实际输入</strong><button @click="copyJson(callDetail.request)">复制完整 Input</button></div>
-                <dl class="fact-grid"><div><dt>模型</dt><dd>{{ callDetail.request.model || '未知' }}</dd></div><div><dt>状态</dt><dd>{{ callStatusLabel(callDetail.status) }}</dd></div><div><dt>Call ID</dt><dd>{{ callDetail.callId }}</dd></div><div><dt>超时</dt><dd>{{ formatDuration(callDetail.request.timeoutMs) }}</dd></div></dl>
-                <div class="subheading"><strong>Messages</strong><span>{{ requestMessages.length }} 条 · 保持原始顺序</span><button @click="rawInput = !rawInput">{{ rawInput ? '结构化视图' : 'Raw JSON' }}</button></div>
+                <dl class="fact-grid"><div><dt>模型</dt><dd>{{ callDetail.request.model || '未知' }}</dd></div><div><dt>API</dt><dd>{{ llmApiLabel(callDetail.request.api) }}</dd></div><div><dt>Endpoint</dt><dd>{{ callDetail.request.path || '历史记录未提供' }}</dd></div><div><dt>重放</dt><dd>{{ formatReplaySummary(callDetail.request.replay) || '无历史原生重放' }}</dd></div><div><dt>状态</dt><dd>{{ callStatusLabel(callDetail.status) }}</dd></div><div><dt>Call ID</dt><dd>{{ callDetail.callId }}</dd></div><div><dt>超时</dt><dd>{{ formatDuration(callDetail.request.timeoutMs) }}</dd></div></dl>
+                <div class="subheading"><strong>{{ requestInputLabel }}</strong><span>{{ requestMessages.length }} 条 · 保持实际发送顺序</span><button @click="rawInput = !rawInput">{{ rawInput ? '结构化视图' : 'Raw JSON' }}</button></div>
                 <pre v-if="rawInput" class="json-block">{{ pretty(callDetail.request) }}</pre>
-                <div v-else class="message-list"><article v-for="(message, index) in requestMessages" :key="index" class="message-card"><header><span>#{{ index + 1 }}</span><strong>{{ message.role || 'unknown' }}</strong><small v-if="message.name">{{ message.name }}</small></header><pre>{{ messageContent(message) }}</pre></article></div>
+                <div v-else class="message-list"><article v-for="(message, index) in requestMessages" :key="index" class="message-card"><header><span>#{{ index + 1 }}</span><strong>{{ message.role || message.type || 'unknown' }}</strong><small v-if="message.name">{{ message.name }}</small></header><pre>{{ messageContent(message) }}</pre></article></div>
               </section>
               <section v-else-if="detailTab === 'output'" class="detail-section"><div class="detail-toolbar"><strong>模型返回 / 失败</strong><button @click="copyJson(callDetail.response)">复制</button></div><pre class="json-block">{{ pretty(callDetail.response) }}</pre></section>
               <section v-else-if="detailTab === 'context'" class="detail-section"><ContextRefs title="已选上下文" :items="contextSelected"/><ContextRefs title="被裁剪上下文" :items="contextOmitted" omitted/></section>
@@ -97,7 +97,7 @@
               <section v-else class="detail-section">
                 <div class="cache-hero" :class="cacheTone(callDetail)"><span>缓存命中率</span><strong>{{ formatCachePercent(callDetail) }}</strong><small>{{ cacheStatusText(callDetail.cacheStatus) }} · {{ formatTraceTokens(callDetail.usage.cachedInputTokens) }}/{{ formatTraceTokens(callDetail.usage.cacheEligibleInputTokens) }} cached/eligible</small></div>
                 <div class="subheading"><strong>Usage</strong><span>Provider 实际上报</span></div>
-                <dl class="fact-grid"><div><dt>Input tokens</dt><dd>{{ formatTraceTokens(callDetail.usage.inputTokens) }}</dd></div><div><dt>Output tokens</dt><dd>{{ formatTraceTokens(callDetail.usage.outputTokens) }}</dd></div><div><dt>Cached input</dt><dd>{{ formatTraceTokens(callDetail.usage.cachedInputTokens) }}</dd></div><div><dt>Cache miss</dt><dd>{{ formatTraceTokens(callDetail.usage.cacheMissInputTokens) }}</dd></div><div><dt>Cache eligible</dt><dd>{{ formatTraceTokens(callDetail.usage.cacheEligibleInputTokens) }}</dd></div><div><dt>数据来源</dt><dd>{{ callDetail.usage.source }}</dd></div></dl>
+                <dl class="fact-grid"><div><dt>Input tokens</dt><dd>{{ formatTraceTokens(callDetail.usage.inputTokens) }}</dd></div><div><dt>Output tokens</dt><dd>{{ formatTraceTokens(callDetail.usage.outputTokens) }}</dd></div><div><dt>Total tokens</dt><dd>{{ formatTraceTokens(callDetail.usage.totalTokens) }}</dd></div><div><dt>Reasoning output</dt><dd>{{ formatTraceTokens(callDetail.usage.reasoningOutputTokens) }}</dd></div><div><dt>Cached input</dt><dd>{{ formatTraceTokens(callDetail.usage.cachedInputTokens) }}</dd></div><div><dt>Cache write</dt><dd>{{ formatTraceTokens(callDetail.usage.cacheWriteInputTokens) }}</dd></div><div><dt>Cache miss</dt><dd>{{ formatTraceTokens(callDetail.usage.cacheMissInputTokens) }}</dd></div><div><dt>Cache eligible</dt><dd>{{ formatTraceTokens(callDetail.usage.cacheEligibleInputTokens) }}</dd></div><div><dt>数据来源</dt><dd>{{ callDetail.usage.source }}</dd></div></dl>
                 <div class="subheading"><strong>Timing</strong><span>调用生命周期</span></div>
                 <dl class="timing-list"><div><dt>请求记录</dt><dd>{{ formatDate(callDetail.timing.requestedAt) }}</dd></div><div><dt>调用结束</dt><dd>{{ callDetail.timing.finishedAt ? formatDate(callDetail.timing.finishedAt) : '尚未记录' }}</dd></div><div><dt>耗时</dt><dd>{{ formatDuration(callDetail.timing.durationMs) }}</dd></div><div><dt>Agent / Node</dt><dd>{{ agentLabel(callDetail.requestEvent.agent) }} / {{ callDetail.requestEvent.node || '未标节点' }}</dd></div><div><dt>Revision / Epoch</dt><dd>{{ callDetail.requestEvent.stateRevision ?? '—' }} / {{ callDetail.requestEvent.epoch ?? '—' }}</dd></div></dl>
               </section>
@@ -113,7 +113,7 @@
 
 <script setup>
 import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { cacheStatusText, fetchTraceJson, formatCachePercent, formatCacheSummary, formatTraceJson, formatTraceTokens, mergeTraceEvents, orderTraceEventsNewestFirst, traceEventPresentation, traceQuery } from '../lib/llmTrace.js';
+import { cacheStatusText, fetchTraceJson, formatCachePercent, formatCacheSummary, formatReplaySummary, formatTraceJson, formatTraceTokens, llmApiLabel, mergeTraceEvents, orderTraceEventsNewestFirst, traceEventPresentation, traceQuery } from '../lib/llmTrace.js';
 
 const props = defineProps({ botId: { type: String, default: '' } });
 const sessions = ref([]), selectedSession = ref(null), selectedTurn = ref(null), events = ref([]), selectedEvent = ref(null), callDetail = ref(null);
@@ -131,7 +131,18 @@ const nodeOptions = computed(() => [...new Set(sessions.value.flatMap(session =>
 const displayedEvents = computed(() => orderTraceEventsNewestFirst(events.value).map(event => ({ event, ...traceEventPresentation(event) })));
 const exportUrl = computed(() => props.botId && selectedSession.value ? `/api/bots/${encodeURIComponent(props.botId)}/v2/llm-traces/export${traceQuery({ sessionId: selectedSession.value.sessionId })}` : '#');
 const polling = computed(() => Boolean(props.botId && selectedSession.value));
-const requestMessages = computed(() => Array.isArray(callDetail.value?.request?.messages) ? callDetail.value.request.messages : []);
+const requestMessages = computed(() => {
+  const request = callDetail.value?.request;
+  const body = request?.body;
+  if (request?.api === 'openai-responses' && Array.isArray(body?.input)) {
+    return body?.instructions
+      ? [{ role: 'instructions', content: body.instructions }, ...body.input]
+      : body.input;
+  }
+  if (Array.isArray(body?.messages)) return body.messages;
+  return Array.isArray(request?.messages) ? request.messages : [];
+});
+const requestInputLabel = computed(() => callDetail.value?.request?.api === 'openai-responses' ? 'Input items' : 'Messages');
 const contextSelected = computed(() => Array.isArray(callDetail.value?.context?.selected) ? callDetail.value.context.selected : []);
 const contextOmitted = computed(() => Array.isArray(callDetail.value?.context?.omitted) ? callDetail.value.context.omitted : []);
 const toolEvents = computed(() => (callDetail.value?.events || []).filter(event => event.type === 'tool.call' || event.type === 'tool.result'));

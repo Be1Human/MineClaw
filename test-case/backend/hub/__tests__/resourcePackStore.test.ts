@@ -181,8 +181,10 @@ test('FEAT-WEBUI-27-005 | 内置开源视觉资源包自动播种且重复启动
       path === 'pack.mcmeta'
       || path === 'LICENSE.txt'
       || path === 'MINECLAW-PROVENANCE.json'
+      || path === 'MINECRAFT-ASSETS-NOTICE.json'
       || path.startsWith('assets/minecraft/blockstates/')
       || path.startsWith('assets/minecraft/models/block/')
+      || path.startsWith('assets/minecraft/mineclaw-baseline/1.21.1/')
       || path.startsWith('assets/minecraft/textures/block/')
       || path.startsWith('assets/minecraft/textures/item/')
     )), '内置 ZIP 不得包含声音、音乐、GUI、字体、实体、物品模型或世界文件');
@@ -204,7 +206,11 @@ test('FEAT-WEBUI-27-005 | 内置开源视觉资源包自动播种且重复启动
     assert.equal(first.minecraftVersion, '1.21');
     assert.ok(store.readFile(first.id, 'assets/minecraft/textures/block/stone.png'));
     assert.ok(store.readFile(first.id, 'assets/minecraft/textures/item/oak_door.png'));
+    assert.match(new TextDecoder().decode(store.readFile(first.id, 'assets/minecraft/mineclaw-baseline/1.21.1/blocks_states.json')!), /spruce_door/);
+    assert.match(new TextDecoder().decode(store.readFile(first.id, 'assets/minecraft/mineclaw-baseline/1.21.1/blocks_models.json')!), /cube_all/);
+    assert.match(new TextDecoder().decode(store.readFile(first.id, 'assets/minecraft/mineclaw-baseline/1.21.1/tints.json')!), /spruce_leaves/);
     assert.match(new TextDecoder().decode(store.readFile(first.id, 'MINECLAW-PROVENANCE.json')!), /Love-and-Tolerance/);
+    assert.match(new TextDecoder().decode(store.readFile(first.id, 'MINECRAFT-ASSETS-NOTICE.json')!), /minecraft-assets/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

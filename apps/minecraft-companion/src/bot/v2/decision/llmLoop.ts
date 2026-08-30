@@ -9,7 +9,12 @@
  */
 
 import { LLMClient } from '../cognitive/llm/LLMClient.js';
-import type { LLMChatMessage } from '../cognitive/llm/types.js';
+import type {
+  CanonicalLlmMessage,
+  LLMChatMessage,
+  LLMToolCallResult,
+  LlmContentBlock,
+} from '../cognitive/llm/types.js';
 import type { ToolRegistry } from './tools/toolRegistry.js';
 import type { ToolCall, ToolResult } from './tools/types.js';
 import type { EventBusV2 } from '../infra/eventBus.js';
@@ -36,6 +41,8 @@ export interface LLMLoopConfig {
   systemPrompt: string;
   /** FEAT-CROSS-12 · 根据当前消息动态选择世界书并组装角色卡。 */
   characterBlock?: (userMessage: string) => string;
+  /** 每个 turn 现读的机器运行态；不得用静态 prompt 猜测身体或玩家在线状态。 */
+  runtimeBlock?: () => string;
   /** 关闭时只允许聊天/记忆工具。 */
   minecraftEnabled?: boolean;
   memoryEnabled?: boolean;
@@ -61,6 +68,46 @@ export interface HistoryEntry {
   result: ToolResult;
   /** function calling 返回的 tool_call_id · 用于在 messages 里把 assistant.tool_calls 与 tool 结果配对 */
   toolCallId?: string;
+  /** Exact assistant turn, including optional canonical/replay metadata. */
+  assistant?: LLMChatMessage;
+}
+
+interface MainBrainPendingHistoryEnvelopeV1 {
+  kind: 'mainbrain-pending-history';
+  version: 1;
+  entries: HistoryEntry[];
+}
+
+/** Durable pending payload stored with the conversation record. */
+export function serializeMainBrainPendingHistory(history: readonly HistoryEntry[]): string {
+  const envelope: MainBrainPendingHistoryEnvelopeV1 = {
+    kind: 'mainbrain-pending-history',
+    version: 1,
+    entries: structuredClone([...history]),
+  };
+  return JSON.stringify(envelope);
+}
+
+/** Unknown/corrupt envelopes fail closed; replay metadata degrades later in the codec. */
+export function restoreMainBrainPendingHistory(raw: string | undefined): HistoryEntry[] | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+  if (!isPlainObject(parsed)
+    || parsed.kind !== 'mainbrain-pending-history'
+    || parsed.version !== 1
+    || !Array.isArray(parsed.entries)) return null;
+  const entries: HistoryEntry[] = [];
+  for (const value of parsed.entries) {
+    const entry = restoreHistoryEntry(value);
+    if (!entry) return null;
+    entries.push(entry);
+  }
+  return entries;
 }
 
 export interface LoopResult {
@@ -237,7 +284,7 @@ export class LLMToolLoop {
               protocolRetryCount += 1;
               this.log(`R${rounds} 输出协议无效${legacy ? `（工具 ${legacy.call.tool} 未获许可）` : ''} · 纠正重试`);
               this.logProtocol('protocol_retry', rounds, legacy ? `unpermitted_tool:${legacy.call.tool}` : 'empty_content');
-              if (responseContent) messages.push({ role: 'assistant', content: responseContent });
+              if (responseContent) messages.push(responseAssistantMessage(resp));
               messages.push({ role: 'user', content: protocolCorrectionInstruction() });
               continue;
             }
@@ -250,7 +297,7 @@ export class LLMToolLoop {
           if (hasServileRelationshipStyle(text) && relationshipRewriteCount < 1) {
             relationshipRewriteCount += 1;
             this.log(`R${rounds} 检测到主仆式口吻 · 拦截并要求按平等好友关系重写`);
-            messages.push({ role: 'assistant', content: responseContent });
+            messages.push(responseAssistantMessage(resp));
             messages.push({ role: 'user', content: relationshipRewriteInstruction(userMessage) });
             continue;
           }
@@ -258,7 +305,7 @@ export class LLMToolLoop {
             if (identityRewriteCount < 1 && rounds < this.cfg.maxRounds) {
               identityRewriteCount += 1;
               this.log(`R${rounds} 检测到内部执行被写成外部主体 · 拦截并要求按第一人称重写`);
-              messages.push({ role: 'assistant', content: responseContent });
+              messages.push(responseAssistantMessage(resp));
               messages.push({ role: 'user', content: identityRewriteInstruction(userMessage) });
               continue;
             }
@@ -273,7 +320,7 @@ export class LLMToolLoop {
             if (speechPolicyRetryCount < 1 && rounds < this.cfg.maxRounds) {
               speechPolicyRetryCount += 1;
               this.log(`R${rounds} GoalReportSpeechPolicy 拦截 implicit-say: ${speechVerdict.reason ?? '状态不一致'}`);
-              messages.push({ role: 'assistant', content: responseContent });
+              messages.push(responseAssistantMessage(resp));
               messages.push({ role: 'user', content: `[GoalReportSpeechPolicy] ${speechVerdict.reason ?? '回复与任务状态不一致'}\n${speechVerdict.hint ?? '请按任务报告重写。'}` });
               continue;
             }
@@ -308,7 +355,7 @@ export class LLMToolLoop {
               }
               reviseCount += 1;
               // 没有真实 tool_call，不能伪造 tool role；用合法 assistant/user 对回灌纠正意见。
-              messages.push({ role: 'assistant', content: responseContent });
+              messages.push(responseAssistantMessage(resp));
               messages.push({
                 role: 'user',
                 content: `[LoopCritic ${verdict.action}] ${verdict.reason}\n${verdict.hint ?? '请重新决策并调用合适工具。'}`,
@@ -341,7 +388,7 @@ export class LLMToolLoop {
       const memoryToolDenied = this.cfg.memoryEnabled === false && ['save_memory', 'recall_memory'].includes(call.tool);
       if (policyToolDenied || gameToolDenied || memoryToolDenied) {
         this.log(`R${rounds} 拒绝角色卡未启用的工具 ${call.tool}`);
-        messages.push({ role: 'assistant', content: thoughtMaybe ?? '' });
+        messages.push(responseAssistantMessage(resp));
         messages.push({ role: 'user', content: '当前角色未启用这项能力。不要调用该工具，请直接以角色身份自然说明。' });
         continue;
       }
@@ -362,7 +409,7 @@ export class LLMToolLoop {
         if (speechPolicyRetryCount < 1 && rounds < this.cfg.maxRounds) {
           speechPolicyRetryCount += 1;
           this.log(`R${rounds} GoalReportSpeechPolicy 拦截 ${call.tool}: ${speechVerdict.reason ?? '状态不一致'}`);
-          messages.push({ role: 'assistant', content: outgoingText ?? '' });
+          messages.push(responseAssistantMessage(resp, undefined, outgoingText ?? ''));
           messages.push({ role: 'user', content: `[GoalReportSpeechPolicy] ${speechVerdict.reason ?? '回复与任务状态不一致'}\n${speechVerdict.hint ?? '请按任务报告重写。'}` });
           continue;
         }
@@ -375,7 +422,7 @@ export class LLMToolLoop {
       if (outgoingText && hasServileRelationshipStyle(outgoingText) && relationshipRewriteCount < 1) {
         relationshipRewriteCount += 1;
         this.log(`R${rounds} ${call.tool} 命中主仆式口吻 · 拦截并要求按平等好友关系重写`);
-        messages.push({ role: 'assistant', content: outgoingText });
+        messages.push(responseAssistantMessage(resp, undefined, outgoingText));
         messages.push({ role: 'user', content: relationshipRewriteInstruction(userMessage) });
         continue;
       }
@@ -383,7 +430,7 @@ export class LLMToolLoop {
         if (identityRewriteCount < 1 && rounds < this.cfg.maxRounds) {
           identityRewriteCount += 1;
           this.log(`R${rounds} ${call.tool} 把内部执行写成外部主体 · 拦截并要求按第一人称重写`);
-          messages.push({ role: 'assistant', content: outgoingText });
+          messages.push(responseAssistantMessage(resp, undefined, outgoingText));
           messages.push({ role: 'user', content: identityRewriteInstruction(userMessage) });
           continue;
         }
@@ -412,17 +459,19 @@ export class LLMToolLoop {
             },
           };
           // 把 assistant 的 tool_call + 守卫 tool 结果回填进 messages，让下一轮 LLM 看到
-          messages.push({
-            role: 'assistant',
-            content: thoughtMaybe ?? '',
-            tool_calls: [{ id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(call.input) } }],
+          const assistant = responseAssistantMessage(resp, {
+            id: tc.id, name: tc.name, arguments: call.input,
           });
+          messages.push(assistant);
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
             content: this.formatToolResult(guardResult),
           });
-          history.push({ call: { tool: '_loop_guard', input: {} }, result: guardResult, toolCallId: tc.id });
+          history.push({
+            call: { tool: '_loop_guard', input: {} }, result: guardResult,
+            toolCallId: tc.id, assistant: structuredClone(assistant),
+          });
           continue;
         }
       }
@@ -459,13 +508,15 @@ export class LLMToolLoop {
               ok: false,
               result: { critic: verdict.action, reason: verdict.reason, hint: verdict.hint },
             };
-            messages.push({
-              role: 'assistant',
-              content: thoughtMaybe ?? '',
-              tool_calls: [{ id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(call.input) } }],
+            const assistant = responseAssistantMessage(resp, {
+              id: tc.id, name: tc.name, arguments: call.input,
             });
+            messages.push(assistant);
             messages.push({ role: 'tool', tool_call_id: tc.id, content: this.formatToolResult(criticResult) });
-            history.push({ call: { tool: '_loop_critic', input: {} }, result: criticResult, toolCallId: tc.id });
+            history.push({
+              call: { tool: '_loop_critic', input: {} }, result: criticResult,
+              toolCallId: tc.id, assistant: structuredClone(assistant),
+            });
             continue; // 不执行终止工具，逼 LLM 先真正推进
           }
         }
@@ -500,12 +551,11 @@ export class LLMToolLoop {
           result: toTraceJson(result.result),
         });
       }
-      history.push({ call, result, toolCallId: tc.id });
-      messages.push({
-        role: 'assistant',
-        content: thoughtMaybe ?? '',
-        tool_calls: [{ id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(call.input) } }],
+      const assistant = responseAssistantMessage(resp, {
+        id: tc.id, name: tc.name, arguments: call.input,
       });
+      history.push({ call, result, toolCallId: tc.id, assistant: structuredClone(assistant) });
+      messages.push(assistant);
       messages.push({
         role: 'tool',
         tool_call_id: tc.id,
@@ -638,6 +688,10 @@ export class LLMToolLoop {
       const character = this.cfg.characterBlock(userMessage);
       if (character.trim()) parts.push('', character);
     }
+    if (this.cfg.runtimeBlock) {
+      const runtime = this.cfg.runtimeBlock();
+      if (runtime.trim()) parts.push('', '── 当前运行态（机器事实）──', runtime);
+    }
     // FEAT-L7-16 · 任务执行回执（内部状态通道 · 非朋友发言）· 放最前，是本 turn 的主要决策依据
     if (systemFeedback && systemFeedback.trim().length > 0) {
       parts.push('');
@@ -702,22 +756,132 @@ export class LLMToolLoop {
 
   /** 把一条 HistoryEntry 还原成 assistant + tool 消息对，放进 messages 数组 */
   private appendHistoryToMessages(messages: LLMChatMessage[], h: HistoryEntry): void {
-    const callId = h.toolCallId ?? `restored_${Math.random().toString(36).slice(2, 10)}`;
-    messages.push({
-      role: 'assistant',
-      content: '',
-      tool_calls: [{
-        id: callId,
-        type: 'function',
-        function: { name: h.call.tool, arguments: JSON.stringify(h.call.input) },
-      }],
-    });
+    const callId = h.toolCallId
+      ?? h.assistant?.tool_calls?.[0]?.id
+      ?? `restored_${Math.random().toString(36).slice(2, 10)}`;
+    messages.push(restoredAssistantMessage(h, callId));
     messages.push({
       role: 'tool',
       tool_call_id: callId,
       content: this.formatToolResult(h.result),
     });
   }
+}
+
+function responseAssistantMessage(
+  result: LLMToolCallResult,
+  selected?: { id: string; name: string; arguments: Record<string, unknown> },
+  contentOverride = result.content,
+): LLMChatMessage {
+  const message: LLMChatMessage = {
+    role: 'assistant',
+    content: contentOverride,
+    ...(selected ? {
+      tool_calls: [{
+        id: selected.id,
+        type: 'function',
+        function: { name: selected.name, arguments: JSON.stringify(selected.arguments) },
+      }],
+    } : {}),
+  };
+  if (!result.canonical) return message;
+
+  if (contentOverride !== result.content) {
+    message.canonical = {
+      role: 'assistant',
+      content: contentOverride ? [{ kind: 'text', text: contentOverride }] : [],
+    };
+    return message;
+  }
+
+  const selectedIndexes: number[] = [];
+  const content: LlmContentBlock[] = [];
+  for (let index = 0; index < result.canonical.content.length; index += 1) {
+    const block = result.canonical.content[index]!;
+    if (block.kind === 'reasoning' || block.kind === 'text') {
+      selectedIndexes.push(index);
+      content.push(structuredClone(block));
+    } else if (selected && block.kind === 'tool-call' && block.id === selected.id) {
+      selectedIndexes.push(index);
+      content.push({
+        kind: 'tool-call', id: selected.id, name: selected.name,
+        arguments: structuredClone(selected.arguments),
+      });
+    }
+  }
+  if (selected && !content.some(block => block.kind === 'tool-call' && block.id === selected.id)) {
+    content.push({
+      kind: 'tool-call', id: selected.id, name: selected.name,
+      arguments: structuredClone(selected.arguments),
+    });
+  }
+
+  const replay = result.canonical.replay;
+  const replayAligned = replay?.blocks.length === result.canonical.content.length;
+  const filteredReplay = replay && replayAligned
+    ? { ...structuredClone(replay), blocks: selectedIndexes.map(index => structuredClone(replay.blocks[index] ?? null)) }
+    : replay ? structuredClone(replay) : undefined;
+  const canonical: CanonicalLlmMessage = {
+    role: 'assistant',
+    content,
+    ...(replay
+      ? {
+          source: {
+            providerRoute: replay.providerRoute,
+            model: replay.model,
+            ...(filteredReplay ? { replay: filteredReplay } : {}),
+          },
+        }
+      : {}),
+  };
+  message.canonical = canonical;
+  return message;
+}
+
+function restoredAssistantMessage(history: HistoryEntry, callId: string): LLMChatMessage {
+  const restored = sanitizeStoredAssistant(history.assistant, callId);
+  if (restored) return restored;
+  return {
+    role: 'assistant',
+    content: '',
+    tool_calls: [{
+      id: callId,
+      type: 'function',
+      function: { name: history.call.tool, arguments: JSON.stringify(history.call.input) },
+    }],
+  };
+}
+
+function restoreHistoryEntry(value: unknown): HistoryEntry | null {
+  if (!isPlainObject(value) || !isPlainObject(value.call) || !isPlainObject(value.result)) return null;
+  if (typeof value.call.tool !== 'string' || !isPlainObject(value.call.input)) return null;
+  if (typeof value.result.ok !== 'boolean' || !('result' in value.result)) return null;
+  if (value.toolCallId !== undefined && typeof value.toolCallId !== 'string') return null;
+  const toolCallId = typeof value.toolCallId === 'string' ? value.toolCallId : undefined;
+  const assistant = sanitizeStoredAssistant(value.assistant, toolCallId);
+  return {
+    call: structuredClone(value.call) as unknown as ToolCall,
+    result: structuredClone(value.result) as unknown as ToolResult,
+    ...(toolCallId ? { toolCallId } : {}),
+    ...(assistant ? { assistant } : {}),
+  };
+}
+
+function sanitizeStoredAssistant(value: unknown, callId?: string): LLMChatMessage | null {
+  if (!isPlainObject(value) || value.role !== 'assistant' || typeof value.content !== 'string') return null;
+  if (!Array.isArray(value.tool_calls)) return null;
+  const toolCalls = value.tool_calls.filter(isPlainObject);
+  if (toolCalls.length !== value.tool_calls.length || toolCalls.length !== 1) return null;
+  const toolCall = toolCalls[0]!;
+  if (toolCall.type !== 'function' || typeof toolCall.id !== 'string' || !isPlainObject(toolCall.function)) return null;
+  if (callId && toolCall.id !== callId) return null;
+  if (typeof toolCall.function.name !== 'string' || typeof toolCall.function.arguments !== 'string') return null;
+  try {
+    JSON.parse(toolCall.function.arguments);
+  } catch {
+    return null;
+  }
+  return structuredClone(value) as unknown as LLMChatMessage;
 }
 
 function mainBrainContextManifest(

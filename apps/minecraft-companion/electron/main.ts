@@ -168,6 +168,18 @@ ipcMain.handle('window:toggle-maximize', () => {
   return mainWindow.isMaximized()
 })
 ipcMain.on('window:close', () => mainWindow?.hide()) // 关闭=缩托盘，与原关窗行为一致
+ipcMain.on('desktop-pet:set-mouse-passthrough', (event, passthrough: boolean) => {
+  desktopPetController?.setMousePassthrough(event.sender.id, passthrough === true)
+})
+ipcMain.on('desktop-pet:drag-begin', (event, pointer) => {
+  desktopPetController?.beginDrag(event.sender.id, pointer)
+})
+ipcMain.on('desktop-pet:drag-update', (event, pointer) => {
+  desktopPetController?.updateDrag(event.sender.id, pointer)
+})
+ipcMain.on('desktop-pet:drag-end', event => {
+  desktopPetController?.endDrag(event.sender.id)
+})
 // 用系统浏览器打开外链（仅放行 http/https，防协议注入）
 ipcMain.on('shell:openExternal', (_e, url: string) => {
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url)

@@ -245,11 +245,13 @@ function rank(record: MemoryRecord, query: string): RankedMemory {
   const lexical = terms.length === 0 ? 0 : matches.length / terms.length;
   const ageDays = Math.max(0, (Date.now() - (record.occurredAt ?? record.updatedAt)) / 86_400_000);
   const recency = 1 / (1 + ageDays / 30);
-  const score = Math.min(1, lexical * 0.58 + record.importance * 0.2 + record.confidence * 0.14 + recency * 0.08);
+  const authorityBoost = record.metadata.authorityType === 'official_slot' ? 0.12 : 0;
+  const score = Math.min(1, lexical * 0.58 + record.importance * 0.2 + record.confidence * 0.14 + recency * 0.08 + authorityBoost);
   const reasons = [
     ...(matches.length ? [`query:${matches.slice(0, 4).join(',')}`] : []),
     `importance:${record.importance.toFixed(2)}`,
     `confidence:${record.confidence.toFixed(2)}`,
+    ...(authorityBoost > 0 ? ['authority:official_slot'] : []),
   ];
   return { record, priority, score, reasons };
 }

@@ -54,7 +54,27 @@ test('FEAT-WEBUI-27-004 | 玩家/生物/掉落物实体受上限控制、插值�
   renderer.dispose();
 });
 
+test('BUG-WEBUI-YAW-01 | 玩家与生物按各自本地正面匹配 Mineflayer yaw，掉落物保持自转', () => {
+  const group = new THREE.Group();
+  const renderer = new AuthenticEntityRenderer({ group, config: { ...config, maxAuthenticEntities: 4 } });
+  const source = new Map([
+    [10, entity(10, { type: 'player', name: 'Alex', username: 'Alex', yaw: 0 })],
+    [11, entity(11, { type: 'mob', name: 'creeper', yaw: Math.PI / 2 })],
+    [12, entity(12, { type: 'object', name: 'item', itemName: 'diamond', yaw: Math.PI })],
+  ]);
+
+  renderer.sync(source, { chunkX: 0, chunkZ: 0 });
+  assert.ok(Math.abs(renderer.entries.get(10).root.rotation.y - Math.PI) < 1e-12);
+  assert.ok(Math.abs(renderer.entries.get(11).root.rotation.y - Math.PI / 2) < 1e-12);
+  const itemRotation = renderer.entries.get(12).root.rotation.y;
+  renderer.tick(0.1);
+  assert.ok(renderer.entries.get(12).root.rotation.y > itemRotation);
+
+  renderer.dispose();
+});
+
 test('FEAT-WEBUI-27-004 | 维度、昼夜、雨雾进入后生效，退出真实模式完整恢复场景', () => {
+  const environmentConfig = { ...config, ambientFillLightIntensity: 0.5 };
   const scene = new THREE.Scene();
   const originalBackground = new THREE.Color(0x102030);
   const originalFog = new THREE.Fog(0x102030, 1, 100);
@@ -62,23 +82,31 @@ test('FEAT-WEBUI-27-004 | 维度、昼夜、雨雾进入后生效，退出真实
   scene.background = originalBackground;
   scene.fog = originalFog;
   scene.add(light);
-  const renderer = new AuthenticEnvironmentRenderer({ scene, config });
+  const renderer = new AuthenticEnvironmentRenderer({ scene, config: environmentConfig });
 
   renderer.activate({ dimension: 'minecraft:the_nether', timeOfDay: 18000, isRaining: true }, { chunkX: 2, chunkZ: -1 });
   assert.equal(scene.fog?.isFogExp2, true);
-  assert.equal(scene.fog.density, config.fogDensity.theNether * config.rainFogMultiplier);
+  assert.equal(scene.fog.density, environmentConfig.fogDensity.theNether * environmentConfig.rainFogMultiplier);
   assert.ok(light.intensity < 2);
+  const fillLight = scene.getObjectByName('authenticAmbientFill');
+  assert.equal(fillLight?.isHemisphereLight, true);
+  assert.equal(fillLight.intensity, environmentConfig.ambientFillLightIntensity);
   const rain = scene.getObjectByName('authenticWeather');
   assert.equal(rain?.isPoints, true);
-  assert.equal(rain.geometry.attributes.position.count, config.weatherParticleCount);
+  assert.equal(rain.geometry.attributes.position.count, environmentConfig.weatherParticleCount);
   assert.deepEqual(rain.position.toArray(), [40, 0, -8]);
   const before = rain.geometry.attributes.position.array[1];
   renderer.tick(0.01);
   assert.notEqual(rain.geometry.attributes.position.array[1], before);
 
+  environmentConfig.ambientFillLightIntensity = 0.48;
+  renderer.update({ dimension: 'minecraft:the_nether', timeOfDay: 18000, isRaining: true }, { chunkX: 2, chunkZ: -1 });
+  assert.equal(fillLight.intensity, 0.48);
+
   renderer.deactivate();
   assert.equal(scene.background, originalBackground);
   assert.equal(scene.fog, originalFog);
   assert.equal(light.intensity, 2);
+  assert.equal(scene.getObjectByName('authenticAmbientFill'), undefined);
   assert.equal(scene.getObjectByName('authenticWeather'), undefined);
 });

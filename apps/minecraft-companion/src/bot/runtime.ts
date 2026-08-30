@@ -10,6 +10,10 @@ import { SpeechThinkingCorrelator, type ChatMeta, type ChatRole } from './v2/dec
 import { join } from 'node:path';
 import { CompanionCore, type CompanionCoreState, type InitiativePolicy } from './v2/companion/companionCore.js';
 import type { ChatMessage, FactKind, FactStatus, MemoryFact } from './v2/infra/chatMemory.js';
+import type {
+  MemorySlotValue,
+  MemorySlotView,
+} from './v2/memory/profileSlots/index.js';
 import type { RunSummary, RunTraceEvent } from './v2/bench/runRecorder.js';
 import type {
   LlmTraceCallDetail,
@@ -260,6 +264,8 @@ export interface BotRuntimeConfig {
     apiKey: string;
     baseUrl: string;
     model: string;
+    api?: import('../llm/api.js').LlmApi;
+    routeId?: string;
   };
   personality: {
     name: string;
@@ -353,14 +359,21 @@ export class BotRuntime {
   async getVisualWorldBootstrap(): Promise<VisualWorldBootstrap | null> {
     const config = tuning().worldVisual;
     if (!config.enabled || !this.embodied) return null;
-    return this.conn.visualWorldSource.createBootstrap({
+    const options = {
       viewDistanceChunks: config.viewDistanceChunks,
       entityRenderDistance: config.entityRenderDistance,
-    });
+    };
+    this.conn.visualWorldSource.configure(options);
+    return this.conn.visualWorldSource.createBootstrap(options);
   }
 
   acquireVisualWorldStream(): boolean {
     if (!tuning().worldVisual.enabled || !this.embodied || !this.conn.visualWorldSource.isAvailable()) return false;
+    const config = tuning().worldVisual;
+    this.conn.visualWorldSource.configure({
+      viewDistanceChunks: config.viewDistanceChunks,
+      entityRenderDistance: config.entityRenderDistance,
+    });
     this.visualWorldConsumers += 1;
     this.attachVisualWorldStream();
     return true;
@@ -769,6 +782,13 @@ export class BotRuntime {
   private startV2WorldUiPush(): void {
     if (this.v2PushInterval) return;
     this.v2PushInterval = setInterval(() => {
+      if (this.visualWorldConsumers > 0) {
+        const visual = tuning().worldVisual;
+        this.conn.visualWorldSource.configure({
+          viewDistanceChunks: visual.viewDistanceChunks,
+          entityRenderDistance: visual.entityRenderDistance,
+        });
+      }
       if (this.v2 && this.embodied && this.onV2WorldUiView) {
         try {
           this.onV2WorldUiView(this.buildWorldUiView());
@@ -878,6 +898,54 @@ export class BotRuntime {
         this.lastActivity = '连接丢失';
       }
     });
+  }
+
+  approveChatMemoryFact(id: string): MemoryFact | null {
+    return this.v2?.chatMemory.approveFact(id) ?? null;
+  }
+
+  rejectChatMemoryFact(id: string): boolean | null {
+    return this.v2?.chatMemory.rejectFact(id) ?? null;
+  }
+
+  mapChatMemoryFactToSlot(id: string, slotKey: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    return this.v2?.chatMemory.mapFactToMemorySlot(id, slotKey, value) ?? null;
+  }
+
+  getChatMemorySlotCatalog(input: { group?: string; filledOnly?: boolean; status?: FactStatus } = {}): MemorySlotView[] | null {
+    return this.v2?.chatMemory.getMemorySlotCatalog(input) ?? null;
+  }
+
+  getChatMemorySlotValues(input: { status?: FactStatus; slotKey?: string; query?: string } = {}): MemorySlotValue[] | null {
+    return this.v2?.chatMemory.getMemorySlotValues(input) ?? null;
+  }
+
+  putChatMemorySlotValue(slotKey: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    return this.v2?.chatMemory.putManualMemorySlotValue({ slotKey, value, status: 'active' }) ?? null;
+  }
+
+  replaceChatMemorySlotValue(id: string, value: unknown): MemorySlotValue | { rejected: string } | null {
+    return this.v2?.chatMemory.replaceMemorySlotValue(id, value) ?? null;
+  }
+
+  removeChatMemorySlotValue(id: string): boolean | null {
+    return this.v2?.chatMemory.removeMemorySlotValue(id) ?? null;
+  }
+
+  restoreChatMemorySlotValue(id: string): MemorySlotValue | null {
+    return this.v2?.chatMemory.restoreMemorySlotValue(id) ?? null;
+  }
+
+  getChatMemorySlotValueSources(id: string): ChatMessage[] | null {
+    return this.v2?.chatMemory.getMemorySlotValueSources(id) ?? null;
+  }
+
+  previewChatMemorySlotMigration(): import('./v2/infra/chatMemory.js').LegacyFactSlotMigrationPreview[] | null {
+    return this.v2?.chatMemory.previewLegacyFactSlotMigration() ?? null;
+  }
+
+  applyChatMemorySlotMigration(): { migrated: number; dynamicCandidates: number; rejected: number } | null {
+    return this.v2?.chatMemory.applyLegacyFactSlotMigration() ?? null;
   }
 
   private resolveGameChatRole(sender: string): ChatRole {

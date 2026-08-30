@@ -7,6 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
   close: () => ipcRenderer.send('window:close'),
   openExternal: (url) => ipcRenderer.send('shell:openExternal', url),
+  setDesktopPetMousePassthrough: (passthrough) => ipcRenderer.send('desktop-pet:set-mouse-passthrough', passthrough === true),
+  beginDesktopPetDrag: (pointer) => ipcRenderer.send('desktop-pet:drag-begin', pointer),
+  updateDesktopPetDrag: (pointer) => ipcRenderer.send('desktop-pet:drag-update', pointer),
+  endDesktopPetDrag: () => ipcRenderer.send('desktop-pet:drag-end'),
   onDesktopPetState: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('desktop-pet:state', listener);

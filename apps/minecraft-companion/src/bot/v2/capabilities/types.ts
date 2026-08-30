@@ -8,6 +8,11 @@ import type {
   GoalCriterionEvidence,
 } from '../task/goalRunner/goalCriteriaEvaluator.js';
 import type { WorldStateView } from '../types.js';
+import type {
+  ProactiveTickCapabilityImplementation,
+  ProactiveTickManifestEntry,
+  RegisteredProactiveTickCapability,
+} from '../proactive/contracts.js';
 
 export interface CapabilityRequirementRefs {
   readonly atomics: readonly string[];
@@ -24,6 +29,7 @@ export interface CapabilityManifestDefinition {
   readonly skills: readonly string[];
   readonly knowledge: readonly string[];
   readonly requires: CapabilityRequirementRefs;
+  readonly proactiveTicks?: readonly ProactiveTickManifestEntry[];
 }
 
 export interface CapabilityActionCandidateProvider {
@@ -76,6 +82,7 @@ export interface CapabilityPackageDefinition {
   readonly actionProviders: readonly CapabilityActionCandidateProvider[];
   readonly worldFactProviders?: readonly CapabilityWorldFactProvider[];
   readonly predicateEvaluators: readonly CapabilityPredicateEvaluator[];
+  readonly proactiveTicks?: readonly ProactiveTickCapabilityImplementation[];
 }
 
 export interface CapabilityPackageEnvironment {
@@ -94,4 +101,5 @@ export interface CapabilityPackageSnapshot {
   readonly actionProviders: readonly CapabilityActionCandidateProvider[];
   readonly worldFactProviders: readonly CapabilityWorldFactProvider[];
   readonly predicateEvaluators: readonly CapabilityPredicateEvaluator[];
+  readonly proactiveTicks: readonly RegisteredProactiveTickCapability[];
 }

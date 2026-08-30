@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { v4 as uuid } from 'uuid';
+import { DEFAULT_LLM_API, isLlmApi, type LlmApi } from '../llm/api.js';
 import { resolveProfileLlmConfig, type LlmConfig } from './llmConfig.js';
 import type { ProfileStore } from './profileStore.js';
 
@@ -10,6 +11,7 @@ export interface LlmAgentConfig {
   apiKey?: string;
   baseUrl: string;
   model: string;
+  api: LlmApi;
   createdAt: number;
   updatedAt: number;
 }
@@ -19,6 +21,7 @@ export interface LlmAgentConfigInput {
   apiKey?: string;
   baseUrl: string;
   model: string;
+  api?: LlmApi;
 }
 
 export interface LlmAgentConfigPatch {
@@ -27,6 +30,7 @@ export interface LlmAgentConfigPatch {
   clearApiKey?: boolean;
   baseUrl?: string;
   model?: string;
+  api?: LlmApi;
 }
 
 export interface PublicLlmAgentConfig {
@@ -34,6 +38,7 @@ export interface PublicLlmAgentConfig {
   name: string;
   baseUrl: string;
   model: string;
+  api: LlmApi;
   apiKeyConfigured: boolean;
   profileCount: number;
   createdAt: number;
@@ -70,6 +75,7 @@ export class LlmAgentConfigStore {
       apiKey: clean(input.apiKey),
       baseUrl: input.baseUrl.trim(),
       model: input.model.trim(),
+      api: input.api ?? DEFAULT_LLM_API,
       createdAt: now,
       updatedAt: now,
     };
@@ -87,6 +93,7 @@ export class LlmAgentConfigStore {
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.baseUrl !== undefined ? { baseUrl: patch.baseUrl.trim() } : {}),
       ...(patch.model !== undefined ? { model: patch.model.trim() } : {}),
+      ...(patch.api !== undefined ? { api: patch.api } : {}),
       ...(patch.clearApiKey ? { apiKey: undefined } : patch.apiKey !== undefined ? { apiKey: clean(patch.apiKey) } : {}),
       updatedAt: Date.now(),
     };
@@ -107,6 +114,7 @@ export class LlmAgentConfigStore {
       name: config.name,
       baseUrl: config.baseUrl,
       model: config.model,
+      api: config.api,
       apiKeyConfigured: Boolean(config.apiKey?.trim()),
       profileCount,
       createdAt: config.createdAt,
@@ -146,7 +154,10 @@ export class LlmAgentConfigStore {
       if (!Array.isArray(data)) return;
       for (const candidate of data) {
         if (!isStoredConfig(candidate)) continue;
-        this.configs.set(candidate.id, candidate);
+        this.configs.set(candidate.id, {
+          ...candidate,
+          api: candidate.api ?? DEFAULT_LLM_API,
+        });
       }
     } catch {
       // Keep an empty in-memory store rather than overwriting unreadable data.
@@ -165,13 +176,14 @@ function clean(value: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
-function isStoredConfig(value: unknown): value is LlmAgentConfig {
+function isStoredConfig(value: unknown): value is Omit<LlmAgentConfig, 'api'> & { api?: LlmApi } {
   if (!value || typeof value !== 'object') return false;
   const config = value as Partial<LlmAgentConfig>;
   return typeof config.id === 'string'
     && typeof config.name === 'string'
     && typeof config.baseUrl === 'string'
     && typeof config.model === 'string'
+    && (config.api === undefined || isLlmApi(config.api))
     && typeof config.createdAt === 'number'
     && typeof config.updatedAt === 'number';
 }

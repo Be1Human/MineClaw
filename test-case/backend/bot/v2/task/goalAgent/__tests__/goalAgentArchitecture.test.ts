@@ -53,7 +53,7 @@ test('production contains one MainBrain and one GoalAgent, with no legacy agent 
   assert.doesNotMatch(facade, /InterpretNode|PlannerNode|ActorNode|ExecuteNode|CriticNode|RecoveryNode|ReflectionNode/);
 });
 
-test('only MainBrain loop and the unified GoalAgent model runtime call the LLM in business code', () => {
+test('only MainBrain, unified GoalAgent and approved system memory maintenance call the shared LLM client', () => {
   const callers = sourceFiles(v2Root)
     .filter(path => !path.includes(`${join('__tests__', '')}`))
     .filter(path => readFileSync(path, 'utf8').includes('.callWithTools('))
@@ -63,6 +63,7 @@ test('only MainBrain loop and the unified GoalAgent model runtime call the LLM i
 
   assert.deepEqual(callers, [
     'decision/llmLoop.ts',
+    'infra/chatMemoryConsolidation.ts',
     'task/goalAgent/goalAgentModelRuntime.ts',
   ]);
 });

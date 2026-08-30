@@ -1,13 +1,18 @@
+import { normalizeLlmApi, type LlmApi } from '../llm/api.js';
+
 export interface LlmConfig {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  api?: LlmApi;
 }
 
 export interface ResolvedLlmConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  api: LlmApi;
+  routeId?: string;
 }
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
@@ -38,6 +43,7 @@ export function resolveProfileLlmConfig(
     apiKey: clean(fallback?.apiKey) ?? '',
     baseUrl: clean(fallback?.baseUrl) ?? DEFAULT_BASE_URL,
     model: clean(fallback?.model) ?? DEFAULT_MODEL,
+    api: normalizeLlmApi(fallback?.api),
   };
 
   // llm-test 显式传来的空 Endpoint 表示测试服务器默认配置，
@@ -56,5 +62,6 @@ export function resolveProfileLlmConfig(
       ?? defaultConfig.apiKey,
     baseUrl,
     model,
+    api: normalizeLlmApi(endpointSource?.api),
   };
 }

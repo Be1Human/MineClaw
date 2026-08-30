@@ -70,6 +70,31 @@ export function normalizeOpenAICompatibleUsage(raw: unknown): LLMUsage {
   };
 }
 
+/** Responses usage adds cache-write and reasoning-token detail to the common fields. */
+export function normalizeOpenAIResponsesUsage(raw: unknown): LLMUsage {
+  const usage = normalizeOpenAICompatibleUsage(raw);
+  if (!isRecord(raw)) return usage;
+
+  const inputDetails = raw.input_tokens_details;
+  const cacheWrite = isRecord(inputDetails)
+    ? integerField(inputDetails, ['cache_write_tokens'])
+    : { present: false, invalid: false } satisfies IntegerField;
+  const outputDetails = raw.output_tokens_details;
+  const reasoning = isRecord(outputDetails)
+    ? integerField(outputDetails, ['reasoning_tokens'])
+    : { present: false, invalid: false } satisfies IntegerField;
+
+  if (cacheWrite.invalid || reasoning.invalid) {
+    return { ...usage, source: `${usage.source}+invalid_responses_usage_details` };
+  }
+  return {
+    ...usage,
+    ...(cacheWrite.present ? { cacheWriteInputTokens: cacheWrite.value } : {}),
+    ...(reasoning.present ? { reasoningOutputTokens: reasoning.value } : {}),
+    source: `${usage.source}+responses_details`,
+  };
+}
+
 export function unsupportedUsage(source = MISSING_SOURCE): LLMUsage {
   return { cacheStatus: 'unsupported', source };
 }

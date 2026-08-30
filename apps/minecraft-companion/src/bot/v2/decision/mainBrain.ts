@@ -14,7 +14,12 @@
  */
 
 import type { LLMClient } from '../cognitive/llm/LLMClient.js';
-import { LLMToolLoop, type HistoryEntry } from './llmLoop.js';
+import {
+  LLMToolLoop,
+  restoreMainBrainPendingHistory,
+  serializeMainBrainPendingHistory,
+  type HistoryEntry,
+} from './llmLoop.js';
 import { buildMainBrainToolRegistry, type MainBrainToolDeps, type ToolRegistry } from './tools/index.js';
 import { buildMainBrainSystemPrompt, formatConversationHistory, sanitizeRoleContext } from './systemPrompt.js';
 import { tuning } from '../infra/tuning.js';
@@ -35,6 +40,10 @@ import { buildMainBrainContext } from './agentContext.js';
 import { MainBrainLoopCritic } from './loopCritic.js';
 import type { LlmTraceRecorderPort } from '../infra/llmTrace/index.js';
 import { isTaskCancellationRequest, stripTaskCancellationPrefix } from './ownerControlIntent.js';
+import {
+  buildGamePresenceContext,
+  type GamePresenceState,
+} from '../gamePresenceContext.js';
 
 export { isTaskCancellationRequest, stripTaskCancellationPrefix } from './ownerControlIntent.js';
 
@@ -63,6 +72,7 @@ export interface MainBrainDeps extends MainBrainToolDeps {
   game: GameAdapter;
   embodied?: boolean;
   isEmbodied?: () => boolean;
+  getGamePresence?: () => GamePresenceState;
   /** FEAT-CROSS-04：在 AddressDetector 之前截获的 TestBench 命令处理器。 */
   onBenchCommand?: (message: string) => boolean;
   /** FEAT-CROSS-04：运行测试卡时禁止 IDLE/主动决策向同一执行链插入额外行为。 */
@@ -137,6 +147,8 @@ export class MainBrain {
 
   /** ask_master 后保存的历史 · 用于答复后恢复 LLM context */
   private pendingHistory: HistoryEntry[] | null = null;
+  /** Durable conversation row that owns pendingHistory. */
+  private pendingConversation: ConversationEntry | null = null;
 
   private readonly toolRegistry: ToolRegistry;
   private readonly llmLoop: LLMToolLoop | null;
@@ -160,6 +172,7 @@ export class MainBrain {
   private futileEscalateCooldownUntil = 0;
   /** FEAT-CROSS-08 v2 · 运行时现读身体态（热插拔）· 无身体=日常陪聊态。 */
   private readonly isEmbodied: () => boolean;
+  private readonly getGamePresence: () => GamePresenceState;
   private readonly speechGateway: BrainSpeechGateway;
   private turnSeq = 0;
   /** 当前进程内的连续聊天会话；turnId 只用于请求追踪，不能用作摘要会话边界。 */
@@ -181,6 +194,8 @@ export class MainBrain {
     this.goalAgentPort = deps.goalAgentPort;
     this.llmTraceRecorder = deps.llmTraceRecorder ?? null;
     this.isEmbodied = deps.isEmbodied ?? (() => deps.embodied !== false);
+    this.getGamePresence = deps.getGamePresence
+      ?? (() => ({ embodied: this.isEmbodied(), ownerObservation: 'unknown' }));
     this.speechGateway = new BrainSpeechGateway(this.bus, deps.game, this.isEmbodied);
     this.toolRegistry = buildMainBrainToolRegistry(deps, {
       speak: (text, mode) => { this.speechGateway.commit(text, mode); },
@@ -205,6 +220,7 @@ export class MainBrain {
           maxRounds: cfg.maxRounds ?? 8,
           bus: this.bus,
           characterBlock: cfg.characterPrompt,
+          runtimeBlock: () => buildGamePresenceContext(this.getGamePresence()),
           minecraftEnabled: cfg.characterCard?.performance.capabilities.minecraft ?? true,
           memoryEnabled: cfg.characterCard?.performance.capabilities.memory ?? true,
           recentNotices: deps.narration ? () => deps.narration!.recentNotices() : undefined,
@@ -244,11 +260,12 @@ export class MainBrain {
       const pendingFresh = latestPending && Date.now() - latestPending.timestamp <= 15 * 60_000;
       if (pendingFresh) {
         this.log(`恢复有效 ask_master 挂起状态 · turn=${latestPending.turnId}`);
-        // 标记 pendingHistory 非空，表示有 ask_master 在等待
-        // 注意：我们无法完整恢复 HistoryEntry[]（那是 LLM 内部格式），
-        // 但可以在下次主人回话时让 LLM 看到对话历史（已在 systemPrompt 中注入）
-        // 所以这里只设一个标记，实际 resume 靠 system prompt 中的对话历史
-        this.pendingHistory = [];
+        const restored = restoreMainBrainPendingHistory(latestPending.meta?.llmContinuation);
+        this.pendingHistory = restored ?? [];
+        this.pendingConversation = latestPending;
+        this.log(restored
+          ? `已恢复 ${restored.length} 条 MainBrain 工具/replay 历史`
+          : '挂起记录没有可用 continuation envelope，将使用对话文本安全恢复');
       } else if (pendingEntries.length > 0) {
         this.log(`忽略 ${pendingEntries.length} 条过期 ask_master 历史`);
       }
@@ -351,6 +368,7 @@ export class MainBrain {
     this.idleTurnAborted = true;
     this.idleAbortController?.abort(reason);
     this.pendingHistory = null;
+    this._resolvePendingConversation(this.pendingConversation);
     this.pendingOwnerMsgs = [];
     this.noticeInbox.clear();
     if (this.taskFeedbackTimer) clearTimeout(this.taskFeedbackTimer);
@@ -931,7 +949,9 @@ export class MainBrain {
       }
       // LLM 模式（一切经大脑决策 · 无旁路，保证"脑子和手脚一致"）
       if (this.llmLoop) {
+        const wasPending = this.pendingHistory !== null;
         const priorHistory = this.pendingHistory ?? [];
+        const resumedPendingConversation = this.pendingConversation;
         this.pendingHistory = null; // 取出即清，避免重入
         const isFeedback = turnKind === 'task_feedback';
         const isContinuation = turnKind === 'goal_continuation' && !!continuation;
@@ -949,15 +969,21 @@ export class MainBrain {
           : isFeedback
             ? ['say', 'ask_master', 'stay_silent']
             : undefined;
-        const result = await this.llmLoop.run(
-          userMsg,
-          priorHistory,
-          abortSignal,
-          {
+        let result;
+        try {
+          result = await this.llmLoop.run(
+            userMsg,
+            priorHistory,
+            abortSignal,
+            {
             systemFeedback: systemFeedback || undefined,
             allowedTools,
             terminalSpeechPolicy: continuation ? {
-              validate: text => this.goalReportSpeechPolicy.validate(continuation.triggeringReport, text),
+              validate: text => this.goalReportSpeechPolicy.validate(
+                continuation.triggeringReport,
+                text,
+                this.getGamePresence(),
+              ),
             } : undefined,
             traceContext: {
               agent: 'mainbrain',
@@ -967,9 +993,17 @@ export class MainBrain {
               taskId: continuation?.triggeringReport.requestId,
               turn: turnNumber,
             },
-          },
-        );
-        if (this.closed || abortSignal?.aborted) throw new Error('turn aborted');
+            },
+          );
+        } catch (error) {
+          if (wasPending && this.pendingHistory === null) this.pendingHistory = priorHistory;
+          throw error;
+        }
+        if (this.closed || abortSignal?.aborted) {
+          if (wasPending && this.pendingHistory === null) this.pendingHistory = priorHistory;
+          throw new Error('turn aborted');
+        }
+        this._resolvePendingConversation(resumedPendingConversation);
         if (result.pendingAskMaster) {
           this.pendingHistory = result.history;
         }
@@ -1009,7 +1043,7 @@ export class MainBrain {
       `会话状态：${session.state}`,
       `回复义务：${session.replyObligation}`,
       `GoalAgent 报告(${report.status})：${report.summary}`,
-      this.goalReportSpeechPolicy.instruction(report),
+      this.goalReportSpeechPolicy.instruction(report, this.getGamePresence()),
       `本轮允许决定：${continuation.allowedDecisions.join(', ')}`,
       session.state === 'awaiting_player'
         ? '必须把 GoalAgent 的澄清问题自然地问玩家，不得静默，不得自行猜答案。'
@@ -1066,9 +1100,13 @@ export class MainBrain {
         meta: {
           source: 'game_chat',
           isPending: result.pendingAskMaster,
+          ...(result.pendingAskMaster
+            ? { llmContinuation: serializeMainBrainPendingHistory(result.history ?? []) }
+            : {}),
         },
       };
       this.memory?.record('conversation', botEntry);
+      if (result.pendingAskMaster) this.pendingConversation = botEntry;
       this.chatMemory?.recordMessage({ id: botEntry.id, sessionId: this.chatSessionId, role: 'bot', content: botEntry.content, timestamp: botEntry.timestamp });
     }
     this._recordSavedChatFacts(result.history, ownerEntry.id);
@@ -1097,12 +1135,32 @@ export class MainBrain {
       content: botContent,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       timestamp: now,
-      meta: { source: 'game_chat', isPending: result.pendingAskMaster },
+      meta: {
+        source: 'game_chat',
+        isPending: result.pendingAskMaster,
+        ...(result.pendingAskMaster
+          ? { llmContinuation: serializeMainBrainPendingHistory(result.history ?? []) }
+          : {}),
+      },
     };
     void kind; // kind 仅用于路由，不入库（避免污染 conversation meta 严格类型）
     this.memory?.record('conversation', botEntry);
+    if (result.pendingAskMaster) this.pendingConversation = botEntry;
     this.chatMemory?.recordMessage({ id: botEntry.id, sessionId: this.chatSessionId, role: 'bot', content: botEntry.content, timestamp: botEntry.timestamp });
     this.chatMemory?.maybeFlush(this.chatSessionId);
+  }
+
+  private _resolvePendingConversation(entry: ConversationEntry | null): void {
+    if (!entry) return;
+    if (this.pendingConversation?.id === entry.id) this.pendingConversation = null;
+    this.memory?.record('conversation', {
+      ...entry,
+      meta: {
+        ...entry.meta,
+        isPending: false,
+        llmContinuation: undefined,
+      },
+    });
   }
 
   /** 从 turn 结果中提取 bot 说的话 */

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PlayerObject } from 'skinview3d';
+import { mineflayerYawToThreeRotation } from '../minecraftOrientation.js';
 
 const DEFAULT_PLAYER_COLOR = 0x4f76b8;
 const ITEM_COLOR = 0xf2cc60;
@@ -34,7 +35,9 @@ export class AuthenticEntityRenderer {
       }
       entry.entity = entity;
       entry.target.set(entity.position.x, entity.position.y, entity.position.z);
-      entry.root.rotation.y = -finite(entity.yaw);
+      if (entry.kind !== 'item') {
+        entry.root.rotation.y = mineflayerYawToThreeRotation(entity.yaw, entry.kind === 'player' ? '+z' : '-z');
+      }
       entry.root.userData.entity = entity;
       this.updateEquipment(entry, entity);
     }
