@@ -54,8 +54,10 @@
 
     <!-- ===================== PARTNER WORKSPACE ===================== -->
     <div
+      ref="workspaceShell"
       class="partner-workspace-shell"
-      :class="{ 'sidebar-collapsed': sidebarCollapsed, 'is-play-workspace': workspaceView === 'play' }"
+      :class="{ 'sidebar-collapsed': sidebarCollapsed, 'is-play-workspace': workspaceView === 'play', 'is-resizing': activeWorkspaceResize }"
+      :style="workspaceGridStyle"
     >
 
       <!-- ---------- LEFT · PARTNERS ---------- -->
@@ -89,6 +91,19 @@
           </button>
         </div>
       </aside>
+
+      <McResizeHandle
+        class="workspace-resizer workspace-resizer-left"
+        label="调整伙伴栏宽度"
+        :value="workspaceLayout.first"
+        :minimum="WORKSPACE_LAYOUT_CONFIG.firstMin"
+        :maximum="WORKSPACE_LAYOUT_CONFIG.firstMax"
+        :disabled="sidebarCollapsed"
+        @resize="resizeWorkspacePane('first', $event)"
+        @commit="persistWorkspaceLayout"
+        @reset="resetWorkspacePane('first')"
+        @active="activeWorkspaceResize = $event ? 'first' : ''"
+      />
 
       <section class="partner-workspace-bar">
         <nav class="partner-workspace-tabs" aria-label="伙伴工作区">
@@ -246,6 +261,18 @@
           </div>
         </div>
       </main>
+
+      <McResizeHandle
+        class="workspace-resizer workspace-resizer-right"
+        label="调整控制面板宽度"
+        :value="workspaceLayout.second"
+        :minimum="WORKSPACE_LAYOUT_CONFIG.secondMin"
+        :maximum="WORKSPACE_LAYOUT_CONFIG.secondMax"
+        @resize="resizeWorkspacePane('second', $event)"
+        @commit="persistWorkspaceLayout"
+        @reset="resetWorkspacePane('second')"
+        @active="activeWorkspaceResize = $event ? 'second' : ''"
+      />
 
       <!-- ---------- RIGHT · 控制面板 ---------- -->
       <aside class="play-control partner-inspector">
@@ -527,6 +554,7 @@ import ChatBox from './components/ChatBox.vue';
 import BrainPanel from './components/BrainPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import LlmTracePanel from './components/LlmTracePanel.vue';
+import McResizeHandle from './components/layout/McResizeHandle.vue';
 import McCharacter from './components/McCharacter.vue';
 import McHead from './components/McHead.vue';
 import McIcon from './components/icons/McIcon.vue';
@@ -535,6 +563,13 @@ import { BRAIN_TAB_IDS, migrateMemoryWorkspaceTabs } from './lib/brainNavigation
 import { CONTROL_TAB_IDS, migrateControlTabs, normalizeControlTab } from './lib/controlNavigation.js';
 import { filterChatMessages, projectChatMessage } from './lib/chatPresentation.js';
 import { projectRadarEntities } from './lib/radarEntityProjection.js';
+import {
+  WORKSPACE_LAYOUT_CONFIG,
+  constrainPanePair,
+  readStoredPanePair,
+  resizePanePair,
+  storePanePair,
+} from './lib/resizableLayout.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 import { VisualWorldStore } from './lib/authentic/visualWorldStore.js';
 import {
@@ -551,6 +586,50 @@ const globalSettingsSection = ref('llm-configs');
 const hubMenuOpen = ref(false);
 const sidebarCollapsed = ref(false);
 const partnerMenuOpen = ref(false);
+const workspaceShell = ref(null);
+const workspaceLayout = ref(readStoredPanePair(localStorage, WORKSPACE_LAYOUT_CONFIG));
+const activeWorkspaceResize = ref('');
+
+const workspaceGridStyle = computed(() => ({
+  '--partner-sidebar-width': `${workspaceLayout.value.first}px`,
+  '--partner-inspector-width': `${workspaceLayout.value.second}px`,
+}));
+
+function workspaceContainerWidth() {
+  return workspaceShell.value?.clientWidth || window.innerWidth;
+}
+
+function commitWorkspaceLayout(layout, persist = false) {
+  workspaceLayout.value = constrainPanePair(layout, WORKSPACE_LAYOUT_CONFIG, workspaceContainerWidth());
+  if (persist) storePanePair(localStorage, WORKSPACE_LAYOUT_CONFIG, workspaceLayout.value);
+}
+
+function resizeWorkspacePane(pane, visualDelta) {
+  const direction = pane === 'first' ? 1 : -1;
+  commitWorkspaceLayout(resizePanePair(
+    workspaceLayout.value,
+    pane,
+    visualDelta * direction,
+    WORKSPACE_LAYOUT_CONFIG,
+    workspaceContainerWidth(),
+  ));
+}
+
+function persistWorkspaceLayout() {
+  storePanePair(localStorage, WORKSPACE_LAYOUT_CONFIG, workspaceLayout.value);
+}
+
+function resetWorkspacePane(pane) {
+  if (pane === 'first' && sidebarCollapsed.value) return;
+  commitWorkspaceLayout({
+    ...workspaceLayout.value,
+    [pane]: WORKSPACE_LAYOUT_CONFIG.defaults[pane],
+  }, true);
+}
+
+function reflowWorkspaceLayout() {
+  commitWorkspaceLayout(workspaceLayout.value);
+}
 
 function openGlobalSettings(section = 'llm-configs') {
   globalSettingsSection.value = section;
@@ -1145,6 +1224,7 @@ onUnmounted(() => {
   clearInterval(v2TaskPoll);
   clearInterval(visualConfigPoll);
   stopVisualSubscription();
+  window.removeEventListener('resize', reflowWorkspaceLayout);
 });
 
 watch(
@@ -1460,7 +1540,11 @@ async function scrollBottom(el) {
   if (el.value) el.value.scrollTop = el.value.scrollHeight;
 }
 
-onMounted(() => { loadProfiles(); });
+onMounted(() => {
+  reflowWorkspaceLayout();
+  window.addEventListener('resize', reflowWorkspaceLayout);
+  loadProfiles();
+});
 </script>
 
 <style>
@@ -1492,9 +1576,13 @@ onMounted(() => { loadProfiles(); });
 .window-control { width:30px; height:30px; }
 .window-control.danger:hover { background:rgba(228,111,101,.12); border-color:rgba(228,111,101,.3); color:var(--mc-danger); }
 .global-settings-layer { position:absolute; z-index:20; inset:60px 0 0; display:flex; min-width:0; min-height:0; background:var(--mc-bg); }
-.partner-workspace-shell { position:relative; z-index:2; display:grid; grid-template-columns:clamp(220px,16.63vw,278px) minmax(0,1fr) clamp(340px,24.88vw,416px); grid-template-rows:50px minmax(0,1fr); column-gap:14px; flex:1; min-height:0; padding:14px 14px 14px 0; transition:grid-template-columns var(--mc-duration-normal); }
-.partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px minmax(0,1fr) clamp(340px,24.88vw,416px); }
+.partner-workspace-shell { position:relative; z-index:2; display:grid; grid-template-columns:var(--partner-sidebar-width,250px) 14px minmax(0,1fr) 14px var(--partner-inspector-width,380px); grid-template-rows:50px minmax(0,1fr); flex:1; min-height:0; padding:14px 14px 14px 0; transition:grid-template-columns var(--mc-duration-normal); }
+.partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px 14px minmax(0,1fr) 14px var(--partner-inspector-width,380px); }
+.partner-workspace-shell.is-resizing { cursor:col-resize; user-select:none; transition:none; }
 .partner-sidebar { --partner-sidebar-inline-padding:14px; display:flex; grid-column:1; grid-row:1 / 3; min-height:0; flex-direction:column; margin-top:-14px; margin-bottom:-14px; padding:18px var(--partner-sidebar-inline-padding) 0; background:rgba(13,19,15,.98); border-right:1px solid var(--mc-border); }
+.workspace-resizer { grid-row:1 / 3; }
+.workspace-resizer-left { grid-column:2; }
+.workspace-resizer-right { grid-column:4; }
 .partner-sidebar-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:0 4px; }
 .partner-sidebar-heading { color:var(--mc-text-secondary); font-size:var(--mc-type-body); font-weight:800; }
 .icon-button { width:30px; height:30px; }
@@ -1529,16 +1617,16 @@ onMounted(() => { loadProfiles(); });
   .sidebar-collapsed .partner-list { align-items:center; padding-right:0; overflow-x:hidden; }
   .sidebar-collapsed .partner-list-item { width:52px; flex:none; padding:4px; }
 }
-.partner-workspace-bar { display:flex; grid-column:2; grid-row:1; min-width:0; align-items:center; background:rgba(12,18,14,.88); border:1px solid var(--mc-border); border-bottom:0; border-radius:var(--mc-radius-sm) var(--mc-radius-sm) 0 0; }
+.partner-workspace-bar { display:flex; grid-column:3; grid-row:1; min-width:0; align-items:center; background:rgba(12,18,14,.88); border:1px solid var(--mc-border); border-bottom:0; border-radius:var(--mc-radius-sm) var(--mc-radius-sm) 0 0; }
 .partner-workspace-tabs { display:flex; width:100%; min-width:0; height:100%; align-items:stretch; overflow-x:auto; scrollbar-width:none; }
 .partner-workspace-tabs::-webkit-scrollbar { display:none; }
 .partner-workspace-tab { position:relative; display:inline-flex; min-width:120px; min-height:49px; flex:0 0 auto; align-items:center; justify-content:center; gap:9px; padding:0 18px; cursor:pointer; background:transparent; border:0; border-right:1px solid var(--mc-border); color:var(--mc-text-muted); font-family:var(--mc-font-body); font-size:var(--mc-type-body); font-weight:700; white-space:nowrap; transition:color var(--mc-duration-fast),background var(--mc-duration-fast); }
 .partner-workspace-tab:hover { background:rgba(255,255,255,.025); color:var(--mc-text-secondary); }
 .partner-workspace-tab.active { background:linear-gradient(180deg,rgba(105,201,74,.1),rgba(105,201,74,.035)); color:var(--mc-accent-strong); }
 .partner-workspace-tab.active::after { position:absolute; right:0; bottom:-1px; left:0; height:2px; background:var(--mc-accent); content:''; }
-.partner-workspace-panel { grid-column:2; grid-row:2; min-width:0; min-height:0; overflow:hidden; border:1px solid var(--mc-border); }
-.play-stage { grid-column:2; grid-row:2; }
-.play-control { grid-column:3; grid-row:1 / 3; }
+.partner-workspace-panel { grid-column:3; grid-row:2; min-width:0; min-height:0; overflow:hidden; border:1px solid var(--mc-border); }
+.play-stage { grid-column:3; grid-row:2; }
+.play-control { grid-column:5; grid-row:1 / 3; }
 .perception-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background-color:#080c09; background-image:linear-gradient(rgba(5,9,6,.34),rgba(5,9,6,.5)),url('/assets/formal-console/perception-field-bg.webp'); background-position:center; background-size:cover; border:1px solid var(--mc-border); border-top:0; border-radius:0 0 var(--mc-radius-sm) var(--mc-radius-sm); }
 .perception-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(151,184,151,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(151,184,151,.035) 1px,transparent 1px); background-size:32px 32px; }
 .perception-grid::before { position:absolute; inset:0; background-image:linear-gradient(rgba(105,201,74,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(105,201,74,.04) 1px,transparent 1px); background-size:160px 160px; content:''; }
@@ -1773,8 +1861,8 @@ onMounted(() => { loadProfiles(); });
 }
 
 @media (max-width:1100px) {
-  .partner-workspace-shell { grid-template-columns:200px minmax(0,1fr) 340px; }
-  .partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px minmax(0,1fr) 340px; }
+  .partner-workspace-shell { grid-template-columns:var(--partner-sidebar-width,220px) 14px minmax(0,1fr) 14px var(--partner-inspector-width,340px); }
+  .partner-workspace-shell.sidebar-collapsed { grid-template-columns:72px 14px minmax(0,1fr) 14px var(--partner-inspector-width,340px); }
   .partner-workspace-tab { min-width:104px; }
   .interaction-summary { grid-template-columns:110px minmax(0,1fr); }
   .perception-stage-toolbar { right:10px; left:12px; gap:7px; }
@@ -1785,6 +1873,7 @@ onMounted(() => { loadProfiles(); });
 
 @media (max-width:860px) {
   .partner-workspace-shell,.partner-workspace-shell.sidebar-collapsed { grid-template-columns:74px minmax(0,1fr); grid-template-rows:54px minmax(0,1fr); column-gap:0; padding:0; }
+  .workspace-resizer { display:none; }
   .partner-sidebar { --partner-sidebar-inline-padding:8px; padding:12px var(--partner-sidebar-inline-padding); }
   .partner-sidebar-header { justify-content:center; padding:0; }
   .partner-sidebar-heading,.partner-list-summary,.partner-sidebar-footer span { display:none; }

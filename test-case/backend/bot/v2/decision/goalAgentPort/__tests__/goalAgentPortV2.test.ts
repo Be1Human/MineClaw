@@ -40,6 +40,20 @@ describe('BUG-CROSS-51 · GoalAgentPort V2', () => {
     assert.equal(clarifyGoalRequest('给我一把稿子', [{name:'stone_pickaxe',count:1}]), null);
   });
 
+  it('FEAT-CROSS-25 · 玩家回合在建立会话前先触发主动租约抢占', () => {
+    const order: string[] = [];
+    const port = new GoalAgentPort(
+      new EventBusV2(),
+      { getWorldState: () => null } as unknown as PerceptionPipeline,
+      { submit: () => { order.push('submit_player'); return { accepted: true }; } },
+    );
+    port.setPlayerTurnPreemptor(() => { order.push('preempt_proactive'); });
+    port.beginPlayerTurn('turn-player', '去挖木头');
+    port.request({ requestKind: 'task', requestText: '去挖木头' });
+    assert.deepEqual(order, ['preempt_proactive', 'submit_player']);
+    port.shutdown();
+  });
+
   it('状态 Inspector 故障只返回 communication_delayed，不伪造成功/失败',()=>{
     const bus=new EventBusV2();
     const port=new GoalAgentPort(bus,{getWorldState:()=>null} as unknown as PerceptionPipeline,{submit:()=>({accepted:true})},undefined,undefined,{inspector:{inspect:()=>{throw new Error('probe timeout');}},autoStart:false});

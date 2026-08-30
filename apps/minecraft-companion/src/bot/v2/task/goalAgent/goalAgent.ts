@@ -45,6 +45,8 @@ export interface GoalAgentOptions {
   /** Cooperative scheduling slice; yielding preserves the same GoalAgent session. */
   maxRoundsPerRun?: number;
   getGamePresence?: () => GamePresenceState;
+  /** FEAT-CROSS-25 · 与 MainBrain 共用的主动能力只读快照。 */
+  getProactiveCapabilitiesContext?: () => string;
   publishEvent?: (event: GoalAgentLoopEvent) => void;
   publishReport?: (report: GoalReportV2) => void;
   onState?: (state: Readonly<GoalAgentStateV1>, event: GoalAgentLoopEvent) => void;
@@ -91,7 +93,10 @@ export class GoalAgent {
     this.store = new GoalAgentSessionStore(options.stateDbPath);
     const model = new GoalAgentModelRuntime(options.modelClient, {
       eventLog: this.store,
-      compiler: new GoalAgentContextCompiler({ getGamePresence: options.getGamePresence }),
+      compiler: new GoalAgentContextCompiler({
+        getGamePresence: options.getGamePresence,
+        getProactiveCapabilitiesContext: options.getProactiveCapabilitiesContext,
+      }),
       trace: trace => options.publishEvent?.({
         type: 'goalagent.model.called',
         sessionId: trace.sessionId,
@@ -293,6 +298,15 @@ export class GoalAgent {
         .catch(error => this.options.log?.(`GoalAgent cancel failed: ${errorText(error)}`));
     }
     return active.length;
+  }
+
+  cancelRequest(requestId: string, reason: string): boolean {
+    const state = this.store.findByRequestId(requestId);
+    if (!state || !this.store.getActive(state.sessionId)) return false;
+    void this.loop.cancel(state.sessionId, reason)
+      .then(terminal => this.reportStop(terminal))
+      .catch(error => this.options.log?.(`GoalAgent cancel failed: ${errorText(error)}`));
+    return true;
   }
 
   snapshot(sessionOrInteractionId?: string): GoalAgentStateV1 | null {

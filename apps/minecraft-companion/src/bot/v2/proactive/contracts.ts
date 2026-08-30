@@ -55,6 +55,7 @@ export interface ProactiveTickContext {
   readonly world: WorldStateView | null;
   readonly config: Readonly<Record<string, ProactiveConfigScalar>>;
   readonly foregroundBusy: boolean;
+  readonly activeActivation?: Readonly<{ capabilityId: string; activationId: string; idempotencyKey: string }>;
   readonly signal: AbortSignal;
 }
 

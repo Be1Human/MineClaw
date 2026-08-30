@@ -33,7 +33,12 @@
         <button :disabled="!selectedEvent" :class="{ active: mobilePane === 'detail' }" @click="mobilePane = 'detail'">详情</button>
       </div>
 
-      <div class="trace-workspace">
+      <div
+        ref="traceWorkspace"
+        class="trace-workspace"
+        :class="{ 'is-resizing': activeTraceResize }"
+        :style="traceGridStyle"
+      >
         <aside class="session-column" :class="{ 'mobile-hidden': mobilePane !== 'sessions' }">
           <div class="column-heading"><div><span>CONVERSATION / TURNS</span><strong>持续对话与回合</strong></div><b>{{ sessions.length }}</b></div>
           <div v-if="loadingSessions" class="trace-state"><span class="spinner"></span><span>正在读取对话…</span></div>
@@ -54,6 +59,18 @@
           </div>
         </aside>
 
+        <McResizeHandle
+          class="trace-resizer trace-resizer-session"
+          label="调整会话栏宽度"
+          :value="traceLayout.first"
+          :minimum="TRACE_LAYOUT_CONFIG.firstMin"
+          :maximum="TRACE_LAYOUT_CONFIG.firstMax"
+          @resize="resizeTracePane('first', $event)"
+          @commit="persistTraceLayout"
+          @reset="resetTracePane('first')"
+          @active="activeTraceResize = $event ? 'first' : ''"
+        />
+
         <main class="event-column" :class="{ 'mobile-hidden': mobilePane !== 'events' }">
           <div class="column-heading"><div><span>EVENT LEDGER</span><strong>{{ selectedTurn ? `回合 · ${selectedTurn.title}` : '全部回合账本' }}</strong></div><b v-if="selectedSession">#{{ selectedSession.lastSeq }}</b></div>
           <div v-if="!selectedSession" class="trace-state"><strong>选择一个会话</strong><span>这里会按 seq 展示双 Agent 的完整事件链。</span></div>
@@ -73,6 +90,18 @@
             <button v-if="newEventCount" class="new-events top" @click="resumeFollowing">{{ newEventCount }} 条新事件 · 回到顶部</button>
           </template>
         </main>
+
+        <McResizeHandle
+          class="trace-resizer trace-resizer-event"
+          label="调整事件栏宽度"
+          :value="traceLayout.second"
+          :minimum="TRACE_LAYOUT_CONFIG.secondMin"
+          :maximum="TRACE_LAYOUT_CONFIG.secondMax"
+          @resize="resizeTracePane('second', $event)"
+          @commit="persistTraceLayout"
+          @reset="resetTracePane('second')"
+          @active="activeTraceResize = $event ? 'second' : ''"
+        />
 
         <aside class="detail-column" :class="{ 'mobile-hidden': mobilePane !== 'detail' }">
           <div class="column-heading"><div><span>CALL INSPECTOR</span><strong>调用检查器</strong></div><b v-if="selectedEvent">#{{ selectedEvent.seq }}</b></div>
@@ -113,11 +142,58 @@
 
 <script setup>
 import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import McResizeHandle from './layout/McResizeHandle.vue';
 import { cacheStatusText, fetchTraceJson, formatCachePercent, formatCacheSummary, formatReplaySummary, formatTraceJson, formatTraceTokens, llmApiLabel, mergeTraceEvents, orderTraceEventsNewestFirst, traceEventPresentation, traceQuery } from '../lib/llmTrace.js';
+import {
+  TRACE_LAYOUT_CONFIG,
+  constrainPanePair,
+  readStoredPanePair,
+  resizePanePair,
+  storePanePair,
+} from '../lib/resizableLayout.js';
 
 const props = defineProps({ botId: { type: String, default: '' } });
 const sessions = ref([]), selectedSession = ref(null), selectedTurn = ref(null), events = ref([]), selectedEvent = ref(null), callDetail = ref(null);
 const loadingSessions = ref(false), loadingMoreSessions = ref(false), loadingEvents = ref(false), loadingOlder = ref(false), detailLoading = ref(false);
+const traceWorkspace = ref(null);
+const traceLayout = ref(readStoredPanePair(localStorage, TRACE_LAYOUT_CONFIG));
+const activeTraceResize = ref('');
+const traceGridStyle = computed(() => ({
+  '--trace-session-width': `${traceLayout.value.first}px`,
+  '--trace-event-width': `${traceLayout.value.second}px`,
+}));
+
+function traceContainerWidth() {
+  return traceWorkspace.value?.clientWidth || window.innerWidth;
+}
+
+function commitTraceLayout(layout, persist = false) {
+  traceLayout.value = constrainPanePair(layout, TRACE_LAYOUT_CONFIG, traceContainerWidth());
+  if (persist) storePanePair(localStorage, TRACE_LAYOUT_CONFIG, traceLayout.value);
+}
+
+function resizeTracePane(pane, visualDelta) {
+  const direction = pane === 'first' ? 1 : -1;
+  commitTraceLayout(resizePanePair(
+    traceLayout.value,
+    pane,
+    visualDelta * direction,
+    TRACE_LAYOUT_CONFIG,
+    traceContainerWidth(),
+  ));
+}
+
+function persistTraceLayout() {
+  storePanePair(localStorage, TRACE_LAYOUT_CONFIG, traceLayout.value);
+}
+
+function resetTracePane(pane) {
+  commitTraceLayout({ ...traceLayout.value, [pane]: TRACE_LAYOUT_CONFIG.defaults[pane] }, true);
+}
+
+function reflowTraceLayout() {
+  commitTraceLayout(traceLayout.value);
+}
 const sessionError = ref(''), eventError = ref(''), detailError = ref('');
 const sessionCursor = ref(null), sessionHasMore = ref(false), eventsHaveOlder = ref(false), newestSeq = ref(0);
 const following = ref(true), newEventCount = ref(0), ledgerEl = ref(null), mobilePane = ref('sessions');
@@ -250,8 +326,19 @@ function formatTime(value) { return value ? new Date(value).toLocaleTimeString('
 function traceErrorMessage(error) { if (error.status === 503) return '伙伴大脑尚未运行，启动伙伴后轨迹服务才可用。'; return error.message || String(error); }
 
 watch(() => props.botId, () => { generation += 1; listAbort?.abort(); detailAbort?.abort(); listAbort = new AbortController(); sessions.value = []; selectedSession.value = null; selectedTurn.value = null; events.value = []; selectedEvent.value = null; callDetail.value = null; mobilePane.value = 'sessions'; if (props.botId) void loadSessions(true); }, { immediate: true });
-onMounted(() => { pollTimer = setInterval(() => { void pollEvents(); }, 2000); });
-onUnmounted(() => { generation += 1; listAbort?.abort(); detailAbort?.abort(); clearInterval(pollTimer); clearTimeout(copyTimer); });
+onMounted(() => {
+  reflowTraceLayout();
+  window.addEventListener('resize', reflowTraceLayout);
+  pollTimer = setInterval(() => { void pollEvents(); }, 2000);
+});
+onUnmounted(() => {
+  generation += 1;
+  listAbort?.abort();
+  detailAbort?.abort();
+  clearInterval(pollTimer);
+  clearTimeout(copyTimer);
+  window.removeEventListener('resize', reflowTraceLayout);
+});
 </script>
 
 <style scoped>
@@ -262,7 +349,7 @@ onUnmounted(() => { generation += 1; listAbort?.abort(); detailAbort?.abort(); c
 .trace-actions { display:flex; align-items:center; gap:8px; }.button-link { cursor:pointer; text-decoration:none; }.trace-panel button:disabled { opacity:.45; cursor:not-allowed; }
 .live-pill { display:flex; align-items:center; gap:7px; padding:7px 9px; border:1px solid var(--mc-border); border-radius:999px; color:var(--mc-text-muted); font-size:11px; }.live-pill i { width:7px; height:7px; border-radius:50%; background:currentColor; }.live-pill.active { color:var(--mc-accent-strong); }.live-pill.active i { box-shadow:0 0 8px currentColor; }
 .trace-panel > .trace-filters { flex:none; display:grid; grid-template-columns:minmax(170px,1fr) 130px 150px 180px minmax(76px,auto) minmax(58px,auto); gap:8px; align-items:end; padding:4px 8px; }.trace-filters label { display:flex; flex-direction:column; gap:3px; min-width:0; }.trace-filters label span { color:var(--mc-text-muted); font-size:9px; }.trace-filters input,.trace-filters select { box-sizing:border-box; min-width:0; height:30px; }.trace-filters button { min-width:0; min-height:30px; height:30px; padding:3px 8px; white-space:nowrap; }
-.trace-workspace { flex:1; min-height:0; display:grid; grid-template-columns:250px minmax(300px,.85fr) minmax(360px,1.35fr); }.session-column,.event-column,.detail-column { min-width:0; min-height:0; display:flex; flex-direction:column; }.detail-column { border-right:0; }
+.trace-workspace { flex:1; min-height:0; display:grid; grid-template-columns:var(--trace-session-width,250px) 0 var(--trace-event-width,340px) 0 minmax(360px,1fr); }.trace-workspace.is-resizing { cursor:col-resize; user-select:none; }.trace-resizer { width:8px; grid-row:1; justify-self:center; }.trace-resizer-session { grid-column:2; }.trace-resizer-event { grid-column:4; }.session-column { grid-column:1; }.event-column { grid-column:3; }.detail-column { grid-column:5; }.session-column,.event-column,.detail-column { min-width:0; min-height:0; display:flex; flex-direction:column; }.detail-column { border-right:0; }
 .column-heading { flex:none; min-height:32px; padding:2px 10px; display:flex; align-items:center; justify-content:space-between; }.column-heading div { display:flex; flex-direction:column; gap:1px; }.column-heading strong { font-size:12px; }.column-heading b { color:var(--mc-text-muted); font:11px var(--mc-font-mono); }
 .session-list,.event-ledger,.detail-scroll { flex:1; min-height:0; overflow:auto; }.conversation-group { border-bottom:1px solid var(--mc-border); }.session-row { width:100%; min-height:88px; display:flex; align-items:flex-start; gap:9px; padding:10px; border:0; background:transparent; box-shadow:none; text-align:left; }.session-row:hover,.session-row.active { background:var(--mc-surface-hover); }.session-row.active { box-shadow:inset 2px 0 var(--mc-accent); }.session-status { flex:none; width:8px; height:8px; margin-top:4px; border-radius:50%; background:var(--mc-text-muted); }.session-status.active,.session-status.completed { background:var(--mc-accent); }.session-status.failed,.session-status.interrupted { background:var(--mc-danger); }.session-status.in_flight { background:var(--mc-warning); }.session-copy { min-width:0; display:flex; flex-direction:column; gap:5px; }.session-copy strong { overflow:hidden; color:var(--mc-text); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }.session-copy small { color:var(--mc-text-muted); font-size:10px; }.session-copy span { display:flex; gap:4px; }.session-copy em { padding:2px 4px; border:1px solid var(--mc-border); border-radius:var(--mc-radius-xs); color:var(--mc-accent-strong); font-size:9px; font-style:normal; }.turn-list { padding:5px 7px 9px 14px; background:var(--mc-bg); }.turn-row { width:100%; min-height:54px; display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:7px 9px; border:0; border-left:2px solid var(--mc-border-strong); background:transparent; box-shadow:none; text-align:left; }.turn-row:hover,.turn-row.active { background:var(--mc-surface-hover); border-left-color:var(--mc-accent); }.turn-row strong { width:100%; overflow:hidden; color:var(--mc-text-secondary); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }.turn-row small { color:var(--mc-text-muted); font-size:9px; }
 .event-ledger { position:relative; padding:0; }
@@ -279,7 +366,7 @@ onUnmounted(() => { generation += 1; listAbort?.abort(); detailAbort?.abort(); c
 .cache-summary { display:block; overflow:hidden; color:var(--mc-accent); font:9px var(--mc-font-mono); text-overflow:ellipsis; white-space:nowrap; }.cache-summary.cache-zero { color:var(--mc-warning); }.cache-summary.cache-unsupported,.cache-summary.cache-unavailable,.cache-summary.cache-bypass,.cache-summary.cache-unknown { color:var(--mc-text-muted); }.cache-hero { display:grid; grid-template-columns:1fr auto; gap:4px 12px; padding:12px; border:1px solid rgba(105,201,74,.24); border-radius:var(--mc-radius-sm); background:var(--mc-accent-soft); }.cache-hero>span { color:var(--mc-text-secondary); font-size:10px; }.cache-hero>strong { grid-row:1/3; grid-column:2; align-self:center; color:var(--mc-accent-strong); font:700 25px var(--mc-font-mono); }.cache-hero>small { color:var(--mc-text-muted); font:9px var(--mc-font-mono); }.cache-hero.cache-zero { border-color:rgba(217,170,76,.24); }.cache-hero.cache-zero>strong { color:var(--mc-warning); }.cache-hero.cache-unsupported,.cache-hero.cache-unavailable,.cache-hero.cache-bypass { border-color:var(--mc-border); background:var(--mc-surface); }.cache-hero.cache-unsupported>strong,.cache-hero.cache-unavailable>strong,.cache-hero.cache-bypass>strong { color:var(--mc-text-muted); }
 .trace-state { flex:1; min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px; color:var(--mc-text-muted); text-align:center; }.trace-state.large { min-height:0; }.trace-state strong { color:var(--mc-text-secondary); }.trace-state.error strong { color:var(--mc-danger); }.spinner { width:18px; height:18px; border:2px solid var(--mc-border-strong); border-top-color:var(--mc-accent); border-radius:50%; animation:spin .8s linear infinite; }.copy-toast:empty { display:none; }.copy-toast { position:fixed; z-index:30; right:18px; bottom:18px; padding:9px 12px; border:1px solid rgba(105,201,74,.28); border-radius:var(--mc-radius-sm); background:#244d27; color:#fff; box-shadow:var(--mc-shadow-sm); font-size:12px; }.mobile-crumbs { display:none; }.mobile-hidden { display:flex; }
 @keyframes spin { to { transform:rotate(360deg); } }
-@media (max-width:1100px) { .trace-workspace { grid-template-columns:220px 290px minmax(340px,1fr); }.trace-filters { grid-template-columns:1fr 120px 130px; }.trace-filters button { align-self:end; }.event-row { grid-template-columns:56px 58px minmax(0,1fr) 54px; }.event-seq { display:none; } }
-@media (max-width:850px) { .trace-header { padding:11px; }.trace-header p,.live-pill { display:none; }.trace-header h1 { font-size:var(--mc-type-page-title); }.trace-filters { grid-template-columns:1fr 1fr; max-height:170px; overflow:auto; }.mobile-crumbs { flex:none; display:grid; grid-template-columns:repeat(3,1fr); padding:5px; border-bottom:1px solid var(--mc-border); }.mobile-crumbs button { min-height:34px; border:1px solid transparent; border-radius:var(--mc-radius-xs); background:transparent; color:var(--mc-text-muted); box-shadow:none; }.mobile-crumbs button.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.24); color:var(--mc-accent-strong); }.trace-workspace { display:block; position:relative; }.session-column,.event-column,.detail-column { position:absolute; inset:0; border:0; }.mobile-hidden { display:none; }.fact-grid { grid-template-columns:1fr; } }
+@media (max-width:1100px) { .trace-filters { grid-template-columns:1fr 120px 130px; }.trace-filters button { align-self:end; }.event-row { grid-template-columns:56px 58px minmax(0,1fr) 54px; }.event-seq { display:none; } }
+@media (max-width:850px) { .trace-header { padding:11px; }.trace-header p,.live-pill { display:none; }.trace-header h1 { font-size:var(--mc-type-page-title); }.trace-filters { grid-template-columns:1fr 1fr; max-height:170px; overflow:auto; }.mobile-crumbs { flex:none; display:grid; grid-template-columns:repeat(3,1fr); padding:5px; border-bottom:1px solid var(--mc-border); }.mobile-crumbs button { min-height:34px; border:1px solid transparent; border-radius:var(--mc-radius-xs); background:transparent; color:var(--mc-text-muted); box-shadow:none; }.mobile-crumbs button.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.24); color:var(--mc-accent-strong); }.trace-workspace { display:block; position:relative; }.trace-resizer { display:none; }.session-column,.event-column,.detail-column { position:absolute; inset:0; border:0; }.mobile-hidden { display:none; }.fact-grid { grid-template-columns:1fr; } }
 @media (max-width:520px) { .event-row { grid-template-columns:56px minmax(0,1fr) 52px; }.event-agent { display:none; } }
 </style>

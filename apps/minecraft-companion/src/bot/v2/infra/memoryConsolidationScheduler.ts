@@ -20,6 +20,17 @@ export interface MemoryConsolidationSchedulerStatus {
   lastResult?: MemoryConsolidationRunResult;
 }
 
+export interface MemoryConsolidationCapabilitySnapshot {
+  readonly id: 'memory_consolidation';
+  readonly label: string;
+  readonly description: string;
+  readonly enabled: boolean;
+  readonly defaultEnabled: true;
+  readonly available: boolean;
+  readonly state: 'running' | 'idle' | 'disabled' | 'unavailable';
+  readonly statusLabel: string;
+}
+
 export class MemoryConsolidationScheduler {
   private timer: unknown;
   private running = false;

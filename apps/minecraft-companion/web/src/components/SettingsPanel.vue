@@ -158,6 +158,61 @@
             <label><input v-model="characterCard.performance.capabilities.voice" type="checkbox" /> 语音</label>
           </div>
           <div class="separator"></div>
+          <div class="section-title-row">
+            <div>
+              <strong>主动 Tick 能力</strong>
+              <p class="proactive-copy">空闲时自动观察并发起目标。每项能力独立启停，玩家任务始终优先。</p>
+            </div>
+            <span v-if="savingProactiveCapabilities" class="proactive-saving">应用中…</span>
+          </div>
+          <div v-if="proactiveCapabilities.length === 0" class="proactive-empty">
+            当前运行中的伙伴没有注册主动能力，或伙伴尚未启动。
+          </div>
+          <div v-else class="proactive-grid">
+            <article v-for="capability in proactiveCapabilities" :key="capability.id" class="proactive-card">
+              <div class="proactive-card-head">
+                <div>
+                  <strong>{{ capability.label }}</strong>
+                  <small>{{ capability.description }}</small>
+                </div>
+                <label class="proactive-switch">
+                  <input :checked="capability.enabled" type="checkbox" @change="toggleProactiveCapability(capability, $event.target.checked)" />
+                  {{ capability.enabled ? '已开启' : '已关闭' }}
+                </label>
+              </div>
+              <div class="proactive-meta">
+                <span>{{ proactiveState(capability.id)?.state || 'unknown' }}</span>
+                <span v-if="proactiveState(capability.id)?.reason">{{ proactiveState(capability.id).reason }}</span>
+              </div>
+              <div v-if="Object.keys(capability.configSchema || {}).length" class="proactive-config">
+                <label v-for="(field, key) in capability.configSchema" :key="key">
+                  <span>{{ field.label }}</span>
+                  <input
+                    v-if="field.type === 'boolean'"
+                    :checked="capability.config[key]"
+                    type="checkbox"
+                    @change="setProactiveConfig(capability, key, $event.target.checked)"
+                  />
+                  <select
+                    v-else-if="field.type === 'string' && field.enum"
+                    :value="capability.config[key]"
+                    @change="setProactiveConfig(capability, key, $event.target.value)"
+                  >
+                    <option v-for="option in field.enum" :key="option" :value="option">{{ option }}</option>
+                  </select>
+                  <input
+                    v-else
+                    :type="field.type === 'number' ? 'number' : 'text'"
+                    :min="field.min"
+                    :max="field.max"
+                    :value="capability.config[key]"
+                    @change="setProactiveConfig(capability, key, field.type === 'number' ? Number($event.target.value) : $event.target.value)"
+                  />
+                </label>
+              </div>
+            </article>
+          </div>
+          <div class="separator"></div>
           <div class="section-title-row"><strong>示例对白</strong><button class="qa-btn" @click="addExampleDialog">添加对白</button></div>
           <div v-for="(dialog, index) in characterCard.performance.exampleDialogs" :key="index" class="repeat-editor">
             <div class="form-field"><label>你说</label><textarea v-model="dialog.user" rows="2"></textarea></div>
@@ -416,6 +471,8 @@ const activeSection = ref(props.initialSection);
 const characterTab = ref('character');
 const characterCard = ref(null);
 const savingCharacterCard = ref(false);
+const savingProactiveCapabilities = ref(false);
+const proactiveSnapshot = ref({ catalog: [], states: [], lease: { active: null, releasing: null } });
 const savedMsg = ref('');
 const errorMsg = ref('');
 const savingLlm = ref(false);
@@ -523,6 +580,7 @@ const selectedLlmApiDescription = computed(() => (
   llmApiOptions.find(option => option.value === llmConfigForm.api)?.description
     || '请选择受支持的 OpenAI API。'
 ));
+const proactiveCapabilities = computed(() => proactiveSnapshot.value?.catalog || []);
 
 const form = reactive({
   name: '', skinName: '', personality: '', ownerName: '',
@@ -581,7 +639,9 @@ async function loadCharacterCard() {
     if (!res.ok) throw new Error(`角色卡加载失败 (${res.status})`);
     const card = await res.json();
     card.performance.progressReportLevel ??= 'balanced';
+    card.performance.proactiveCapabilities ??= {};
     characterCard.value = card;
+    await loadProactiveCapabilities();
   } catch (e) { showError(e instanceof Error ? e.message : '角色卡加载失败'); }
 }
 
@@ -849,6 +909,67 @@ function applyPreset(p) {
   llmConfigForm.api = p.api || 'openai-completions';
 }
 
+async function loadProactiveCapabilities() {
+  if (!props.selectedProfile) return;
+  try {
+    const response = await fetch(`/api/bots/${props.selectedProfile.id}/proactive-capabilities`);
+    if (!response.ok) {
+      proactiveSnapshot.value = { catalog: [], states: [], lease: { active: null, releasing: null } };
+      return;
+    }
+    proactiveSnapshot.value = await response.json();
+  } catch {
+    proactiveSnapshot.value = { catalog: [], states: [], lease: { active: null, releasing: null } };
+  }
+}
+
+function proactiveState(capabilityId) {
+  return proactiveSnapshot.value?.states?.find(state => state.id === capabilityId) || null;
+}
+
+function proactivePreferences() {
+  if (!characterCard.value) return {};
+  characterCard.value.performance.proactiveCapabilities ??= {};
+  return characterCard.value.performance.proactiveCapabilities;
+}
+
+async function saveProactiveCapabilities() {
+  if (!props.selectedProfile || !characterCard.value) return;
+  savingProactiveCapabilities.value = true;
+  try {
+    const response = await fetch(`/api/bots/${props.selectedProfile.id}/proactive-capabilities`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capabilities: proactivePreferences() }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '主动能力应用失败');
+    proactiveSnapshot.value = result;
+    showSaved('主动能力已立即应用');
+  } catch (error) {
+    showError(error instanceof Error ? error.message : String(error));
+    await loadProactiveCapabilities();
+  } finally {
+    savingProactiveCapabilities.value = false;
+  }
+}
+
+async function toggleProactiveCapability(capability, enabled) {
+  const preferences = proactivePreferences();
+  preferences[capability.id] = { ...(preferences[capability.id] || {}), enabled };
+  await saveProactiveCapabilities();
+}
+
+async function setProactiveConfig(capability, key, value) {
+  const preferences = proactivePreferences();
+  const current = preferences[capability.id] || {};
+  preferences[capability.id] = {
+    ...current,
+    config: { ...(current.config || {}), [key]: value },
+  };
+  await saveProactiveCapabilities();
+}
+
 function llmApiLabel(api) {
   return api === 'openai-responses' ? 'Responses' : 'Chat Completions';
 }
@@ -1090,6 +1211,21 @@ watch(() => props.initialSection, section => {
 }
 .test-result.ok { color: var(--mc-accent-strong); border-color: rgba(105,201,74,.28); }
 .test-result.fail { color: #f1a9a2; border-color: rgba(228,111,101,.28); background: rgba(228,111,101,.1); }
+.proactive-copy { margin:4px 0 0; color:var(--mc-text-muted); font-size:11px; font-weight:400; }
+.proactive-saving { color:var(--mc-accent); font-size:11px; }
+.proactive-empty { margin-top:10px; padding:12px; border:1px dashed var(--mc-border); color:var(--mc-text-muted); font-size:11px; }
+.proactive-grid { display:grid; gap:10px; margin-top:12px; }
+.proactive-card { padding:13px; border:1px solid var(--mc-border); border-radius:var(--mc-radius-sm); background:var(--mc-surface); }
+.proactive-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.proactive-card-head > div { display:flex; min-width:0; flex-direction:column; gap:4px; }
+.proactive-card-head strong { color:var(--mc-text); font-size:12px; }
+.proactive-card-head small { color:var(--mc-text-secondary); font-size:11px; line-height:1.45; }
+.proactive-switch { display:flex; flex:0 0 auto; align-items:center; gap:6px; color:var(--mc-accent-strong); font-size:11px; }
+.proactive-meta { display:flex; gap:6px; margin-top:9px; }
+.proactive-meta span { padding:2px 5px; background:var(--mc-surface-raised); color:var(--mc-text-muted); font:9px var(--mc-font-mono); }
+.proactive-config { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-top:10px; }
+.proactive-config label { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--mc-text-secondary); font-size:10px; }
+.proactive-config input:not([type="checkbox"]), .proactive-config select { min-width:0; width:110px; }
 
 @media (max-width: 640px) {
   .settings-view { flex-direction: column; }
@@ -1114,6 +1250,7 @@ watch(() => props.initialSection, section => {
   .form-field.full { grid-column: auto; }
   .character-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proactive-card-head { flex-direction:column; }
 }
 
 </style>

@@ -3,6 +3,7 @@ import type { EventBusV2 } from '../../infra/eventBus.js';
 import type { PerceptionPipeline } from '../../perception/pipeline.js';
 import {
   type GoalContinuationV2,
+  type GoalInitiativeProvenanceV2,
   type GoalMessageReceiptV2,
   type GoalNotificationV1,
   type GoalReportV2,
@@ -28,6 +29,7 @@ import type { ConfirmationVerdict } from './completionConfirmationGate.js';
 
 export interface GoalAgentRequestSink {
   submit(request: GoalRequestV2): { accepted: boolean; reason?: string; details?: Record<string, unknown> };
+  cancelRequest?(requestId: string, reason: string): boolean;
 }
 
 /** FEAT-CROSS-21 · 完成确认闸依赖（MainBrain 侧机器复核）。 */
@@ -61,6 +63,7 @@ export class GoalAgentPort {
   private readonly watchdog?: GoalSessionWatchdog;
   private readonly progressGovernor: GoalProgressCommunicationGovernor;
   private watchdogTimer?: ReturnType<typeof setInterval>;
+  private playerTurnPreemptor: (() => void) | null = null;
 
   constructor(
     private readonly bus: EventBusV2,
@@ -179,7 +182,12 @@ export class GoalAgentPort {
   }
 
   beginPlayerTurn(turnId: string, originalText: string): void {
+    this.playerTurnPreemptor?.();
     this.sessions.beginPlayerTurn(turnId, originalText);
+  }
+
+  setPlayerTurnPreemptor(preemptor: (() => void) | null): void {
+    this.playerTurnPreemptor = preemptor;
   }
 
   endPlayerTurn(turnId: string): void {
@@ -196,6 +204,15 @@ export class GoalAgentPort {
 
   cancelSessions(reason: string): void {
     for (const continuation of this.sessions.cancelAll(reason)) this.publishContinuation(continuation);
+  }
+
+  cancelRequest(requestId: string, reason: string): boolean {
+    const accepted = this.sink.cancelRequest?.(requestId, reason) ?? false;
+    if (!accepted) return false;
+    const continuation = this.sessions.cancelRequest(requestId, reason);
+    if (continuation) this.publishContinuation(continuation);
+    this.bus.publish('goalagent.request_cancelled', 'info', { requestId, reason });
+    return true;
   }
 
   abandonSession(sessionId: string): void {
@@ -219,6 +236,7 @@ export class GoalAgentPort {
     requestKind: 'task' | 'query' | 'cancel';
     queryPurpose?: 'answer_player' | 'prepare_task';
     constraints?: string[];
+    initiative?: GoalInitiativeProvenanceV2;
   }): GoalMessageReceiptV2 {
     const request = this.sessions.createRequest(input);
     this.watchdog?.trackRequest(request);

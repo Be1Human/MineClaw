@@ -95,6 +95,8 @@ export interface MainBrainDeps extends MainBrainToolDeps {
   chatMemory?: ChatMemoryService;
   /** FEAT-WEBUI-19：与 LLMClient 共用的 Profile 轨迹事实源。 */
   llmTraceRecorder?: LlmTraceRecorderPort;
+  /** FEAT-CROSS-25 · 与 GoalAgent 共用的主动能力只读快照。 */
+  getProactiveCapabilitiesContext?: () => string;
 }
 
 export class MainBrain {
@@ -220,7 +222,10 @@ export class MainBrain {
           maxRounds: cfg.maxRounds ?? 8,
           bus: this.bus,
           characterBlock: cfg.characterPrompt,
-          runtimeBlock: () => buildGamePresenceContext(this.getGamePresence()),
+          runtimeBlock: () => [
+            buildGamePresenceContext(this.getGamePresence()),
+            deps.getProactiveCapabilitiesContext?.().trim() ?? '',
+          ].filter(Boolean).join('\n'),
           minecraftEnabled: cfg.characterCard?.performance.capabilities.minecraft ?? true,
           memoryEnabled: cfg.characterCard?.performance.capabilities.memory ?? true,
           recentNotices: deps.narration ? () => deps.narration!.recentNotices() : undefined,

@@ -83,6 +83,7 @@ export class ProactiveTickScheduler implements ITickable {
             world: ctx.world,
             config: entry.config,
             foregroundBusy: this.options.isForegroundBusy(),
+            ...(initialLease ? { activeActivation: initialLease } : {}),
             signal,
           }),
           this.options.evaluationTimeoutMs ?? tuning().proactiveTick.evaluationTimeoutMs,

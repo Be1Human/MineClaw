@@ -10,6 +10,7 @@ import { ServerPresetStore, resolveSkinSyncMode } from './serverPresetStore.js';
 import { DesktopPetConfigStore, type DesktopPetConfigInput } from './desktopPetConfigStore.js';
 import { BotManager } from './botManager.js';
 import { listCharacterTemplates, createCharacterTemplate } from '../character/templates.js';
+import { resolveCharacterCard } from '../character/migrateCharacterCard.js';
 import { validateCharacterCard } from '../character/validateCharacterCard.js';
 import { registerPlannerEvolutionRoutes } from './plannerEvolutionRoutes.js';
 import { LlmTraceQueryError, type LlmTraceAgent } from '../bot/v2/infra/llmTrace/index.js';
@@ -22,6 +23,8 @@ import { registerInventoryIconRoutes } from './inventoryIconRoutes.js';
 import { DEFAULT_LLM_API, isLlmApi, type LlmApi } from '../llm/api.js';
 import { LLMClient } from '../bot/v2/cognitive/llm/LLMClient.js';
 import type { LLMFailure } from '../bot/v2/cognitive/llm/errors.js';
+import type { ProactiveCapabilityPreferencesV1 } from '../character/types.js';
+import { CapabilityControlError, CapabilityControlRegistry } from './capabilityControlRegistry.js';
 
 export interface HubConfig {
   port: number;
@@ -239,10 +242,14 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     if (memory === null || typeof memory !== 'object' || Array.isArray(memory)) {
       return 'memory must be an object';
     }
-    const semanticSearch = (memory as { semanticSearch?: unknown }).semanticSearch;
-    return semanticSearch === undefined || typeof semanticSearch === 'boolean'
-      ? null
-      : 'memory.semanticSearch must be boolean';
+    const value = memory as { semanticSearch?: unknown; consolidationEnabled?: unknown };
+    if (value.semanticSearch !== undefined && typeof value.semanticSearch !== 'boolean') {
+      return 'memory.semanticSearch must be boolean';
+    }
+    if (value.consolidationEnabled !== undefined && typeof value.consolidationEnabled !== 'boolean') {
+      return 'memory.consolidationEnabled must be boolean';
+    }
+    return null;
   };
 
   const validateProfilePlayMode = (body: unknown): string | null => {
@@ -652,6 +659,117 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   const factKinds = new Set(['preference', 'identity', 'relationship', 'commitment', 'boundary', 'project', 'agent_note']);
   const factStatuses = new Set(['candidate', 'active', 'superseded', 'deleted', 'rejected', 'expired']);
 
+  const capabilityControlRegistry = (botId: string): CapabilityControlRegistry | null => {
+    const profile = profileStore.get(botId);
+    if (!profile) return null;
+    const registry = new CapabilityControlRegistry(`/api/bots/${encodeURIComponent(botId)}/capabilities`);
+    const card = resolveCharacterCard(profile);
+    const baseMetadata: Record<string, { label: string; icon: string; description: string }> = {
+      chat: { label: '聊天', icon: 'chat', description: '理解并回应主人的日常对话。' },
+      memory: { label: '记忆', icon: 'memory', description: '保存和召回伙伴的长期记忆。' },
+      minecraft: { label: 'Minecraft', icon: 'bot', description: '连接 Minecraft 身体并执行游戏任务。' },
+      voice: { label: '语音', icon: 'activity', description: '语音输入与输出能力。' },
+    };
+    for (const [id, enabled] of Object.entries(card.performance.capabilities)) {
+      const metadata = baseMetadata[id] ?? { label: id, icon: 'skill', description: '' };
+      registry.register({
+        id: `base:${id}`,
+        label: metadata.label,
+        description: metadata.description,
+        icon: metadata.icon,
+        kind: 'base',
+        enabled: Boolean(enabled),
+        defaultEnabled: Boolean(enabled),
+        statusLabel: enabled ? '已启用' : '未启用',
+      });
+    }
+
+    const memoryConsolidation = botManager.getMemoryConsolidationCapability(botId);
+    const memoryConsolidationEnabled = profile.memory?.consolidationEnabled ?? true;
+    registry.register({
+      id: 'service:memory_consolidation',
+      label: memoryConsolidation?.label ?? '定时记忆整理',
+      description: memoryConsolidation?.description ?? '每 5 分钟自动识别并整理对话中的长期关键信息。',
+      icon: 'memory',
+      kind: 'internal_service',
+      enabled: memoryConsolidation?.enabled ?? memoryConsolidationEnabled,
+      defaultEnabled: true,
+      statusLabel: memoryConsolidation?.statusLabel ?? (
+        card.performance.capabilities.memory === false
+          ? '长期记忆能力未启用'
+          : memoryConsolidationEnabled ? '已启用 · 启动伙伴后生效' : '未启用'
+      ),
+      setEnabled: enabled => {
+        const currentProfile = profileStore.get(botId);
+        if (!currentProfile) throw new CapabilityControlError('profile not found', 404);
+        botManager.setMemoryConsolidationEnabled(botId, enabled);
+        profileStore.update(botId, {
+          memory: { ...currentProfile.memory, consolidationEnabled: enabled },
+        });
+      },
+    });
+
+    const proactive = botManager.getProactiveRuntimeSnapshot(botId);
+    if (proactive) {
+      for (const entry of proactive.catalog) {
+        const state = proactive.states.find(value => value.id === entry.id);
+        const controlId = `proactive:${entry.id}`;
+        registry.register({
+          id: controlId,
+          label: entry.label,
+          description: entry.description,
+          icon: 'activity',
+          kind: 'proactive_goal',
+          enabled: entry.enabled,
+          defaultEnabled: entry.defaultEnabled,
+          statusLabel: entry.enabled
+            ? `${state?.state ?? 'idle'}${state?.reason ? ` · ${state.reason}` : ''}`
+            : '未启用',
+          setEnabled: enabled => {
+            const currentProfile = profileStore.get(botId);
+            if (!currentProfile) throw new CapabilityControlError('profile not found', 404);
+            const nextCard = resolveCharacterCard(currentProfile);
+            const preferences = structuredClone(nextCard.performance.proactiveCapabilities ?? {});
+            preferences[entry.id] = { ...preferences[entry.id], enabled };
+            nextCard.performance.proactiveCapabilities = preferences;
+            const errors = validateCharacterCard(nextCard);
+            if (errors.length) {
+              throw new CapabilityControlError(`invalid proactive capability preferences: ${errors[0]!.message}`, 400);
+            }
+            const snapshot = botManager.setProactiveCapabilityPreferences(botId, preferences);
+            if (!snapshot) throw new CapabilityControlError('proactive runtime is not active for this bot', 503);
+            profileStore.update(botId, { characterCard: nextCard });
+          },
+        });
+      }
+    }
+    return registry;
+  };
+
+  app.get('/api/bots/:botId/capabilities', (req, res) => {
+    const registry = capabilityControlRegistry(req.params.botId);
+    registry ? res.json(registry.snapshot()) : res.status(404).json({ error: 'profile not found' });
+  });
+
+  app.patch('/api/bots/:botId/capabilities/:capabilityId', async (req, res) => {
+    if (typeof (req.body as { enabled?: unknown } | undefined)?.enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled must be boolean' });
+      return;
+    }
+    try {
+      const registry = capabilityControlRegistry(req.params.botId);
+      if (!registry) {
+        res.status(404).json({ error: 'profile not found' });
+        return;
+      }
+      await registry.setEnabled(req.params.capabilityId, (req.body as { enabled: boolean }).enabled);
+      res.json(capabilityControlRegistry(req.params.botId)!.snapshot());
+    } catch (error) {
+      const status = error instanceof CapabilityControlError ? error.status : 400;
+      res.status(status).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.get('/api/bots/:botId/chat-memory/slots', (req, res) => {
     const group = typeof req.query.group === 'string' ? req.query.group.slice(0, 80) : undefined;
     const filledOnly = req.query.filledOnly === 'true' || req.query.filledOnly === '1';
@@ -662,6 +780,45 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     if (!slots) { res.status(404).json({ error: 'chat memory not active' }); return; }
     const filled = slots.filter(slot => slot.values.length > 0).length;
     res.json({ catalogVersion: 1, total: 100, filled, slots });
+  });
+
+  app.get('/api/bots/:botId/proactive-capabilities', (req, res) => {
+    const snapshot = botManager.getProactiveRuntimeSnapshot(req.params.botId);
+    snapshot
+      ? res.json(snapshot)
+      : res.status(503).json({ error: 'proactive runtime is not active for this bot' });
+  });
+
+  app.patch('/api/bots/:botId/proactive-capabilities', (req, res) => {
+    const body = req.body as { capabilities?: unknown } | undefined;
+    if (!body || !body.capabilities || typeof body.capabilities !== 'object' || Array.isArray(body.capabilities)) {
+      res.status(400).json({ error: 'capabilities must be an object' });
+      return;
+    }
+    const profile = profileStore.get(req.params.botId);
+    if (!profile?.characterCard) {
+      res.status(404).json({ error: 'profile or character card not found' });
+      return;
+    }
+    const preferences = structuredClone(body.capabilities) as ProactiveCapabilityPreferencesV1;
+    const nextCard = structuredClone(profile.characterCard);
+    nextCard.performance.proactiveCapabilities = preferences;
+    const errors = validateCharacterCard(nextCard);
+    if (errors.length) {
+      res.status(400).json({ error: 'invalid proactive capability preferences', errors });
+      return;
+    }
+    try {
+      const snapshot = botManager.setProactiveCapabilityPreferences(req.params.botId, preferences);
+      if (!snapshot) {
+        res.status(503).json({ error: 'proactive runtime is not active for this bot' });
+        return;
+      }
+      profileStore.update(profile.id, { characterCard: nextCard });
+      res.json(snapshot);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   app.post('/api/bots/:botId/chat-memory/slots/:slotKey/values', (req, res) => {

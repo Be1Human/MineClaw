@@ -6,6 +6,8 @@ export { ProactiveCapabilityStateStore } from './proactiveCapabilityStateStore.j
 export { ProactiveGoalLeaseRegistry } from './proactiveGoalLeaseRegistry.js';
 export { ProactiveIntentArbiter } from './proactiveIntentArbiter.js';
 export { ProactiveTickScheduler } from './proactiveTickScheduler.js';
+export { MainBrainProactiveInbox } from './mainBrainProactiveInbox.js';
+export { formatProactiveRuntimeContext } from './proactiveRuntimeSnapshot.js';
 export type {
   ProactiveCapabilityRuntimeSnapshot,
   ProactiveCapabilityRuntimeState,
@@ -37,3 +39,5 @@ export type {
   ProactiveTickRate,
   RegisteredProactiveTickCapability,
 } from './contracts.js';
+export type { MainBrainProactiveGoalPort, MainBrainProactiveInboxOptions } from './mainBrainProactiveInbox.js';
+export type { ProactiveRuntimeSnapshot } from './proactiveRuntimeSnapshot.js';

@@ -152,6 +152,24 @@ describe('official profile memory slots', () => {
     assert.ok(preview.some(item => item.outcome === 'rejected' && item.reason === 'question'));
     assert.equal(memory.applyLegacyFactSlotMigration().migrated, 1);
   }));
+
+  it('does not let a false evidence gap suppress a recalled official anime slot', () => withMemory(memory => {
+    const stored = memory.putManualMemorySlotValue({
+      slotKey: 'preference.anime',
+      value: '火影忍者、仙逆',
+    });
+    assert.ok(!('rejected' in stored));
+
+    memory.recordMessage({ id: 'recent-anime-1', sessionId: 'recent', role: 'owner', content: '火影啊', timestamp: 1 });
+    memory.recordMessage({ id: 'recent-anime-2', sessionId: 'recent', role: 'owner', content: '我喜欢火影的鸣人', timestamp: 2 });
+
+    for (const query of ['我喜欢什么动漫呢', '我说你回想下我喜欢什么动漫', '知道我喜欢什么动漫不']) {
+      const context = memory.buildPromptContext(query);
+      assert.match(context.text, /官方记忆槽（动画\/动漫）：火影忍者、仙逆/);
+      assert.match(context.text, /官方记忆槽表示该主题当前完整权威值/);
+      assert.doesNotMatch(context.text, /证据缺口/, query);
+    }
+  }));
 });
 
 function withMemory(run: (memory: ChatMemoryService) => void): void {

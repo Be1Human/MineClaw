@@ -895,12 +895,15 @@ describe('LLMToolLoop (function calling)', () => {
         seenQueries.push(query);
         return `与“${query}”匹配的情景记忆：村庄北门击退僵尸`;
       },
+      conversationBlock: () => '── 最近对话记录 ──\n用户：刚才只提到局部信息',
     }, () => {});
 
     await loop.run('上次打僵尸好惊险呀');
 
     assert.deepEqual(seenQueries, ['上次打僵尸好惊险呀']);
-    assert.match(capturedCalls[0]!.messages[0]!.content, /村庄北门击退僵尸/);
+    const system = capturedCalls[0]!.messages[0]!.content;
+    assert.match(system, /村庄北门击退僵尸/);
+    assert.ok(system.indexOf('村庄北门击退僵尸') > system.indexOf('刚才只提到局部信息'));
   });
 
   // FEAT-L3-13 R3 · 拦截 LLM 把动作 JSON 当文字吐进聊天

@@ -14,6 +14,15 @@ export interface GoalInteractionMetaV2 {
   idempotencyKey: string;
 }
 
+/** FEAT-CROSS-25 · MainBrain 主动能力的可审计来源。 */
+export interface GoalInitiativeProvenanceV2 {
+  capabilityId: string;
+  activationId: string;
+  evidenceRefs: string[];
+  idempotencyKey: string;
+  preemptible: boolean;
+}
+
 export interface GoalRequestV2 {
   meta: GoalInteractionMetaV2;
   parentRequestId?: string;
@@ -25,6 +34,8 @@ export interface GoalRequestV2 {
   requestKind: 'task' | 'query' | 'cancel';
   queryPurpose?: 'answer_player' | 'prepare_task';
   constraints: string[];
+  /** 仅 mainbrain_self 主动能力携带；玩家请求不得伪造。 */
+  initiative?: GoalInitiativeProvenanceV2;
 }
 
 export type GoalIntentKindV2 = 'query' | 'action' | 'cancel';

@@ -42,7 +42,7 @@ export interface BotProfile {
   /** @deprecated Read only for one-time migration from the previous schema. */
   llm?: { apiKey?: string; baseUrl: string; model: string };
   /** FEAT-MEM-09 · 纯聊天记忆能力开关；缺省字段保持全部能力开启。 */
-  memory?: { semanticSearch?: boolean };
+  memory?: { semanticSearch?: boolean; consolidationEnabled?: boolean };
   createdAt: number;
   updatedAt: number;
 }

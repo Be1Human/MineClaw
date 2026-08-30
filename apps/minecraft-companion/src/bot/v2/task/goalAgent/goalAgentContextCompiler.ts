@@ -13,6 +13,7 @@ export interface GoalAgentContextCompilerOptions {
   maxHistoryCharacters?: number;
   systemIdentity?: string;
   getGamePresence?: () => GamePresenceState;
+  getProactiveCapabilitiesContext?: () => string;
 }
 
 export interface CompiledGoalAgentContext {
@@ -60,6 +61,7 @@ export class GoalAgentContextCompiler {
   private readonly maxHistoryCharacters: number;
   private readonly customSystemIdentity: string | null;
   private readonly getGamePresence: () => GamePresenceState;
+  private readonly getProactiveCapabilitiesContext: () => string;
 
   constructor(options: GoalAgentContextCompilerOptions = {}) {
     this.maxHistoryCharacters = options.maxHistoryCharacters ?? DEFAULT_MAX_HISTORY_CHARACTERS;
@@ -69,6 +71,7 @@ export class GoalAgentContextCompiler {
     this.customSystemIdentity = options.systemIdentity?.trim() || null;
     this.getGamePresence = options.getGamePresence
       ?? (() => ({ embodied: true, ownerObservation: 'unknown' }));
+    this.getProactiveCapabilitiesContext = options.getProactiveCapabilitiesContext ?? (() => '');
   }
 
   compile(input: {
@@ -97,8 +100,11 @@ export class GoalAgentContextCompiler {
       role: 'user',
       content: `[GoalAgent node=${input.node} stateRevision=${input.state.revision} epoch=${input.state.epoch}]\n${instruction}`,
     };
-    const systemIdentity = this.customSystemIdentity
-      ?? defaultSystemIdentity(this.getGamePresence());
+    const proactiveContext = this.getProactiveCapabilitiesContext().trim();
+    const systemIdentity = [
+      this.customSystemIdentity ?? defaultSystemIdentity(this.getGamePresence()),
+      proactiveContext,
+    ].filter(Boolean).join('\n');
     const messages: LLMChatMessage[] = [
       { role: 'system', content: systemIdentity },
       ...(compactionSurface ? [{ role: 'system' as const, content: compactionSurface }] : []),

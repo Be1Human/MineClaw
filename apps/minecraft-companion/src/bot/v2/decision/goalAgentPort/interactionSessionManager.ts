@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   GOAL_INTERACTION_SCHEMA_VERSION_V2,
   type GoalContinuationV2,
+  type GoalInitiativeProvenanceV2,
   type GoalInteractionMetaV2,
   type GoalReportV2,
   type GoalRequestV2,
@@ -13,6 +14,7 @@ type RequestInput = {
   requestKind: 'task' | 'query' | 'cancel';
   queryPurpose?: 'answer_player' | 'prepare_task';
   constraints?: string[];
+  initiative?: GoalInitiativeProvenanceV2;
 };
 
 type MutableSession = InteractionSessionV2 & {
@@ -125,6 +127,9 @@ export class InteractionSessionManager {
       requestKind: input.requestKind,
       ...(input.requestKind === 'query' ? { queryPurpose: input.queryPurpose ?? 'answer_player' } : {}),
       constraints: input.constraints ?? [],
+      ...(!isPlayerOrigin(session) && input.initiative
+        ? { initiative: cloneInitiative(input.initiative) }
+        : {}),
     };
 
     if (input.requestKind === 'task') session.desiredOutcome = requestText;
@@ -137,6 +142,14 @@ export class InteractionSessionManager {
     this.requestMeta.set(messageId, meta);
     if (this.awaitingPlayerSessionId === session.sessionId) this.awaitingPlayerSessionId = null;
     return request;
+  }
+
+  cancelRequest(requestId: string, reason: string): GoalContinuationV2 | null {
+    const sessionId = this.requestToSession.get(requestId);
+    const session = sessionId ? this.sessions.get(sessionId) : undefined;
+    if (!session || ['completed', 'failed', 'cancelled', 'expired'].includes(session.state)) return null;
+    const continuation = this.cancelSession(session, requestId, reason);
+    return continuation;
   }
 
   handleReport(input: Omit<GoalReportV2, 'meta'> & { meta?: GoalInteractionMetaV2 }): GoalContinuationV2 | null {
@@ -244,38 +257,7 @@ export class InteractionSessionManager {
     const out: GoalContinuationV2[] = [];
     for (const session of this.sessions.values()) {
       if (['completed', 'failed', 'cancelled', 'expired'].includes(session.state)) continue;
-      const requestId = session.activeRequestId ?? session.sessionId;
-      const base = session.activeRequestId ? this.requestMeta.get(session.activeRequestId) : undefined;
-      const sequence = ++session.sequence;
-      const meta: GoalInteractionMetaV2 = base ? {
-        ...base,
-        messageId:`goal-report-${randomUUID()}`,
-        causationId:requestId,
-        sequence,
-        emittedAt:new Date(this.now()).toISOString(),
-        idempotencyKey:`${session.correlationId}:cancelled:${sequence}`,
-      } : {
-        schemaVersion:GOAL_INTERACTION_SCHEMA_VERSION_V2,
-        sessionId:session.sessionId,
-        messageId:`goal-report-${randomUUID()}`,
-        correlationId:session.correlationId,
-        conversationId:session.conversationId,
-        sequence,
-        emittedAt:new Date(this.now()).toISOString(),
-        idempotencyKey:`${session.correlationId}:cancelled:${sequence}`,
-      };
-      session.state = 'cancelled';
-      if (this.awaitingPlayerSessionId === session.sessionId) this.awaitingPlayerSessionId = null;
-      out.push({
-        session:{
-          sessionId:session.sessionId,origin:session.origin,originalText:session.originalText,desiredOutcome:session.desiredOutcome,
-          state:'cancelled',replyObligation:session.replyObligation,
-        },
-        triggeringReport:{meta,requestId,status:'cancelled',summary:'任务已停止。',evidence:[{
-          type:'action_result',ref:`cancel:${reason.slice(0,80)}`,observedAt:new Date(this.now()).toISOString(),
-        }]},
-        allowedDecisions:['respond'],
-      });
+      out.push(this.cancelSession(session, session.activeRequestId ?? session.sessionId, reason));
     }
     return out;
   }
@@ -335,4 +317,58 @@ export class InteractionSessionManager {
       if (this.awaitingPlayerSessionId === session.sessionId) this.awaitingPlayerSessionId = null;
     }
   }
+
+  private cancelSession(session: MutableSession, requestId: string, reason: string): GoalContinuationV2 {
+    const base = session.activeRequestId ? this.requestMeta.get(session.activeRequestId) : undefined;
+    const sequence = ++session.sequence;
+    const meta: GoalInteractionMetaV2 = base ? {
+      ...base,
+      messageId: `goal-report-${randomUUID()}`,
+      causationId: requestId,
+      sequence,
+      emittedAt: new Date(this.now()).toISOString(),
+      idempotencyKey: `${session.correlationId}:cancelled:${sequence}`,
+    } : {
+      schemaVersion: GOAL_INTERACTION_SCHEMA_VERSION_V2,
+      sessionId: session.sessionId,
+      messageId: `goal-report-${randomUUID()}`,
+      correlationId: session.correlationId,
+      conversationId: session.conversationId,
+      sequence,
+      emittedAt: new Date(this.now()).toISOString(),
+      idempotencyKey: `${session.correlationId}:cancelled:${sequence}`,
+    };
+    session.state = 'cancelled';
+    if (this.awaitingPlayerSessionId === session.sessionId) this.awaitingPlayerSessionId = null;
+    return {
+      session: {
+        sessionId: session.sessionId,
+        origin: session.origin,
+        originalText: session.originalText,
+        desiredOutcome: session.desiredOutcome,
+        state: 'cancelled',
+        replyObligation: session.replyObligation,
+      },
+      triggeringReport: {
+        meta,
+        requestId,
+        status: 'cancelled',
+        summary: '任务已停止。',
+        evidence: [{
+          type: 'action_result',
+          ref: `cancel:${reason.slice(0, 80)}`,
+          observedAt: new Date(this.now()).toISOString(),
+        }],
+      },
+      allowedDecisions: ['respond'],
+    };
+  }
+}
+
+function isPlayerOrigin(session: MutableSession): boolean {
+  return session.origin === 'player';
+}
+
+function cloneInitiative(value: GoalInitiativeProvenanceV2): GoalInitiativeProvenanceV2 {
+  return { ...value, evidenceRefs: [...value.evidenceRefs] };
 }

@@ -50,19 +50,20 @@ export class CapabilityPackageRegistry {
     const declaredSkills = definition.manifest?.skills ?? [];
     const declaredKnowledge = definition.manifest?.knowledge ?? [];
     const atomics = definition.manifest?.requires?.atomics ?? [];
-    if (targets.length === 0) throw new Error(`capability package ${packageId} requires manifest goalTargets`);
-    if (declaredSkills.length === 0) throw new Error(`capability package ${packageId} requires Skill references`);
-    if (declaredKnowledge.length === 0) throw new Error(`capability package ${packageId} requires Knowledge references`);
-    if (atomics.length === 0) throw new Error(`capability package ${packageId} requires Atomic references`);
-    if (definition.actionProviders.length === 0) throw new Error(`capability package ${packageId} has no execution path`);
-    if (definition.predicateEvaluators.length === 0) throw new Error(`capability package ${packageId} has no verification path`);
+    const proactiveManifests = definition.manifest.proactiveTicks ?? [];
+    const proactiveOnly = targets.length === 0 && proactiveManifests.length > 0;
+    if (!proactiveOnly && targets.length === 0) throw new Error(`capability package ${packageId} requires manifest goalTargets`);
+    if (!proactiveOnly && declaredSkills.length === 0) throw new Error(`capability package ${packageId} requires Skill references`);
+    if (!proactiveOnly && declaredKnowledge.length === 0) throw new Error(`capability package ${packageId} requires Knowledge references`);
+    if (!proactiveOnly && atomics.length === 0) throw new Error(`capability package ${packageId} requires Atomic references`);
+    if (!proactiveOnly && definition.actionProviders.length === 0) throw new Error(`capability package ${packageId} has no execution path`);
+    if (!proactiveOnly && definition.predicateEvaluators.length === 0) throw new Error(`capability package ${packageId} has no verification path`);
 
     const packageBehaviorIds = ids(definition.behaviors ?? [], 'behavior');
     const packageProviderIds = ids(definition.actionProviders, 'action provider');
     const packageWorldFactProviderIds = ids(definition.worldFactProviders ?? [], 'world fact provider');
     const packageEvaluatorIds = ids(definition.predicateEvaluators, 'predicate evaluator');
     const packageTargetIds = targets.map(target => requiredId(target.registryId, 'goal target'));
-    const proactiveManifests = definition.manifest.proactiveTicks ?? [];
     const proactiveImplementations = definition.proactiveTicks ?? [];
     const proactiveManifestIds = proactiveManifests.map(value => requiredId(value.id, 'proactive Tick manifest'));
     const proactiveImplementationIds = proactiveImplementations.map(value => requiredId(value.id, 'proactive Tick implementation'));

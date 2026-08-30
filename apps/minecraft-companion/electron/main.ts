@@ -1,8 +1,13 @@
-import { app, BrowserWindow, Tray, Menu, ipcMain, shell, type NativeImage } from 'electron'
+import { app, BrowserWindow, Tray, Menu, ipcMain, shell, screen, type NativeImage } from 'electron'
 import { join } from 'node:path'
 import dotenv from 'dotenv'
 import { DesktopPetController } from './desktopPetController.js'
 import { loadAppIcon } from './appIcon.js'
+import {
+  MINIMUM_WINDOW_SIZE,
+  loadWindowState,
+  saveWindowState,
+} from './windowState.js'
 
 // ── dotenv ────────────────────────────────────────────────────────────────────
 dotenv.config({
@@ -70,16 +75,25 @@ async function resolveHubUrl(): Promise<string> {
 let mainWindow: BrowserWindow | null = null
 let desktopPetController: DesktopPetController | null = null
 let isQuitting = false
+const WINDOW_STATE_SAVE_DELAY_MS = 180
 
 function createWindow(icon: NativeImage | null): void {
+  const windowStatePath = join(app.getPath('userData'), 'window-state.json')
+  const savedState = loadWindowState(
+    windowStatePath,
+    screen.getAllDisplays().map(display => display.workArea),
+  )
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    ...(savedState.x === undefined || savedState.y === undefined ? {} : { x: savedState.x, y: savedState.y }),
+    width: savedState.width,
+    height: savedState.height,
+    minWidth: MINIMUM_WINDOW_SIZE.width,
+    minHeight: MINIMUM_WINDOW_SIZE.height,
     title: 'MineClaw',
     ...(icon ? { icon } : {}),
     frame: false, // 无边框：去系统标题栏/边框，顶栏由前端自定义可拖拽标题栏接管
+    resizable: true,
+    thickFrame: true, // Windows 原生四边和四角缩放命中区
     backgroundColor: '#15170f',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -87,6 +101,28 @@ function createWindow(icon: NativeImage | null): void {
       sandbox: false,
     },
   })
+
+  let stateSaveTimer: ReturnType<typeof setTimeout> | null = null
+  const persistWindowState = (): void => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (stateSaveTimer) clearTimeout(stateSaveTimer)
+    stateSaveTimer = null
+    const bounds = mainWindow.getNormalBounds()
+    try {
+      saveWindowState(windowStatePath, { ...bounds, maximized: mainWindow.isMaximized() })
+    } catch (error) {
+      console.warn('[Electron] 保存窗口状态失败:', error)
+    }
+  }
+  const scheduleWindowStateSave = (): void => {
+    if (stateSaveTimer) clearTimeout(stateSaveTimer)
+    stateSaveTimer = setTimeout(persistWindowState, WINDOW_STATE_SAVE_DELAY_MS)
+  }
+
+  mainWindow.on('move', scheduleWindowStateSave)
+  mainWindow.on('resize', scheduleWindowStateSave)
+  mainWindow.on('maximize', scheduleWindowStateSave)
+  mainWindow.on('unmaximize', scheduleWindowStateSave)
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
@@ -97,6 +133,7 @@ function createWindow(icon: NativeImage | null): void {
     // 生产模式：从后端 HTTP 加载（前端 dist 由 Express 托管，确保同源）
     mainWindow.loadURL('http://127.0.0.1:' + (process.env['HUB_PORT'] ?? '3000'))
   }
+  if (savedState.maximized) mainWindow.maximize()
 
   // 外链一律交给系统浏览器，绝不在应用内开新窗口（window.open / target=_blank 全拦）
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -114,10 +151,15 @@ function createWindow(icon: NativeImage | null): void {
 
   // 关窗口 → 缩到托盘，不退出
   mainWindow.on('close', (event) => {
+    persistWindowState()
     if (!isQuitting) {
       event.preventDefault()
       mainWindow?.hide()
     }
+  })
+  mainWindow.on('closed', () => {
+    if (stateSaveTimer) clearTimeout(stateSaveTimer)
+    stateSaveTimer = null
   })
 }
 

@@ -154,6 +154,7 @@ const TRANSIENT = /^(?:你好|嗨|哈哈|谢谢|谢谢你|晚安|早上好|我�
  */
 export const MEMORY_EVIDENCE_RULES = [
   '证据规则：与用户身份、经历、行为或偏好有关的结论，只能由 user 事实或 owner 原话支持；bot/agent 内容只能证明助手曾说过什么。',
+  '对“我记得/喜欢什么”等回忆查询，官方记忆槽表示该主题当前完整权威值；相关历史只能补充，不能删减或覆盖槽位；若用户当前消息明确修改偏好，则以当前消息为准。',
   '回答前逐项核对问题中的主体、角色、时间、关系和数量；没有明确关系时不得拼接独立事实。',
   '必要前提缺失、歧义或不匹配时，应说明不知道或向用户澄清，不得把推断写成用户事实。',
 ].join('\n');
@@ -1111,7 +1112,7 @@ export class ChatMemoryService {
       .filter(message => !supersededSourceIds.has(message.id));
     const evidenceGaps = evidenceQualifierGaps(query, [
       ...facts.filter(fact => fact.scope === 'user').map(fact => fact.text),
-      ...slotValues.map(value => formatSlotValue(value.value)),
+      ...officialSlotEvidence(slotValues),
       ...messages.filter(message => message.role === 'owner').map(message => message.content),
     ]);
     if (evidenceGaps.length > 0) {
@@ -1412,13 +1413,45 @@ const HIGH_RISK_EVIDENCE_QUALIFIERS = new Set([
  */
 function evidenceQualifierGaps(query: string, authoritativeEvidence: readonly string[]): string[] {
   if (!query.trim() || authoritativeEvidence.length === 0) return [];
-  const queryTokens = normalizedTokens(query).filter(token => !EVIDENCE_QUERY_FILLERS.has(token));
+  const queryTokens = normalizedTokens(normalizeEvidenceGapQuery(query)).filter(token => !EVIDENCE_QUERY_FILLERS.has(token));
   const evidenceTokens = normalizedTokens(authoritativeEvidence.join('\n'));
   const matches = (token: string, candidate: string): boolean =>
     token === candidate || (Math.min(token.length, candidate.length) >= 4 && (token.startsWith(candidate) || candidate.startsWith(token)));
   const missing = queryTokens.filter(token => !evidenceTokens.some(candidate => matches(token, candidate)));
   if (missing.length < 2 && !missing.some(token => HIGH_RISK_EVIDENCE_QUALIFIERS.has(token))) return [];
   return missing.slice(0, 8);
+}
+
+/**
+ * 已命中的官方槽位由“目录语义 + 活跃值”共同构成权威证据。
+ * 目录语义只证明问句主题与槽位匹配，最终回答内容仍只能来自活跃值。
+ */
+function officialSlotEvidence(slotValues: readonly MemorySlotValue[]): string[] {
+  return slotValues.flatMap(value => {
+    const definition = getMemorySlotDefinition(value.slotKey);
+    if (!definition) return [formatSlotValue(value.value)];
+    return [
+      definition.slotKey,
+      definition.group,
+      definition.title,
+      definition.description,
+      ...definition.recallAliases,
+      formatSlotValue(value.value),
+    ];
+  });
+}
+
+/**
+ * 仅为证据缺口比较移除中文回忆问句的交互脚手架；原始 query 仍用于槽位和历史检索。
+ * 限定为偏好问法与回忆提示，避免吞掉“本科、当前、职业”等真实限定词。
+ */
+function normalizeEvidenceGapQuery(query: string): string {
+  return query
+    .replace(/(?:你)?(?:知道|还知道|还记得)/gu, ' ')
+    .replace(/(?:我说)?你(?:再)?(?:回想|想想|回忆|记得)(?:一下|下)?/gu, ' ')
+    .replace(/我(?:最)?喜欢(?:的)?(?:是)?(?:什么|哪(?:个|些|部|种|类)?)/gu, ' ')
+    .replace(/[呢吗呀啊嘛不]+$/gu, ' ')
+    .trim();
 }
 
 function looksLikeRelationChainQuery(query: string): boolean {

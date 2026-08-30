@@ -6,6 +6,7 @@ import { ProactiveCapabilityStateStore } from '../../../../../../apps/minecraft-
 import { ProactiveGoalLeaseRegistry } from '../../../../../../apps/minecraft-companion/src/bot/v2/proactive/proactiveGoalLeaseRegistry.js';
 import { ProactiveIntentArbiter } from '../../../../../../apps/minecraft-companion/src/bot/v2/proactive/proactiveIntentArbiter.js';
 import { ProactiveTickScheduler } from '../../../../../../apps/minecraft-companion/src/bot/v2/proactive/proactiveTickScheduler.js';
+import { MainBrainProactiveInbox } from '../../../../../../apps/minecraft-companion/src/bot/v2/proactive/mainBrainProactiveInbox.js';
 import { resolveProactiveCapabilityCatalog } from '../../../../../../apps/minecraft-companion/src/bot/v2/proactive/contracts.js';
 import { TickRate } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/tickRegistry.js';
 
@@ -174,4 +175,87 @@ test('catalog snapshot is immutable and contains only read models', () => {
   assert.equal(catalog[0]?.enabled, true);
   assert.equal(Object.isFrozen(catalog), true);
   assert.equal(Object.isFrozen(catalog[0]), true);
+});
+
+test('MainBrain inbox is the only bridge that adds provenance and binds the request lease', () => {
+  const entry = capability('auto_follow', 20, () => ({ kind: 'idle', reason: 'unused' }));
+  const stateStore = new ProactiveCapabilityStateStore();
+  stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog([entry], { auto_follow: { enabled: true } }));
+  const leases = new ProactiveGoalLeaseRegistry();
+  const requests: Array<Record<string, unknown>> = [];
+  const inbox = new MainBrainProactiveInbox({
+    leases,
+    stateStore,
+    now: () => 123,
+    activationId: () => 'activation-1',
+    goalAgentPort: {
+      request: input => {
+        requests.push(input);
+        return {
+          meta: {
+            schemaVersion: 2,
+            sessionId: 'session-1',
+            messageId: 'receipt-1',
+            correlationId: 'correlation-1',
+            conversationId: 'conversation-1',
+            sequence: 2,
+            emittedAt: new Date(0).toISOString(),
+            idempotencyKey: 'receipt-1',
+          },
+          sourceMessageId: 'request-1',
+          outcome: 'consumed',
+        };
+      },
+      cancelRequest: () => true,
+    },
+  });
+  const winner = {
+    capabilityId: 'auto_follow',
+    idempotencyKey: 'owner:nearby',
+    priority: 20,
+    capability: entry,
+    candidate: {
+      requestText: '持续跟随主人',
+      constraints: ['主人在线'],
+      evidenceRefs: ['owner:Steve'],
+      idempotencyKey: 'owner:nearby',
+    },
+  };
+  inbox.handle({ kind: 'accept', winner, suppressions: [] }, new Map());
+
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0]?.initiative, {
+    capabilityId: 'auto_follow',
+    activationId: 'activation-1',
+    evidenceRefs: ['owner:Steve'],
+    idempotencyKey: 'owner:nearby',
+    preemptible: true,
+  });
+  assert.equal(leases.snapshot().active?.requestId, 'request-1');
+  assert.equal(stateStore.get('auto_follow')?.state, 'running');
+});
+
+test('player preemption cancels only the proactive request before clearing the lease', () => {
+  const entry = capability('auto_follow', 20, () => ({ kind: 'idle', reason: 'unused' }));
+  const stateStore = new ProactiveCapabilityStateStore();
+  stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog([entry], { auto_follow: { enabled: true } }));
+  const leases = new ProactiveGoalLeaseRegistry();
+  leases.grant({ capabilityId: 'auto_follow', idempotencyKey: 'owner:nearby', priority: 20 }, 'activation-1', 1);
+  leases.bindRequest('activation-1', 'request-proactive');
+  stateStore.recordLease('auto_follow', leases.snapshot().active!);
+  stateStore.recordRunning('auto_follow', 'request-proactive');
+  const cancelled: string[] = [];
+  const inbox = new MainBrainProactiveInbox({
+    leases,
+    stateStore,
+    goalAgentPort: {
+      request: () => { throw new Error('not expected'); },
+      cancelRequest: requestId => { cancelled.push(requestId); return true; },
+    },
+  });
+
+  assert.equal(inbox.preemptForPlayer(), true);
+  assert.deepEqual(cancelled, ['request-proactive']);
+  assert.deepEqual(leases.snapshot(), { active: null, releasing: null });
+  assert.equal(stateStore.get('auto_follow')?.reason, 'player_preempted');
 });

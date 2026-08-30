@@ -52,7 +52,7 @@ describe('BUG-CROSS-32 · V2Runtime stop', () => {
     runtime.stop();
   });
 
-  it('配置 LLM 时随 Runtime 启停周期记忆，能力关闭时不创建调度器', () => {
+  it('配置 LLM 时周期记忆默认开启并可热停恢复，基础记忆关闭时不创建调度器', () => {
     const bot = createMockBot();
     const runtime = new V2Runtime({
       game: bot.game,
@@ -65,11 +65,44 @@ describe('BUG-CROSS-32 · V2Runtime stop', () => {
       chatMemoryDbPath: ':memory:',
       llm: { apiKey: 'test-key', baseUrl: 'http://127.0.0.1:1', model: 'test-model' },
     });
-    assert.ok(runtime.memoryConsolidationScheduler);
-    runtime.start();
-    assert.equal(runtime.memoryConsolidationScheduler?.status().running, true);
-    runtime.stop();
+    try {
+      assert.ok(runtime.memoryConsolidationScheduler);
+      assert.equal(runtime.getMemoryConsolidationCapability().enabled, true);
+      runtime.start();
+      assert.equal(runtime.memoryConsolidationScheduler?.status().running, true);
+      assert.equal(runtime.setMemoryConsolidationEnabled(false).state, 'disabled');
+      assert.equal(runtime.memoryConsolidationScheduler?.status().running, false);
+      runtime.chatMemory.recordMessage({
+        id: 'memory-toggle-explicit', sessionId: 'toggle', role: 'owner', content: '请记住我喜欢吃鱼', timestamp: 1,
+      });
+      assert.equal(runtime.chatMemory.recentMessages(5)[0]?.id, 'memory-toggle-explicit');
+      assert.ok(runtime.chatMemory.getMemorySlotValues({ status: 'active' })
+        .some(value => String(value.value).includes('鱼')));
+      assert.equal(runtime.setMemoryConsolidationEnabled(true).enabled, true);
+      assert.equal(runtime.memoryConsolidationScheduler?.status().running, true);
+    } finally {
+      runtime.stop();
+    }
     assert.equal(runtime.memoryConsolidationScheduler?.status().running, false);
+
+    const preferenceDisabled = new V2Runtime({
+      game: bot.game,
+      nav: bot.nav,
+      embodied: false,
+      ownerName: 'TestOwner',
+      botName: 'MemoryConsolidationDisabled',
+      dbPath: ':memory:',
+      worldMapDbPath: ':memory:',
+      chatMemoryDbPath: ':memory:',
+      chatMemoryConsolidationEnabled: false,
+      llm: { apiKey: 'test-key', baseUrl: 'http://127.0.0.1:1', model: 'test-model' },
+    });
+    assert.ok(preferenceDisabled.memoryConsolidationScheduler);
+    preferenceDisabled.start();
+    assert.equal(preferenceDisabled.memoryConsolidationScheduler?.status().running, false);
+    preferenceDisabled.setMemoryConsolidationEnabled(true);
+    assert.equal(preferenceDisabled.memoryConsolidationScheduler?.status().running, true);
+    preferenceDisabled.stop();
 
     const disabled = new V2Runtime({
       game: bot.game,

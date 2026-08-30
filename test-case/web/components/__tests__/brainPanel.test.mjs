@@ -58,6 +58,52 @@ test('伙伴概览只消费传入 Profile 和状态，A/B 不串内容', async (
   assert.doesNotMatch(b, /伙伴 A|等待/);
 });
 
+test('决策子页过滤空仲裁和内部检查，只显示有效决定', async () => {
+  const html = await renderToString(createSSRApp({
+    render: () => h(BrainPanel, {
+      botId: 'profile-a',
+      profile: { name: '伙伴 A' },
+      activeTab: 'decision',
+      agentSteps: [
+        { type: 'proactive.arbitrated', data: { kind: 'none' }, timestamp: '2026-08-30T15:00:00.000Z' },
+        { type: 'proactive.evaluated', data: { kind: 'idle', reason: 'within_follow_distance' }, timestamp: '2026-08-30T15:00:01.000Z' },
+        { type: 'tool_call', data: { toolName: 'action_execute' }, timestamp: '2026-08-30T15:00:02.000Z' },
+      ],
+    }),
+  }));
+
+  assert.match(html, /0 条有效决策/);
+  assert.match(html, /伙伴正在待命/);
+  assert.doesNotMatch(html, /仲裁 · none|>none<|>Tick<|action_execute/);
+});
+
+test('决策子页用人话展示决定原因和结果，并合并连续重复项', async () => {
+  const html = await renderToString(createSSRApp({
+    render: () => h(BrainPanel, {
+      botId: 'profile-a',
+      profile: { name: '伙伴 A' },
+      activeTab: 'decision',
+      agentSteps: [
+        { type: 'proactive.request', data: { requestText: '跟随主人' }, timestamp: '2026-08-30T15:01:00.000Z' },
+        { type: 'proactive.suppressed', data: { requestText: '自动采集', reason: 'foreground_busy' }, timestamp: '2026-08-30T15:01:01.000Z' },
+        { type: 'proactive.suppressed', data: { requestText: '自动采集', reason: 'foreground_busy' }, timestamp: '2026-08-30T15:01:02.000Z' },
+        { type: 'task.completed', data: { summary: '已把铁镐交给你' }, timestamp: '2026-08-30T15:01:03.000Z' },
+        { type: 'unknown.empty', data: {}, timestamp: '2026-08-30T15:01:04.000Z' },
+      ],
+    }),
+  }));
+
+  assert.match(html, /3 条有效决策/);
+  assert.match(html, /决定行动/);
+  assert.match(html, /跟随主人/);
+  assert.match(html, /暂不执行：自动采集/);
+  assert.match(html, /原因：正在优先执行当前任务/);
+  assert.equal((html.match(/暂不执行：自动采集/g) || []).length, 1);
+  assert.match(html, />完成</);
+  assert.match(html, /已把铁镐交给你/);
+  assert.doesNotMatch(html, /unknown\.empty/);
+});
+
 test('大脑挂载真实 MemoryPanel 且不再读取全局旧接口或模拟会话', () => {
   const source = readFileSync(new URL('../../../../apps/minecraft-companion/web/src/components/BrainPanel.vue', import.meta.url), 'utf8');
   assert.match(source, /<MemoryPanel[^>]+:botId="botId"/);

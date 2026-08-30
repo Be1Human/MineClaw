@@ -19,6 +19,8 @@ import type { SkinSyncStatus } from '../bot/mineflayer/types.js';
 import { SkinSyncService } from './skinSyncService.js';
 import type { ServerPreset, ServerPresetStore } from './serverPresetStore.js';
 import type { VisualWorldBootstrap, VisualWorldDelta } from '../bot/adapter/VisualWorldSource.js';
+import type { ProactiveCapabilityPreferencesV1 } from '../character/types.js';
+import type { ProactiveRuntimeSnapshot } from '../bot/v2/proactive/index.js';
 
 export interface BotInstance {
   id: string;
@@ -88,6 +90,7 @@ export class BotManager {
       characterCard,
       memory: {
         semanticSearch: profile.memory?.semanticSearch ?? true,
+        consolidationEnabled: profile.memory?.consolidationEnabled ?? true,
       },
     };
 
@@ -293,6 +296,30 @@ export class BotManager {
 
   getRecentChatMessages(botId: string, limit = 50): ChatMessage[] | null {
     return this.instances.get(botId)?.runtime.getRecentChatMessages(limit) ?? null;
+  }
+
+  getProactiveRuntimeSnapshot(botId: string): ProactiveRuntimeSnapshot | null {
+    return this.instances.get(botId)?.runtime.getProactiveRuntimeSnapshot() ?? null;
+  }
+
+  setProactiveCapabilityPreferences(
+    botId: string,
+    preferences: ProactiveCapabilityPreferencesV1,
+  ): ProactiveRuntimeSnapshot | null {
+    return this.instances.get(botId)?.runtime.setProactiveCapabilityPreferences(preferences) ?? null;
+  }
+
+  getMemoryConsolidationCapability(
+    botId: string,
+  ): import('../bot/v2/infra/memoryConsolidationScheduler.js').MemoryConsolidationCapabilitySnapshot | null {
+    return this.instances.get(botId)?.runtime.getMemoryConsolidationCapability() ?? null;
+  }
+
+  setMemoryConsolidationEnabled(
+    botId: string,
+    enabled: boolean,
+  ): import('../bot/v2/infra/memoryConsolidationScheduler.js').MemoryConsolidationCapabilitySnapshot | null {
+    return this.instances.get(botId)?.runtime.setMemoryConsolidationEnabled(enabled) ?? null;
   }
 
   getChatMemorySlotCatalog(botId: string, input: { group?: string; filledOnly?: boolean; status?: FactStatus } = {}): MemorySlotView[] | null {

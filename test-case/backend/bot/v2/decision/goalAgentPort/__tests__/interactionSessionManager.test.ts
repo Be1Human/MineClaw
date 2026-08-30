@@ -102,6 +102,40 @@ describe('BUG-CROSS-51 · InteractionSessionV2', () => {
     assert.equal(sessions.handleReport(reportFor(task.meta.messageId, 'completed')), null);
   });
 
+  it('主动请求保留 initiative 来源，而玩家请求不能伪造 initiative', () => {
+    const initiative = {
+      capabilityId: 'auto_follow',
+      activationId: 'activation-1',
+      evidenceRefs: ['owner:Steve'],
+      idempotencyKey: 'owner:nearby',
+      preemptible: true,
+    };
+    const autonomous = new InteractionSessionManager().createRequest({
+      requestKind: 'task', requestText: '持续跟随主人', initiative,
+    });
+    assert.equal(autonomous.origin, 'mainbrain_self');
+    assert.deepEqual(autonomous.initiative, initiative);
+    assert.notEqual(autonomous.initiative?.evidenceRefs, initiative.evidenceRefs);
+
+    const playerSessions = new InteractionSessionManager();
+    playerSessions.beginPlayerTurn('turn-player', '跟着我');
+    const player = playerSessions.createRequest({
+      requestKind: 'task', requestText: '跟着我', initiative,
+    });
+    assert.equal(player.origin, 'player_message');
+    assert.equal(player.initiative, undefined);
+  });
+
+  it('精确取消只终止给定主动请求，不影响其他会话', () => {
+    const sessions = new InteractionSessionManager();
+    const first = sessions.createRequest({ requestKind: 'task', requestText: '主动任务一' });
+    const second = sessions.createRequest({ requestKind: 'task', requestText: '主动任务二' });
+    const cancelled = sessions.cancelRequest(first.meta.messageId, 'player_preempted');
+    assert.equal(cancelled?.session.state, 'cancelled');
+    assert.equal(sessions.getSession(first.meta.sessionId)?.state, 'cancelled');
+    assert.equal(sessions.getSession(second.meta.sessionId)?.state, 'awaiting_report');
+  });
+
   it('watchdog running 快照生成可回复 continuation，但 session 保持 executing', () => {
     const sessions = new InteractionSessionManager();
     sessions.beginPlayerTurn('turn-1','跟我来');

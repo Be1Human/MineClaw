@@ -712,15 +712,6 @@ export class LLMToolLoop {
         parts.push(normalizeInternalExecutionNarrative(notices));
       }
     }
-    // 热刷新 · 个性化记忆（每 turn 重读，存了立即生效）
-    if (this.cfg.memoryBlock) {
-      const mem = this.cfg.memoryBlock(userMessage);
-      if (mem && mem.trim().length > 0) {
-        parts.push('');
-        parts.push('── 你记得的事（始终生效 · 自然融入对话，别生硬复述）──');
-        parts.push(mem);
-      }
-    }
     if (this.cfg.companionBlock) {
       const companion = this.cfg.companionBlock();
       if (companion && companion.trim().length > 0) {
@@ -734,6 +725,17 @@ export class LLMToolLoop {
       if (conv && conv.trim().length > 0) {
         parts.push('');
         parts.push(conv);
+      }
+    }
+    // 热刷新 · 个性化记忆（每 turn 重读，存了立即生效）。
+    // 放在最近对话之后，让治理后的权威记忆成为 system 段最后依据；
+    // 当前 user 消息仍在整个 system 段之后，明确的新信息继续拥有最高时序优先级。
+    if (this.cfg.memoryBlock) {
+      const mem = this.cfg.memoryBlock(userMessage);
+      if (mem && mem.trim().length > 0) {
+        parts.push('');
+        parts.push('── 你记得的事（始终生效 · 自然融入对话，别生硬复述）──');
+        parts.push(mem);
       }
     }
     return parts.join('\n');

@@ -279,6 +279,7 @@ export interface BotRuntimeConfig {
   /** FEAT-MEM-09 · Profile 级纯聊天记忆配置。 */
   memory?: {
     semanticSearch?: boolean;
+    consolidationEnabled?: boolean;
   };
   /** FEAT-CROSS-20 · 进化运行时装配模式；缺省为 off。 */
   plannerEvolutionMode?: PlannerEvolutionMode;
@@ -734,6 +735,7 @@ export class BotRuntime {
       chatMemoryDbPath: persistence.chatMemoryDbPath,
       chatMemorySemanticSearch: this.config.memory?.semanticSearch ?? true,
       chatMemoryAutoCapture: this.config.characterCard?.performance.capabilities.memory ?? true,
+      chatMemoryConsolidationEnabled: this.config.memory?.consolidationEnabled ?? true,
       botName: this.config.personality.name,
       persona: this.config.personality.style || this.config.personality.description,
       characterCard: this.config.characterCard,
@@ -993,6 +995,28 @@ export class BotRuntime {
     return this.v2?.cancelActiveTasks(reason) ?? null;
   }
 
+  getProactiveRuntimeSnapshot(): import('./v2/proactive/index.js').ProactiveRuntimeSnapshot | null {
+    return this.v2?.getProactiveRuntimeSnapshot() ?? null;
+  }
+
+  setProactiveCapabilityPreferences(
+    preferences: import('../character/types.js').ProactiveCapabilityPreferencesV1,
+  ): import('./v2/proactive/index.js').ProactiveRuntimeSnapshot | null {
+    if (!this.v2) return null;
+    this.v2.setProactiveCapabilityPreferences(preferences);
+    return this.v2.getProactiveRuntimeSnapshot();
+  }
+
+  getMemoryConsolidationCapability(): import('./v2/infra/memoryConsolidationScheduler.js').MemoryConsolidationCapabilitySnapshot | null {
+    return this.v2?.getMemoryConsolidationCapability() ?? null;
+  }
+
+  setMemoryConsolidationEnabled(
+    enabled: boolean,
+  ): import('./v2/infra/memoryConsolidationScheduler.js').MemoryConsolidationCapabilitySnapshot | null {
+    return this.v2?.setMemoryConsolidationEnabled(enabled) ?? null;
+  }
+
   /** v2 critic verdicts (last 10) · returns null if v2 not running */
   getV2CriticVerdicts(): Record<string, unknown>[] | null {
     if (!this.v2) return null;
@@ -1052,6 +1076,7 @@ export class BotRuntime {
  */
 function shouldForwardToUi(type: string): boolean {
   if (type.startsWith('l7.')) return true;
+  if (type.startsWith('proactive.')) return true;
   if (type === 'goalagent.report' || type === 'goalagent.progress_report.governed' || type === 'goalagent.continuation') return true;
   if (type.startsWith('gather.')) return true;
   if (type.startsWith('provision.')) return true;

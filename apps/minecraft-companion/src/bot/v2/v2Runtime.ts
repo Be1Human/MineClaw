@@ -26,7 +26,10 @@ import { MemoryV2 } from './infra/memory.js';
 import { BotMemoryStore } from './infra/botMemory.js';
 import { ChatMemoryService, LocalTokenEmbeddingProvider } from './infra/chatMemory.js';
 import { ChatMemoryConsolidator, LLMMemoryFactExtractor } from './infra/chatMemoryConsolidation.js';
-import { MemoryConsolidationScheduler } from './infra/memoryConsolidationScheduler.js';
+import {
+  MemoryConsolidationScheduler,
+  type MemoryConsolidationCapabilitySnapshot,
+} from './infra/memoryConsolidationScheduler.js';
 import { EpisodeAssembler, EpisodeStore, RuntimeEpisodeCapture } from './memory/episode/index.js';
 import { ChatMemoryRecallProvider, MemoryCatalog, MemorySystem, formatPlanningMemoryContext } from './memory/index.js';
 import { GoalAgentMemoryKnowledgeAdapter } from './memory/goalAgentMemoryKnowledge.js';
@@ -108,6 +111,19 @@ import { MineralProbeCapability } from './capability/mineralProbeCapability.js';
 import { CapabilityPackageRegistry } from './capabilities/capabilityPackageRegistry.js';
 import { loadCapabilityResourcePackage } from './capabilities/capabilityManifestLoader.js';
 import { createAgricultureCapabilityPackage } from './capabilities/agriculture/agricultureCapabilityPackage.js';
+import { createAmbientProactiveCapabilityPackage } from './capabilities/ambient/ambientProactiveCapabilityPackage.js';
+import {
+  MainBrainProactiveInbox,
+  ProactiveCapabilityStateStore,
+  ProactiveGoalLeaseRegistry,
+  ProactiveIntentArbiter,
+  ProactiveTickScheduler,
+  formatProactiveRuntimeContext,
+  resolveProactiveCapabilityCatalog,
+  type ProactiveCapabilityPreferences,
+  type RegisteredProactiveTickCapability,
+  type ProactiveRuntimeSnapshot,
+} from './proactive/index.js';
 import { WorldMapStoreImpl, type WorldMapStore } from './infra/worldMapStore.js';
 import { WorldMapCollectorImpl, type WorldMapCollector } from './infra/worldMapCollector.js';
 import { rankChestTargets } from './task/goalAgent/production/containerTargetResolver.js';
@@ -238,6 +254,8 @@ export interface V2RuntimeConfig {
   chatMemorySemanticSearch?: boolean;
   /** FEAT-CROSS-12 · 关闭长期记忆时仍保留短期消息，但不自动晋升事实。 */
   chatMemoryAutoCapture?: boolean;
+  /** FEAT-MEM-09 · 周期性模型整理独立开关；旧 Profile 缺省开启。 */
+  chatMemoryConsolidationEnabled?: boolean;
 }
 
 function toLlmTraceJson(value: unknown): LlmTraceJsonValue {
@@ -309,6 +327,12 @@ export class V2Runtime {
   goalAgent?: GoalAgent;         // 唯一 GoalAgent：内部 Planner/Actor/Critic/Recovery/Reflection 共享一个 Loop
   strategyStore?: StrategyStore;  // FEAT-CROSS-07 · 固化策略库（fast-path 料）
   readonly goalAgentPort: GoalAgentPort;
+  readonly proactiveStateStore: ProactiveCapabilityStateStore;
+  readonly proactiveLeases: ProactiveGoalLeaseRegistry;
+  readonly proactiveInbox: MainBrainProactiveInbox;
+  readonly proactiveScheduler: ProactiveTickScheduler;
+  private proactiveCapabilities: readonly RegisteredProactiveTickCapability[] = [];
+  private proactivePreferences: ProactiveCapabilityPreferences;
   readonly worldScan: WorldScanCapability;
   readonly mineralProbe: MineralProbeCapability;
   readonly taskRegistry: TaskRegistry;
@@ -327,6 +351,8 @@ export class V2Runtime {
   static readonly TRAJECTORY_INTERVAL_MS = 30_000;
 
   private running = false;
+  private readonly memoryCapabilityEnabled: boolean;
+  private memoryConsolidationEnabled: boolean;
   private unsubBusForUi: (() => void) | null = null;
   /** FEAT-L6-04 · death 事件订阅句柄（stop 时解绑） */
   private deathUnsub: (() => void) | null = null;
@@ -411,10 +437,15 @@ export class V2Runtime {
           : join(runtimeDataDir, `llm-traces-${traceProfileFile}.db`)),
     });
     this.llmTraceQuery = new LlmTraceQueryService(this.llmTraceStore);
-    const memoryCapabilityEnabled = cfg.chatMemoryAutoCapture ?? true;
+    this.memoryCapabilityEnabled = cfg.chatMemoryAutoCapture ?? true;
+    this.memoryConsolidationEnabled = cfg.chatMemoryConsolidationEnabled ?? true;
     this.chatMemory = new ChatMemoryService({
       profileId: chatProfileId,
-      autoCapture: () => memoryCapabilityEnabled && (!cfg.llm || !tuning().memoryConsolidation.enabled),
+      autoCapture: () => this.memoryCapabilityEnabled && (
+        !cfg.llm
+        || !tuning().memoryConsolidation.enabled
+        || !this.memoryConsolidationEnabled
+      ),
       embeddingProvider: cfg.chatMemorySemanticSearch === false ? null : new LocalTokenEmbeddingProvider(),
       dbPath: cfg.chatMemoryDbPath ?? join(
         dirname(cfg.dbPath ?? 'data/v2-memory.db'),
@@ -647,6 +678,9 @@ export class V2Runtime {
     this.behaviorRegistry.register(new PickupGroundItemBehavior());
     this.asyncQueue = new AsyncTaskQueue();
     this.tickRegistry = new TickRegistry();
+    this.proactiveStateStore = new ProactiveCapabilityStateStore();
+    this.proactiveLeases = new ProactiveGoalLeaseRegistry();
+    this.proactivePreferences = cfg.characterCard?.performance.proactiveCapabilities ?? {};
     // FEAT-MEM-06 · 传 bus 给 WorldScan 订阅 atomic.deposit.success/withdraw.success 写箱子索引
     this.worldScan = new WorldScanCapability(cfg.game, this.memory, undefined, this.bus);
     // FEAT-L2-02 · MineralProbe 与 WorldScan 并列（独立周期把矿物方块沉淀进 spatial）
@@ -746,11 +780,14 @@ export class V2Runtime {
         { traceRecorder: this.llmTraceStore },
       );
     }
-    this.memoryConsolidationScheduler = memoryCapabilityEnabled && llmClient
+    this.memoryConsolidationScheduler = this.memoryCapabilityEnabled && llmClient
       ? new MemoryConsolidationScheduler(
         new ChatMemoryConsolidator(this.chatMemory, new LLMMemoryFactExtractor(llmClient)),
         {
-          getConfig: () => tuning().memoryConsolidation,
+          getConfig: () => ({
+            ...tuning().memoryConsolidation,
+            enabled: tuning().memoryConsolidation.enabled && this.memoryConsolidationEnabled,
+          }),
           log: message => log(`[memory] ${message}`),
         },
       )
@@ -852,7 +889,9 @@ export class V2Runtime {
           return rankChestTargets(positions, requestText, world);
         },
       }));
+      capabilityPackages.register(createAmbientProactiveCapabilityPackage());
       const capabilitySnapshot = capabilityPackages.snapshot();
+      this.proactiveCapabilities = capabilitySnapshot.proactiveTicks;
       for (const behavior of capabilitySnapshot.behaviors) this.behaviorRegistry.register(behavior);
       const goalKnowledge = new InMemoryGoalKnowledgePort([
         ...DEFAULT_GOAL_TARGETS,
@@ -952,6 +991,7 @@ export class V2Runtime {
           this.isEmbodied(),
           this.perception.getWorldState(),
         ),
+        getProactiveCapabilitiesContext: () => this.getProactiveCapabilitiesContext(),
         publishEvent: event => {
           this.recordGoalAgentTrace(event);
           this.recordGoalAgentFact(event);
@@ -1175,6 +1215,18 @@ export class V2Runtime {
 
     this.goalAgentPort = new GoalAgentPort(this.bus, this.perception, {
       submit: request => capabilityDispatcher.submit(request),
+      cancelRequest: (requestId, reason) => {
+        const record = capabilityDispatcher.findByRequestId(requestId);
+        let accepted = this.goalAgent?.cancelRequest(requestId, reason) ?? false;
+        if (record?.runtimeRef) {
+          const task = this.tasks.getById(record.runtimeRef);
+          if (task && !['completed', 'failed', 'cancelled'].includes(task.state)) {
+            this.tasks.cancel(task.id, reason);
+            accepted = true;
+          }
+        }
+        return accepted;
+      },
     }, undefined, undefined, {
       inspector: { inspect: probe => capabilityDispatcher.inspect(probe) },
       isPersistentRequest: request =>
@@ -1236,6 +1288,47 @@ export class V2Runtime {
       const payload = event.payload as { sessionId?: string; requestId?: string };
       if (payload.sessionId) this.goalAgentTaskProjection?.markConfirmed(payload.sessionId);
     });
+    this.proactiveInbox = new MainBrainProactiveInbox({
+      goalAgentPort: this.goalAgentPort,
+      leases: this.proactiveLeases,
+      stateStore: this.proactiveStateStore,
+      publish: (type, payload) => this.bus.publish(type, 'info', payload),
+    });
+    this.proactiveScheduler = new ProactiveTickScheduler({
+      profileId: cfg.chatProfileId ?? cfg.botName ?? 'default',
+      capabilities: this.proactiveCapabilities,
+      preferences: this.proactivePreferences,
+      stateStore: this.proactiveStateStore,
+      arbiter: new ProactiveIntentArbiter(),
+      leases: this.proactiveLeases,
+      isForegroundBusy: () => {
+        if (this.proactiveLeases.snapshot().active) return false;
+        return this.tasks.list().some(task => task.state === 'running' || task.state === 'paused');
+      },
+      onArbitration: (decision, evaluations) => {
+        for (const [capabilityId, evaluation] of evaluations) {
+          this.bus.publish('proactive.evaluated', 'info', {
+            capabilityId,
+            kind: evaluation.kind,
+            ...(evaluation.kind === 'idle' || evaluation.kind === 'release' ? { reason: evaluation.reason } : {}),
+            ...(evaluation.kind === 'candidate' ? {
+              requestText: evaluation.candidate.requestText,
+              evidenceRefs: evaluation.candidate.evidenceRefs,
+            } : {}),
+          });
+        }
+        for (const suppression of decision.suppressions) {
+          this.bus.publish('proactive.suppressed', 'info', suppression);
+        }
+        this.bus.publish('proactive.arbitrated', 'info', {
+          kind: decision.kind,
+          capabilityId: 'winner' in decision ? decision.winner.capabilityId : undefined,
+        });
+        this.proactiveInbox.handle(decision, evaluations);
+      },
+    });
+    this.goalAgentPort.setPlayerTurnPreemptor(() => { this.proactiveInbox.preemptForPlayer(); });
+    this.tickRegistry.register(this.proactiveScheduler);
     const brainDeps = {
       onBenchCommand: (message: string) => this.handleBenchCommand(message),
       isBenchActive: () => this.benchRunner?.active() != null,
@@ -1253,6 +1346,7 @@ export class V2Runtime {
       narration: this.narration, // FEAT-NARR-01 · 近期通知注入 LLM 上下文
       llm: llmClient,
       llmTraceRecorder: this.llmTraceStore,
+      getProactiveCapabilitiesContext: () => this.getProactiveCapabilitiesContext(),
       asyncQueue: this.asyncQueue,
       embodied: cfg.embodied !== false,
       isEmbodied: cfg.isEmbodied,
@@ -1687,6 +1781,99 @@ export class V2Runtime {
     });
   }
 
+  getProactiveRuntimeSnapshot(): ProactiveRuntimeSnapshot {
+    return Object.freeze({
+      catalog: resolveProactiveCapabilityCatalog(this.proactiveCapabilities, this.proactivePreferences),
+      states: this.proactiveStateStore.snapshot(),
+      lease: this.proactiveLeases.snapshot(),
+    });
+  }
+
+  getProactiveCapabilitiesContext(): string {
+    return formatProactiveRuntimeContext(this.getProactiveRuntimeSnapshot());
+  }
+
+  setProactiveCapabilityPreferences(preferences: ProactiveCapabilityPreferences): void {
+    // Scheduler validates the full update before the live preference reference changes.
+    this.proactiveScheduler.setPreferences(preferences);
+    this.proactivePreferences = structuredClone(preferences);
+    this.bus.publish('proactive.preferences.updated', 'info', {
+      capabilityIds: Object.keys(preferences).sort(),
+    });
+  }
+
+  getMemoryConsolidationCapability(): MemoryConsolidationCapabilitySnapshot {
+    const schedulerStatus = this.memoryConsolidationScheduler?.status();
+    const available = this.memoryCapabilityEnabled && this.memoryConsolidationScheduler !== null;
+    if (!this.memoryCapabilityEnabled) {
+      return Object.freeze({
+        id: 'memory_consolidation',
+        label: '定时记忆整理',
+        description: '每 5 分钟自动识别并整理对话中的长期关键信息。',
+        enabled: this.memoryConsolidationEnabled,
+        defaultEnabled: true,
+        available: false,
+        state: 'unavailable',
+        statusLabel: '长期记忆能力未启用',
+      });
+    }
+    if (!available) {
+      return Object.freeze({
+        id: 'memory_consolidation',
+        label: '定时记忆整理',
+        description: '每 5 分钟自动识别并整理对话中的长期关键信息。',
+        enabled: this.memoryConsolidationEnabled,
+        defaultEnabled: true,
+        available: false,
+        state: 'unavailable',
+        statusLabel: '未配置可用的 LLM',
+      });
+    }
+    if (!this.memoryConsolidationEnabled) {
+      return Object.freeze({
+        id: 'memory_consolidation',
+        label: '定时记忆整理',
+        description: '每 5 分钟自动识别并整理对话中的长期关键信息。',
+        enabled: false,
+        defaultEnabled: true,
+        available: true,
+        state: 'disabled',
+        statusLabel: '未启用',
+      });
+    }
+    if (!tuning().memoryConsolidation.enabled) {
+      return Object.freeze({
+        id: 'memory_consolidation',
+        label: '定时记忆整理',
+        description: '每 5 分钟自动识别并整理对话中的长期关键信息。',
+        enabled: true,
+        defaultEnabled: true,
+        available: true,
+        state: 'idle',
+        statusLabel: '已被运行时调参暂停',
+      });
+    }
+    const inFlight = schedulerStatus?.inFlight === true;
+    return Object.freeze({
+      id: 'memory_consolidation',
+      label: '定时记忆整理',
+      description: '每 5 分钟自动识别并整理对话中的长期关键信息。',
+      enabled: true,
+      defaultEnabled: true,
+      available: true,
+      state: inFlight ? 'running' : 'idle',
+      statusLabel: inFlight ? '正在整理' : '已启用 · 每 5 分钟',
+    });
+  }
+
+  setMemoryConsolidationEnabled(enabled: boolean): MemoryConsolidationCapabilitySnapshot {
+    this.memoryConsolidationEnabled = enabled;
+    if (this.running && enabled) this.memoryConsolidationScheduler?.start();
+    else if (!enabled) this.memoryConsolidationScheduler?.stop();
+    this.bus.publish('memory.consolidation.preference.updated', 'info', { enabled });
+    return this.getMemoryConsolidationCapability();
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -1716,7 +1903,7 @@ export class V2Runtime {
     }
 
     this.heart.start();
-    this.memoryConsolidationScheduler?.start();
+    if (this.memoryConsolidationEnabled) this.memoryConsolidationScheduler?.start();
     if (embodied) {
       // FEAT-L1-01: 启动地形采集
       this.worldMapCollector.start();

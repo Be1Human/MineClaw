@@ -190,6 +190,24 @@ test('BUG-CROSS-81 · explicit system identity remains an exact override', () =>
   assert.deepEqual(compiled.messages[0], { role: 'system', content: 'Custom GoalAgent identity.' });
 });
 
+test('FEAT-CROSS-25 · GoalAgent reads the current shared proactive capability snapshot', () => {
+  let proactive = '[ProactiveCapabilities/v1]\n{"active":null}';
+  const compiler = new GoalAgentContextCompiler({
+    getProactiveCapabilitiesContext: () => proactive,
+  });
+  const idle = compiler.compile({
+    state: state(), node: 'round', instruction: 'Continue.', historyMessages: [],
+  });
+  assert.match(idle.messages[0].content, /ProactiveCapabilities\/v1/);
+  assert.match(idle.messages[0].content, /"active":null/);
+
+  proactive = '[ProactiveCapabilities/v1]\n{"active":{"capabilityId":"auto_follow"}}';
+  const active = compiler.compile({
+    state: state(), node: 'round', instruction: 'Continue.', historyMessages: [],
+  });
+  assert.match(active.messages[0].content, /auto_follow/);
+});
+
 test('BUG-CROSS-82 · default identity reads current body and player-observation state on every compile', () => {
   let presence: GamePresenceState = { embodied: false, ownerObservation: 'unknown' };
   const compiler = new GoalAgentContextCompiler({ getGamePresence: () => presence });
