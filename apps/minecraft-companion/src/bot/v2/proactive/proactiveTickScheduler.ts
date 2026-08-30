@@ -63,6 +63,13 @@ export class ProactiveTickScheduler implements ITickable {
     const catalogById = new Map(catalog.map(entry => [entry.id, entry]));
     const evaluations = new Map<string, ProactiveTickEvaluation>();
     const candidates: ProactiveCandidateEnvelope[] = [];
+    const initialLease = this.options.leases.snapshot().active;
+    if (initialLease && !catalogById.get(initialLease.capabilityId)?.enabled) {
+      const release = { kind: 'release', reason: 'disabled', activationId: initialLease.activationId } as const;
+      evaluations.set(initialLease.capabilityId, release);
+      const existing = this.options.stateStore.get(initialLease.capabilityId);
+      if (existing) this.options.stateStore.recordEvaluation(initialLease.capabilityId, release, now);
+    }
     for (const capability of this.options.capabilities) {
       const entry = catalogById.get(capability.manifest.id)!;
       if (!entry.enabled || !shouldRun(entry.rate, ctx.tick)) continue;
