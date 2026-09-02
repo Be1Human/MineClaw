@@ -36,7 +36,7 @@ export async function runControlledAtomic(request: ActionRequest, fixture: Atomi
           const behavior=fixture.behaviorRegistry?.get(String(req.target?.behavior));
           if (!behavior) return {ok:false,failure:failureFromLegacy('behavior_not_found')};
           return new BehaviorRunner({bus:fixture.bus,getWorld:()=>fixture.worldState!}).run(behavior,{
-            ...context,command:{ref:{id:`behavior:${behavior.id}`,contribution:contribution(`behavior:${behavior.id}`)},args:req.target?.behaviorParams ?? {}},
+            ...context,command:{ref:{id:`behavior:${behavior.id}`,contribution:contribution(`behavior:${behavior.id}`)},snapshot:context.command.snapshot,args:req.target?.behaviorParams ?? {}},
           });
         }
         // No fake no-op Context: each simulated write is effect-gated by OperationLifetime.
@@ -52,8 +52,9 @@ export async function runControlledAtomic(request: ActionRequest, fixture: Atomi
     }),
   }});
   const contribution = (id: string) => ({ pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: id, contributionVersion: '1.0.0' });
+  const snapshot = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
   const intent: OperationIntent={operationId:randomUUID(),owner:{kind:'task',taskId:'atomic-unit',ownerEpoch:1},
-    command:{ref:{id:'fixture:root',contribution:contribution('fixture:root')},args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
+    command:{ref:{id:'fixture:root',contribution:contribution('fixture:root')},snapshot,args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
     deadlineAt:Date.now()+10000,budget:{maxActions:256},priority:1,preemption:'none'};
   const receipt=await runtime.submit({intent,grant:authority.issue(intent,{isCurrent:()=>true,allowsChild:()=>true})}).result;
   return {ok:receipt.status==='succeeded',request,durationMs:Date.now()-start,
