@@ -6,6 +6,7 @@ import type { EventBusV2 } from '../../infra/eventBus.js';
 import { tuning } from '../../infra/tuning.js';
 import type { ActionRequest, ExecutionResult, WorldStateView } from '../../types.js';
 import type { TaskRuntime } from '../taskRuntime.js';
+import type { ContributionRef } from '../../plugin-sdk/identity.js';
 import type { ExecutionOwner, OperationIntent, OperationCommand } from '../contracts/bodyOperation.js';
 import type { BoundGoalScope } from '../contracts/goalDraft.js';
 import type { GoalAgentStateV1 } from '../goalAgent/goalAgentState.js';
@@ -34,10 +35,10 @@ export class BodyActionService {
   readonly runtime: BodyExecutionRuntime;
   private readonly authority = new ExecutionAuthority();
   private readonly driver: GameBodyDriver;
-  private readonly generations = new Map<string,number>();
-  private readonly operations = new Map<string,RunningAction>();
+  private readonly ownerEpochs = new Map<string, number>();
+  private readonly operations = new Map<string, RunningAction>();
   private readonly unsubs: Array<() => void> = [];
-  private safetyGeneration = 1;
+  private safetyOwnerEpoch = 1;
   constructor(private readonly deps: {
     game: GameAdapter; nav: NavigationAdapter; registry: IBehaviorRegistry; bus: EventBusV2;
     tasks: TaskRuntime; getWorld(): WorldStateView; isEmbodied(): boolean;
@@ -45,12 +46,12 @@ export class BodyActionService {
   }) {
     this.driver = new GameBodyDriver(deps);
     this.runtime = new BodyExecutionRuntime({driver:this.driver,authority:this.authority});
-    for (const task of deps.tasks.list()) if (task.state==='running') this.generations.set(task.id,1);
+    for (const task of deps.tasks.list()) if (task.state==='running') this.ownerEpochs.set(task.id,1);
     for (const type of ['task.started','task.resumed','task.paused','task.completed','task.failed','task.cancelled']) {
       this.unsubs.push(deps.bus.on(type,event => {
         const id = (event.payload as {taskId?:string}).taskId;
         if (!id) return;
-        this.generations.set(id,(this.generations.get(id) ?? 0)+1);
+        this.ownerEpochs.set(id,(this.ownerEpochs.get(id) ?? 0)+1);
         for (const operation of this.operations.values()) {
           if (operation.intent.owner.kind!=='safety' && operation.intent.owner.taskId===id) operation.handle.cancel(type);
         }
@@ -68,21 +69,21 @@ export class BodyActionService {
   async executeTask(request: ActionRequest): Promise<BodyActionResult> {
     if (request.type==='say') return this.speech(request);
     const id = request.taskId;
-    const generation = id ? this.generations.get(id) : undefined;
-    if (!id || !generation || !this.deps.tasks.isRunning(id)) return this.rejected(request,'body_task_owner_not_running');
+    const ownerEpoch = id ? this.ownerEpochs.get(id) : undefined;
+    if (!id || !ownerEpoch || !this.deps.tasks.isRunning(id)) return this.rejected(request,'body_task_owner_not_running');
     if (request.type==='stop' || request.type==='stop_follow') return this.stopTask(request,id);
-    const owner: ExecutionOwner = {kind:'task',taskId:id,generation};
+    const owner: ExecutionOwner = {kind:'task',taskId:id,ownerEpoch};
     return this.execute(request,{owner,operationId:`task-action:${randomUUID()}`,scope:this.worldScope(),
-      isCurrent:()=>this.deps.tasks.isRunning(id) && this.generations.get(id)===generation});
+      isCurrent:()=>this.deps.tasks.isRunning(id) && this.ownerEpochs.get(id)===ownerEpoch});
   }
 
   /** Only the heartbeat's registered reflex/defense producers receive this method. */
   async executeSafety(request: ActionRequest, policyId: string): Promise<BodyActionResult> {
     if (request.type==='say') return this.speech(request);
     if (request.type==='stop' || request.type==='stop_follow') return this.rejected(request,'safety_stop_requires_owned_operation');
-    const generation = this.safetyGeneration;
-    return this.execute(request,{owner:{kind:'safety',policyId,generation},operationId:`safety-action:${randomUUID()}`,
-      scope:this.worldScope(),isCurrent:()=>this.safetyGeneration===generation && tuning().defense.automaticEnabled});
+    const ownerEpoch = this.safetyOwnerEpoch;
+    return this.execute(request,{owner:{kind:'safety',policyId,ownerEpoch},operationId:`safety-action:${randomUUID()}`,
+      scope:this.worldScope(),isCurrent:()=>this.safetyOwnerEpoch===ownerEpoch && tuning().defense.automaticEnabled});
   }
 
   async executeGoal(request: ActionRequest, input: GoalBodyRequest): Promise<BodyActionResult> {
@@ -98,7 +99,7 @@ export class BodyActionService {
   }
 
   cancelAll(reason: string): void {
-    this.safetyGeneration++;
+    this.safetyOwnerEpoch++;
     for (const operation of this.operations.values()) operation.handle.cancel(reason);
   }
 
@@ -126,7 +127,7 @@ export class BodyActionService {
       if (!this.deps.isEmbodied()) throw new Error('game_body_unavailable');
       const dimension=policy.scope.dimension;
       const intent: OperationIntent = {
-        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request),scope:policy.scope,
+        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, ownerContribution(request)),scope:policy.scope,
         deadlineAt:start+Math.min(request.timeout_ms,tuning().controlledExecution.operationTimeoutMs),
         budget:{maxActions:tuning().controlledExecution.maxSubActions},priority:request.priority,
         preemption:request.interrupt_level==='hard' ? 'request':'none',
@@ -177,4 +178,24 @@ export class BodyActionService {
       label:'执行层请求发言',detail:text,status:'info',wake:request.priority>=60,dedupeKey:`atomic_say:${request.source}:${text}`});
     return {kind:'control',receipt:null,ok:true,request,durationMs:0};
   }
+}
+
+/**
+ * Explicit one-shot legacy mapping (kernel design §5.10): until the builtin
+ * plugins take over (completion of -004), body commands carry a real
+ * ContributionRef under the `mineclaw.legacy-builtin` namespace. The deletion
+ * gate for -004 requires zero production references to this namespace.
+ */
+const LEGACY_BUILTIN = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0' } as const;
+
+function ownerContribution(request: ActionRequest): ContributionRef {
+  const id = request.type === 'invoke_behavior'
+    ? `behavior:${String(request.target?.behavior ?? '')}`
+    : `atomic:${request.type}`;
+  return {
+    pluginId: LEGACY_BUILTIN.pluginId,
+    pluginVersion: LEGACY_BUILTIN.pluginVersion,
+    contributionId: id,
+    contributionVersion: '1.0.0',
+  };
 }

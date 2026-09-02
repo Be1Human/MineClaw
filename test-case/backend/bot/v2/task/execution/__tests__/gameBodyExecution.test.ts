@@ -148,7 +148,7 @@ test('body cancellation stops a control pulse and cannot continue into its follo
 });
 
 test('code-owned support reflects the live registry and excludes removed execution aliases',()=>{
-  const f=fixture(),supports=(id:string)=>f.body.supports({ref:{id,version:'1'},args:{}});
+  const f=fixture(),supports=(id:string)=>f.body.supports({ref:{id,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:id,contributionVersion:'1.0.0'}},args:{}});
   assert.equal(supports('atomic:move_to'),true);assert.equal(supports('atomic:stop'),false);
   assert.equal(supports('behavior:new-definition'),false);
   f.registry.register({id:'new-definition',kind:'sequence',compile:()=>[]});

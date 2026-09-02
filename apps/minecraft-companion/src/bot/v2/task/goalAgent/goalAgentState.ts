@@ -1,4 +1,4 @@
-import type { ActionProposal } from '../../atomic/contracts/atomicContractRegistry.js';
+﻿import type { ActionProposal } from '../../atomic/contracts/atomicContractRegistry.js';
 import type { GoalRequestV2 } from '../../decision/goalAgentPort/contracts.js';
 import type { WorldStateView } from '../../types.js';
 import type { GoalContractV1 } from '../contracts/goalContract.js';
@@ -130,6 +130,8 @@ export interface GoalAgentTerminal {
 export interface GoalAgentStateV1 {
   schema: typeof GOAL_AGENT_STATE_SCHEMA_V1 | typeof GOAL_AGENT_STATE_SCHEMA_V2;
   mode: GoalAgentSessionMode;
+  /** Registry Generation pinned by the compiled goal; absent on pre-plugin legacy records (needs_rebind). */
+  snapshotRef?: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
   sessionId: string;
   interactionSessionId: string;
   requestId: string;

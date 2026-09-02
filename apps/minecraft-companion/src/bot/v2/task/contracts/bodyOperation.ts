@@ -1,13 +1,19 @@
 import type { BoundGoalScope } from './goalDraft.js';
+import type { ContributionRef } from '../../plugin-sdk/identity.js';
 
 /** An owner is an incarnation, not merely a task or policy name. */
 export type ExecutionOwner =
   | { readonly kind: 'goal'; readonly taskId: string; readonly sessionId: string; readonly epoch: number; readonly planRevision: number }
-  | { readonly kind: 'task'; readonly taskId: string; readonly generation: number }
-  | { readonly kind: 'safety'; readonly policyId: string; readonly generation: number };
+  | { readonly kind: 'task'; readonly taskId: string; readonly ownerEpoch: number }
+  | { readonly kind: 'safety'; readonly policyId: string; readonly ownerEpoch: number };
 
+/**
+ * Body command. `ref.contribution` is the exact contribution identity copied
+ * from the authorized candidate/grant — the execution layer never invents a
+ * default version and must fail closed when it is missing.
+ */
 export interface OperationCommand {
-  readonly ref: { readonly id: string; readonly version: string };
+  readonly ref: { readonly id: string; readonly contribution: ContributionRef };
   readonly args: Readonly<Record<string, unknown>>;
 }
 
@@ -28,7 +34,8 @@ export interface OperationIdentity {
   readonly owner: ExecutionOwner;
   /** Runtime-generated, never supplied by callers. */
   readonly leaseRef: string;
-  readonly generation: number;
+  /** Owner incarnation of this operation; distinct from Registry Generation. */
+  readonly operationEpoch: number;
   readonly deadlineAt: number;
 }
 

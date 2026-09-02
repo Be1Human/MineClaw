@@ -27,10 +27,11 @@ class Clock implements ExecutionClock {
 
 const owners: ExecutionOwner[] = [
   { kind: 'goal', taskId: 'task', sessionId: 'session', epoch: 1, planRevision: 2 },
-  { kind: 'task', taskId: 'task', generation: 1 },
-  { kind: 'safety', policyId: 'policy', generation: 1 },
+  { kind: 'task', taskId: 'task', ownerEpoch: 1 },
+  { kind: 'safety', policyId: 'policy', ownerEpoch: 1 },
 ];
-const command = (id = 'move'): OperationCommand => ({ ref: { id, version: '1' }, args: { position: { x: 1, y: 64, z: 1 } } });
+const contribution = (id: string) => ({ pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: id, contributionVersion: '1.0.0' });
+const command = (id = 'move'): OperationCommand => ({ ref: { id, contribution: contribution(id) }, args: { position: { x: 1, y: 64, z: 1 } } });
 const intent = (id = 'op', patch: Partial<OperationIntent> = {}): OperationIntent => ({
   operationId: id, owner: owners[0], command: command(),
   scope: { dimension: 'overworld', targetRefs: ['plot'], bindings: [] },
@@ -53,7 +54,7 @@ for (const owner of owners) test(`S07: ${owner.kind} owner receives immutable ru
   const handle = f.runtime.submit(f.authorize(intent('op', { owner })));
   const result = await handle.result;
   assert.equal(result.status, 'succeeded'); assert.equal(result.schema, 'mineclaw.operation-receipt/v2');
-  assert.deepEqual(result.owner, owner); assert.ok(result.leaseRef); assert.equal(result.generation, 1);
+  assert.deepEqual(result.owner, owner); assert.ok(result.leaseRef); assert.equal(result.operationEpoch, 1);
   assert.equal(result.stop?.state, 'quiesced'); assert.deepEqual(await handle.quiesced(), result.stop);
   assert.equal(result.noOp, false); assert.equal(f.runtime.inspect('op')?.state, 'settled');
   assert.equal(f.clock.timerCount, 0); assert.throws(() => seen.assertCurrent(), /operation_closed/);
@@ -225,7 +226,7 @@ test('S07: cancelOwner closes only that incarnation and returns in_doubt without
   f.clock.advance(2000); const report = await closing;
   assert.equal(report.status, 'in_doubt'); assert.equal(report.operations[0].stop, null);
   pending.resolve({ ok: true }); await handle.quiesced();
-  const nextOwner: ExecutionOwner = { kind: 'task', taskId: 'task', generation: 2 };
+  const nextOwner: ExecutionOwner = { kind: 'task', taskId: 'task', ownerEpoch: 2 };
   assert.equal((await f.runtime.submit(f.authorize(intent('new', { owner: nextOwner }))).result).status, 'succeeded');
 });
 
@@ -283,7 +284,7 @@ test('S07: forgotten native effect remains owned after stop returns, and its lat
 
 test('S07: malformed owner, missing scope, expired deadline and incomplete assembly fail before side effects', () => {
   const f = fixture();
-  for (const value of [intent('op', { owner: { kind: 'task', taskId: 'task', generation: 0 } }),
+  for (const value of [intent('op', { owner: { kind: 'task', taskId: 'task', ownerEpoch: 0 } }),
     intent('op', { budget: { maxActions: 0 } }), intent('op', { deadlineAt: 999 }),
     intent('op', { scope: null as unknown as OperationIntent['scope'] })]) {
     assert.throws(() => f.runtime.submit(f.authorize(value)), /invalid_operation_intent|deadline_exceeded/);

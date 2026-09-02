@@ -1,20 +1,25 @@
 import type { ActionRequest } from '../../types.js';
 import { jsonSnapshot } from '../../infra/jsonSnapshot.js';
 import { tuning } from '../../infra/tuning.js';
+import type { ContributionRef } from '../../plugin-sdk/identity.js';
 import type { OperationCommand } from '../contracts/bodyOperation.js';
 import type { ControlledExecutionContext } from './ports/controlledExecution.js';
 import { defaultActionPreparer } from './actionPreparer.js';
 import { failureDetail } from './failureEnvelope.js';
 
-/** Convert a registered producer's request into the immutable, code-authorized body command. */
-export function actionCommand(request: ActionRequest): OperationCommand {
+/**
+ * Convert an authorized producer's request into the immutable body command,
+ * copying the exact contribution identity from the granted candidate. The
+ * execution layer never invents a default contribution version.
+ */
+export function actionCommand(request: ActionRequest, contribution: ContributionRef): OperationCommand {
   if (request.type === 'invoke_behavior') {
     const id = request.target?.behavior;
     if (!id) throw new Error('behavior_id_required');
-    return jsonSnapshot({ ref: { id: `behavior:${id}`, version: '1' }, args: request.target?.behaviorParams ?? {} });
+    return jsonSnapshot({ ref: { id: `behavior:${id}`, contribution }, args: request.target?.behaviorParams ?? {} });
   }
   if (request.type === 'stop' || request.type === 'stop_follow') throw new Error('stop_is_activity_control');
-  return jsonSnapshot({ ref: { id: `atomic:${request.type}`, version: '1' }, args: {
+  return jsonSnapshot({ ref: { id: `atomic:${request.type}`, contribution }, args: {
     target: request.target ?? {}, source: request.source,
     timeoutMs: request.timeout_ms ?? tuning().controlledExecution.operationTimeoutMs,
   } });
@@ -22,7 +27,7 @@ export function actionCommand(request: ActionRequest): OperationCommand {
 
 /** Owner, resource claims and execution identity are never inherited from a behavior's child metadata. */
 export function atomicRequest(command: OperationCommand, context: ControlledExecutionContext): ActionRequest {
-  if (command.ref.version !== '1' || !command.ref.id.startsWith('atomic:')) throw new Error('invalid_atomic_command');
+  if (!command.ref.contribution || !command.ref.id.startsWith('atomic:')) throw new Error('invalid_atomic_command');
   const type = command.ref.id.slice('atomic:'.length);
   if (type === 'invoke_behavior' || type === 'stop' || type === 'stop_follow') throw new Error('not_an_atomic_operation');
   const target = command.args.target;

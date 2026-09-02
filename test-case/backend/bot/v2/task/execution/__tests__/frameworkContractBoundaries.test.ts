@@ -46,11 +46,14 @@ function localImport(file: string, specifier: string): string {
 }
 
 test('A01: shared data contracts and their transitive imports are implementation-independent and acyclic', () => {
+  // Neutral contract roots: task/contracts (DTOs) and plugin-sdk (contract surface).
+  const contractRoots = [contracts, join(root, 'plugin-sdk')];
   const complete = new Set<string>(), active: string[] = [];
   const walk = (path: string): void => {
     assert.ok(!active.includes(path), 'data dependency cycle: ' + [...active, path].map(value => relative(root, value)).join(' -> '));
     if (complete.has(path)) return;
-    assert.ok(!relative(contracts, path).startsWith('..'), 'data contract reaches implementation: ' + relative(root, path));
+    assert.ok(contractRoots.some(contractRoot => !relative(contractRoot, path).startsWith('..')),
+      'data contract reaches implementation: ' + relative(root, path));
     active.push(path);
     for (const dependency of dependencies(source(path))) walk(localImport(path, dependency));
     active.pop(); complete.add(path);

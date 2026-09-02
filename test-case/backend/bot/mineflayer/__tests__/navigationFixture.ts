@@ -91,8 +91,8 @@ export function navigationFixture(device = navigationBot()) {
   return {device,nav,runtime,replace:(replacement:Bot)=>{current=replacement;nav.rebindSubscriptions(replacement);},
     start:(run:typeof work,maintenance=maintain,id='nav-operation')=>{
       work=run;maintain=maintenance;
-      const intent:OperationIntent={operationId:id,owner:{kind:'task',taskId:'task',generation:1},
-        command:{ref:{id:'test-navigation',version:'1'},args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
+      const intent:OperationIntent={operationId:id,owner:{kind:'task',taskId:'task',ownerEpoch:1},
+        command:{ref:{id:'test-navigation',contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:'test-navigation',contributionVersion:'1.0.0'}},args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
         deadlineAt:Date.now()+5000,budget:{maxActions:5000},priority:1,preemption:'none'};
       return runtime.submit({intent,grant:authority.issue(intent,{isCurrent:()=>true,allowsChild:()=>false})});
     }};

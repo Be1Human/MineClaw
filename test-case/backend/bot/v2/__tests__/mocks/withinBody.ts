@@ -10,8 +10,9 @@ export async function withinBody<T>(work:(context:ControlledExecutionContext)=>P
   const runtime=new BodyExecutionRuntime({authority,driver:{resources:()=>['test-body'],bind:()=>({
     run:async context=>{result=await work(context);return {ok:true};},stop:async()=>{},
   })}});
-  const intent:OperationIntent={operationId:randomUUID(),owner:{kind:'task',taskId:'unit',generation:1},
-    command:{ref:{id:'unit',version:'1'},args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
+  const contribution = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: 'unit', contributionVersion: '1.0.0' };
+  const intent:OperationIntent={operationId:randomUUID(),owner:{kind:'task',taskId:'unit',ownerEpoch:1},
+    command:{ref:{id:'unit',contribution},args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
     deadlineAt:Date.now()+20000,budget:{maxActions:256},priority:1,preemption:'none'};
   const receipt=await runtime.submit({intent,grant:authority.issue(intent,{isCurrent:()=>true,allowsChild:()=>false})}).result;
   if(receipt.status!=='succeeded')throw new Error(receipt.failure?.detail ?? receipt.status);

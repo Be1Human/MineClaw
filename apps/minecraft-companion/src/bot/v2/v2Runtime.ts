@@ -957,7 +957,7 @@ export class V2Runtime {
           executionSupport: [
             ...createDefaultAtomicContractRegistry().list().map(value=>({kind:'atomic' as const,id:value.action})),
             ...this.behaviorRegistry.list().map(value=>({kind:'behavior' as const,id:value.id})),
-          ].map(value=>({...value,controlledCancellation:this.body.supports({ref:{id:`${value.kind}:${value.id}`,version:'1'},args:{}})})),
+          ].map(value=>({...value,controlledCancellation:this.body.supports({ref:{id:`${value.kind}:${value.id}`,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:`${value.kind}:${value.id}`,contributionVersion:'1.0.0'}},args:{}})})),
           tasks: this.taskRegistry.listAll(),
           strategies: [...taskStrategies, this.reflex, ...autoDefenseStrategies].map(value => ({
             id: value.id, name: value.constructor.name, kind: value.kind,

@@ -25,7 +25,7 @@ export class GameBodyDriver implements BodyOperationDriver {
   }) { this.behaviors = new BehaviorRunner(deps); }
 
   accepts(command: OperationCommand): boolean {
-    if (command.ref.version !== '1') return false;
+    if (!command.ref.contribution?.contributionId) return false;
     if (command.ref.id.startsWith('behavior:')) return !!this.deps.registry.get(command.ref.id.slice(9));
     if (!command.ref.id.startsWith('atomic:')) return false;
     const id = command.ref.id.slice(7);

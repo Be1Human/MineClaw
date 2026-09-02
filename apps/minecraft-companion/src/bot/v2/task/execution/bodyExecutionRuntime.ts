@@ -29,7 +29,7 @@ export class BodyExecutionRuntime implements BodyExecutionPort {
   private readonly entries = new Map<string, Entry>();
   private readonly resources = new Map<string, OperationIdentity>();
   private readonly closedOwners = new Set<string>();
-  private generation = 0;
+  private operationEpoch = 0;
   private readonly instanceId = randomUUID();
   private readonly clock: ExecutionClock;
 
@@ -66,9 +66,9 @@ export class BodyExecutionRuntime implements BodyExecutionPort {
       }
       throw new BodyAdmissionError('body_resources_busy', conflicts);
     }
-    const generation = ++this.generation;
-    const identity: OperationIdentity = jsonSnapshot({ operationId: intent.operationId, owner: intent.owner, generation,
-      leaseRef: `${this.instanceId}:${generation}`, deadlineAt: Math.min(intent.deadlineAt, this.clock.now() + maximum) });
+    const operationEpoch = ++this.operationEpoch;
+    const identity: OperationIdentity = jsonSnapshot({ operationId: intent.operationId, owner: intent.owner, operationEpoch,
+      leaseRef: `${this.instanceId}:${operationEpoch}`, deadlineAt: Math.min(intent.deadlineAt, this.clock.now() + maximum) });
     const lifetime = new OperationLifetime({ identity, operation, resources: claims, driver: this.options.driver, clock: this.clock,
       isCurrent: command => !this.closedOwners.has(ownerKey(intent.owner)) && this.allowed(operation, command)
         && claims.every(resource => this.resources.get(resource)?.leaseRef === identity.leaseRef),
@@ -113,9 +113,10 @@ function validateIntent(intent: OperationIntent): void {
   const natural = (value: unknown, minimum = 1) => Number.isSafeInteger(value) && Number(value) >= minimum;
   const owner = intent?.owner;
   const ownerValid = owner && (owner.kind === 'goal' ? text(owner.taskId) && text(owner.sessionId) && natural(owner.epoch) && natural(owner.planRevision, 0)
-    : owner.kind === 'task' ? text(owner.taskId) && natural(owner.generation)
-      : owner.kind === 'safety' && text(owner.policyId) && natural(owner.generation));
-  if (!text(intent?.operationId) || !ownerValid || !text(intent.command?.ref?.id) || !text(intent.command.ref.version)
+    : owner.kind === 'task' ? text(owner.taskId) && natural(owner.ownerEpoch)
+      : owner.kind === 'safety' && text(owner.policyId) && natural(owner.ownerEpoch));
+  if (!text(intent?.operationId) || !ownerValid || !text(intent.command?.ref?.id)
+    || !intent.command?.ref?.contribution || !text(intent.command.ref.contribution.contributionId)
     || !intent.command.args || Array.isArray(intent.command.args) || typeof intent.command.args !== 'object'
     || !Number.isFinite(intent.deadlineAt) || !natural(intent.budget?.maxActions) || !Number.isFinite(intent.priority)
     || !['none', 'request'].includes(intent.preemption) || !text(intent.scope?.dimension)
