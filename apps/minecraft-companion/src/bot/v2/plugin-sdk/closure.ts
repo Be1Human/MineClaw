@@ -9,7 +9,7 @@
 import { pluginError, type PluginFailureCode } from './errors.js';
 import type { PluginManifestV1 } from './manifest.js';
 import type { ContributionRequirement } from './dependencies.js';
-import type { ExecutionContribution } from './contributions.js';
+import type { ExecutionContribution, ManifestContribution } from './contributions.js';
 
 export interface ClosureVerification {
   readonly closed: boolean;
@@ -54,8 +54,8 @@ export function assertExecutionClosure(manifest: PluginManifestV1): void {
 
 function ringIsResolved(
   ring: ClosureRing,
-  operation: ExecutionContribution['operation'],
-  owner: ExecutionContribution,
+  operation: ManifestContribution & { kind: 'execution' } extends never ? never : ExecutionContribution['operation'],
+  owner: ManifestContribution,
   manifest: PluginManifestV1,
 ): boolean {
   const available = new Set<string>(manifest.contributions.map((contribution) => contribution.id));
@@ -67,15 +67,16 @@ function ringIsResolved(
     case 'fact': return operation.factKinds.length > 0;
     case 'candidate': return canUse(operation.candidateContributionId);
     case 'operation': return operation.operationId.trim().length > 0;
-    case 'executor': return contributionHasExecutor(owner);
+    case 'executor': return owner.id.trim().length > 0;
     case 'predicate': return canUse(operation.predicateContributionId);
     case 'progress': return canUse(operation.progressContributionId);
     case 'result': return canUse(operation.resultContributionId);
   }
 }
 
-function contributionHasExecutor(owner: ExecutionContribution): boolean {
-  return owner.behaviorFactory !== undefined || owner.activityFactory !== undefined;
+/** The executor ring is satisfied when the execution declaration exists; construct-time implementation matching is enforced by the transaction. */
+function contributionHasExecutor(_owner: ExecutionContribution): boolean {
+  return true;
 }
 
 function collectRequirements(manifest: PluginManifestV1): Set<string> {

@@ -3,7 +3,7 @@
  * (kernel design §5.2). Validation is fail-closed and returns a deep-frozen
  * manifest or throws a structured PluginContractError.
  */
-import { parseContribution, DATA_PLUGIN_CONTRIBUTION_KINDS, type PluginContribution } from './contributions.js';
+import { parseManifestContribution, DATA_PLUGIN_CONTRIBUTION_KINDS, type ManifestContribution } from './contributions.js';
 import { parseDependencies, type PluginDependenciesDeclaration } from './dependencies.js';
 import { pluginError } from './errors.js';
 import { PLUGIN_ID_PATTERN } from './identity.js';
@@ -25,7 +25,7 @@ export interface PluginManifestV1 {
   readonly entry?: string;
   readonly dependencies: PluginDependenciesDeclaration;
   readonly permissions: readonly string[];
-  readonly contributions: readonly PluginContribution[];
+  readonly contributions: readonly ManifestContribution[];
   readonly integrity?: { readonly contentSha256: string };
 }
 
@@ -65,10 +65,10 @@ export function validatePluginManifest(value: unknown, input: PluginManifestVali
   }
 
   if (!Array.isArray(value.contributions)) throw pluginError('manifest_invalid', 'manifest contributions must be an array');
-  const contributions: PluginContribution[] = [];
+  const contributions: ManifestContribution[] = [];
   const ids = new Set<string>();
   value.contributions.forEach((raw, index) => {
-    const contribution = parseContribution(raw, id, kind, index);
+    const contribution = parseManifestContribution(raw, id, kind, index);
     if (ids.has(contribution.id)) throw pluginError('id_conflict', `duplicate contribution id: ${contribution.id}`);
     ids.add(contribution.id);
     contributions.push(contribution);

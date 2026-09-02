@@ -97,7 +97,7 @@ test('T4 data 插件禁止代码入口、非空权限与代码型贡献', () => 
     (error: unknown) => error instanceof PluginContractError && error.code === 'manifest_invalid');
   assert.throws(() => validatePluginManifest({ ...base, kind: 'data', permissions: ['world.read:bounded-block-snapshot'] }, HOST),
     (error: unknown) => error instanceof PluginContractError && error.code === 'manifest_invalid');
-  const withObservation = { ...base, contributions: [{ kind: 'observation', id: 'mineclaw.agriculture.observation.fields', version: '1.0.0', factory: { create: () => ({}) } }] };
+  const withObservation = { ...base, contributions: [{ kind: 'observation', id: 'mineclaw.agriculture.observation.fields', version: '1.0.0', factKinds: ['nearby_crops'] }] };
   assert.throws(() => validatePluginManifest(withObservation, HOST),
     (error: unknown) => error instanceof PluginContractError && error.code === 'manifest_invalid');
 });
@@ -171,7 +171,7 @@ test('T9 U27 合同侧：Knowledge-only 数据插件无需执行合同；Observa
     dependencies: {}, permissions: ['world.read:bounded-block-snapshot'],
     contributions: [{
       kind: 'observation', id: 'mineclaw.scout.observation.nearby', version: '1.0.0',
-      factory: { id: 'mineclaw.scout.observation.nearby', version: '1.0.0', descriptor: { id: 'mineclaw.scout.observation.nearby', version: '1.0.0', inputSchema: { type: 'object', additionalProperties: false }, resultSchema: { type: 'object', additionalProperties: false }, factKinds: ['nearby_blocks'], coverage: { dimension: ['minecraft:overworld'], role: 'world' }, limits: {} }, create: () => ({ id: 'x', observe: async () => ({ status: 'unavailable' as const, reason: 'no-op' }), close: () => undefined }) },
+      factKinds: ['nearby_blocks'],
     }],
   }, HOST);
   assert.equal(observationOnly.contributions[0]!.kind, 'observation');
@@ -264,9 +264,9 @@ function buildClosedManifest(): Record<string, unknown> {
     contributions: [
       contribution('goal.sow', 'goal', { target: { registryId: 'mineclaw.agriculture.goal.sow-field', goalKind: 'composite', aliases: ['播种'], successCriteria: [{ type: 'predicate', predicate: 'mineclaw.agriculture.verification.field-sown' }] } }),
       contribution('binding.sow', 'goal', { target: { registryId: 'mineclaw.agriculture.binding.sow-request', goalKind: 'composite', aliases: [], successCriteria: [{ type: 'predicate', predicate: 'mineclaw.agriculture.verification.field-sown' }] } }),
-      contribution('observation.fields', 'observation', { factory: { id: 'mineclaw.agriculture.observation.fields', version: '1.0.0', descriptor: { id: 'mineclaw.agriculture.observation.fields', version: '1.0.0', inputSchema: { type: 'object', additionalProperties: false }, resultSchema: { type: 'object', additionalProperties: false }, factKinds: ['nearby_crops'], coverage: { dimension: ['minecraft:overworld'], role: 'world' }, limits: {} }, create: () => ({ id: 'x', observe: async () => ({ status: 'unavailable' as const, reason: 'x' }), close: () => undefined }) } }),
-      contribution('planning.sow-candidates', 'planning', { candidateProvider: { id: 'c', list: async () => ({ status: 'complete' as const, candidates: [{ candidateId: 'c-1', operationContribution: defaultContrib(), params: {}, evidenceRefs: [], contribution: defaultContrib() }] }) } }),
-      contribution('verification.field-sown', 'verification', { predicates: [makePredicate()] }),
+      contribution('observation.fields', 'observation', { factKinds: ['nearby_crops'] }),
+      contribution('planning.sow-candidates', 'planning', { operationIds: ['mineclaw.agriculture.operation.sow-cell'] }),
+      contribution('verification.field-sown', 'verification'),
       contribution('execution.sow', 'execution', {
         operation: {
           operationId: 'mineclaw.agriculture.operation.sow-cell',
@@ -279,10 +279,9 @@ function buildClosedManifest(): Record<string, unknown> {
           resultContributionId: 'mineclaw.agriculture.result.sow',
           cancellable: true,
         },
-        behaviorFactory: makeBehaviorFactory(),
       }),
-      contribution('progress.sow', 'planning', { candidateProvider: { id: 'p', list: async () => ({ status: 'complete' as const, candidates: [] }) } }),
-      contribution('result.sow', 'result', { projection: makeProjection() }),
+      contribution('progress.sow', 'planning', { operationIds: ['mineclaw.agriculture.operation.sow-cell'] }),
+      contribution('result.sow', 'result'),
     ],
   };
 }

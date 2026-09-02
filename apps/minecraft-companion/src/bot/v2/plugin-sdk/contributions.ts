@@ -343,3 +343,108 @@ function freeze<T extends object>(value: T): T {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+/* ------------------------------------------------------------------ *
+ * Manifest declaration layer (kernel design §5.2).
+ * A YAML manifest carries ONLY declarative metadata — no code. The factory
+ * (from the build index for code plugins, from the loader for data plugins)
+ * produces matching PluginContribution implementations at construct time;
+ * the registration transaction enforces a one-to-one id/version/kind match.
+ * ------------------------------------------------------------------ */
+
+export type ManifestContribution =
+  | { readonly kind: 'knowledge'; readonly id: string; readonly version: string; readonly contentRef: string; readonly contentSchema?: Readonly<Record<string, unknown>>; readonly requirements?: readonly ContributionRequirement[] }
+  | { readonly kind: 'skill'; readonly id: string; readonly version: string; readonly entryRef: string; readonly requirements?: readonly ContributionRequirement[] }
+  | { readonly kind: 'observation'; readonly id: string; readonly version: string; readonly factKinds: readonly string[] }
+  | { readonly kind: 'goal'; readonly id: string; readonly version: string; readonly target: PluginGoalTargetDeclaration }
+  | { readonly kind: 'planning'; readonly id: string; readonly version: string; readonly operationIds: readonly string[] }
+  | { readonly kind: 'verification'; readonly id: string; readonly version: string }
+  | { readonly kind: 'execution'; readonly id: string; readonly version: string; readonly operation: PluginOperationDeclaration }
+  | { readonly kind: 'result'; readonly id: string; readonly version: string }
+  | { readonly kind: 'proactive'; readonly id: string; readonly version: string; readonly label: string; readonly description: string; readonly goalTarget: string; readonly rate: 'fast' | 'std' | 'slow' | 'idle'; readonly priority: number }
+  | { readonly kind: 'integration'; readonly id: string; readonly version: string };
+
+export function parseManifestContribution(value: unknown, pluginId: string, pluginKind: 'data' | 'domain' | 'system', index: number): ManifestContribution {
+  const kind = contributionKindOf(value);
+  if (!kind) throw pluginError('manifest_invalid', `contribution[${index}] has unknown kind`);
+  const record = value as Record<string, unknown>;
+  const id = requireContribId(record.id, pluginId, `contribution[${index}]`);
+  const version = requireContribVersion(record.version, id);
+  const allRequirements = parseContributionRequirements(record.requirements);
+  const requirements = allRequirements.length > 0 ? allRequirements : undefined;
+  switch (kind) {
+    case 'knowledge':
+      return Object.freeze({
+        kind, id, version,
+        contentRef: requireString(record.contentRef, 'knowledge contentRef', id),
+        ...(record.contentSchema !== undefined ? { contentSchema: freezeSchema(record.contentSchema)! } : {}),
+        ...(requirements ? { requirements } : {}),
+      });
+    case 'skill':
+      return Object.freeze({
+        kind, id, version,
+        entryRef: requireString(record.entryRef, 'skill entryRef', id),
+        ...(requirements ? { requirements } : {}),
+      });
+    case 'observation':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry observation ${id}`);
+      if (!Array.isArray(record.factKinds) || record.factKinds.length === 0) {
+        throw pluginError('manifest_invalid', `observation ${id} requires factKinds`);
+      }
+      return Object.freeze({ kind, id, version, factKinds: Object.freeze([...record.factKinds] as string[]) });
+    case 'goal':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry goal ${id}`);
+      if (!isRecord(record.target)) throw pluginError('manifest_invalid', `goal ${id} requires a target declaration`);
+      const registryId = requireString(record.target.registryId, 'goal target registryId', id);
+      const goalKind = requireKindOf(record.target.goalKind, ['item', 'entity', 'location', 'composite'], `goal ${id} goalKind`);
+      if (!Array.isArray(record.target.aliases)) throw pluginError('manifest_invalid', `goal ${id} aliases must be an array`);
+      if (!Array.isArray(record.target.successCriteria) || record.target.successCriteria.length === 0) {
+        throw pluginError('manifest_invalid', `goal ${id} requires success criteria`);
+      }
+      return Object.freeze({
+        kind, id, version,
+        target: Object.freeze({
+          registryId,
+          goalKind,
+          aliases: Object.freeze([...record.target.aliases] as string[]),
+          successCriteria: Object.freeze([...record.target.successCriteria] as PluginGoalTargetDeclaration['successCriteria']),
+        }),
+      });
+    case 'planning':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry planning ${id}`);
+      if (!Array.isArray(record.operationIds)) throw pluginError('manifest_invalid', `planning ${id} requires operationIds`);
+      return Object.freeze({ kind, id, version, operationIds: Object.freeze([...record.operationIds] as string[]) });
+    case 'verification':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry verification ${id}`);
+      return Object.freeze({ kind, id, version });
+    case 'execution':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry execution ${id}`);
+      if (!isRecord(record.operation)) throw pluginError('manifest_invalid', `execution ${id} requires an operation declaration`);
+      return Object.freeze({
+        kind, id, version,
+        operation: Object.freeze({ ...record.operation }) as unknown as PluginOperationDeclaration,
+      });
+    case 'result':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry result ${id}`);
+      return Object.freeze({ kind, id, version });
+    case 'proactive':
+      if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry proactive ${id}`);
+      const label = requireString(record.label, 'proactive label', id);
+      const description = requireString(record.description, 'proactive description', id);
+      const goalTarget = requireString(record.goalTarget, 'proactive goalTarget', id);
+      if (!['fast', 'std', 'slow', 'idle'].includes(String(record.rate))) throw pluginError('manifest_invalid', `proactive ${id} has invalid rate`);
+      if (typeof record.priority !== 'number' || !Number.isFinite(record.priority)) throw pluginError('manifest_invalid', `proactive ${id} priority must be a finite number`);
+      return Object.freeze({
+        kind, id, version, label, description, goalTarget,
+        rate: record.rate as 'fast' | 'std' | 'slow' | 'idle',
+        priority: record.priority,
+      });
+    case 'integration':
+      if (pluginKind !== 'system') throw pluginError('permission_denied', `integration ${id} requires system plugin kind`);
+      return Object.freeze({ kind, id, version });
+  }
+}
+
+export function toDataContribution(declaration: ManifestContribution & { kind: 'knowledge' | 'skill' }): PluginContribution {
+  return Object.freeze({ ...declaration }) as unknown as PluginContribution;
+}
