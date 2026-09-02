@@ -1,0 +1,61 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.follow
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+    - pluginId: mineclaw.minecraft-presence
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.minecraft-presence.observation.owner-context
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+contributions:
+  - kind: goal
+    id: mineclaw.follow.goal.follow-owner
+    version: 1.0.0
+    target:
+      registryId: mineclaw.follow.goal.follow-owner
+      goalKind: location
+      aliases:
+        - 跟随主人
+        - 跟着我
+        - 跟过来
+        - 过来
+        - follow me
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.follow.verification.follow-satisfied
+  - kind: planning
+    id: mineclaw.follow.planning.follow-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.follow.operation.follow-owner
+  - kind: verification
+    id: mineclaw.follow.verification.follow-satisfied
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.follow.execution.follow-owner
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.follow.operation.follow-owner
+      goalContributionId: mineclaw.follow.goal.follow-owner
+      bindingContributionId: mineclaw.follow.goal.follow-owner
+      factKinds:
+        - owner_location
+      candidateContributionId: mineclaw.follow.planning.follow-candidates
+      predicateContributionId: mineclaw.follow.verification.follow-satisfied
+      progressContributionId: mineclaw.follow.progress.follow
+      resultContributionId: mineclaw.follow.result.follow
+      cancellable: true
+  - kind: planning
+    id: mineclaw.follow.progress.follow
+    version: 1.0.0
+    operationIds:
+      - mineclaw.follow.operation.follow-owner
+  - kind: result
+    id: mineclaw.follow.result.follow
+    version: 1.0.0
