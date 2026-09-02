@@ -972,7 +972,22 @@ export class V2Runtime {
           executionSupport: [
             ...createDefaultAtomicContractRegistry().list().map(value=>({kind:'atomic' as const,id:value.action})),
             ...this.behaviorRegistry.list().map(value=>({kind:'behavior' as const,id:value.id})),
-          ].map(value=>{ const snapshot = this.runtimeSnapshotRefSafe(); return {...value,controlledCancellation:snapshot ? this.body.supports({ref:{id:`${value.kind}:${value.id}`,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:`${value.kind}:${value.id}`,contributionVersion:'1.0.0'}},snapshot,args:{}}) : false};}),
+          ].map(value=>{
+            const snapshot = this.runtimeSnapshotRefSafe();
+            if (!snapshot) return { ...value, controlledCancellation: false };
+            // P3-4 · 贡献引用经固定代解析后才可询问受控取消（不再写死 legacy-builtin）。
+            let contribution: import('./plugin-sdk/identity.js').ContributionRef;
+            if (value.kind === 'behavior') {
+              const behavior = this.behaviorRegistry.get(value.id);
+              if (!behavior) return { ...value, controlledCancellation: false };
+              contribution = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: value.id, contributionVersion: '1.0.0' };
+            } else {
+              const entry = this.runtimeAtomicResolver().resolve(snapshot, value.id);
+              if (entry.status !== 'resolved') return { ...value, controlledCancellation: false };
+              contribution = entry.value.contribution;
+            }
+            return { ...value, controlledCancellation: this.body.supports({ ref: { id: `${value.kind}:${value.id}`, contribution }, snapshot, args: {} }) };
+          }),
           tasks: this.taskRegistry.listAll(),
           strategies: [...taskStrategies, this.reflex, ...autoDefenseStrategies].map(value => ({
             id: value.id, name: value.constructor.name, kind: value.kind,
