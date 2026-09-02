@@ -27,7 +27,8 @@ test('production GoalAgent action_list → action_execute → body lease → dev
     environment:{dimension:'overworld',isDay:true,isRaining:false,timeOfDay:6000},entities:[],
     inventory:{items:bot.game.getInventoryItems(),held:null,freeSlots:35},taskContext:null} as WorldStateView);
   let loop!:GoalAgentRoundLoop;
-  const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,tasks,registry,getWorld:world,isEmbodied:()=>true,getGoalState:id=>loop.snapshot(id)});
+  const TEST_SNAPSHOT = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
+  const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,tasks,registry,getWorld:world,isEmbodied:()=>true,getGoalState:id=>loop.snapshot(id),getSnapshot:()=>TEST_SNAPSHOT});
   const receipts:OperationReceipt[]=[];bus.on('body.operation_receipt',e=>receipts.push(e.payload as unknown as OperationReceipt));
   const execution=new GoalAgentProductionExecutionPort({game:bot.game,bus,body,getWorld:world,behaviors:registry,tasks,parentTaskId:()=>parent.id,actionLedger:ledger});
   let rounds=0;
@@ -46,7 +47,7 @@ test('production GoalAgent action_list → action_execute → body lease → dev
   const initial=createGoalAgentState({sessionId:'goal-body',interactionSessionId:'interaction-body',request:{
     meta:{schemaVersion:2,sessionId:'interaction-body',messageId:'request-body',correlationId:'correlation-body',conversationId:'conversation-body',sequence:1,emittedAt:at,idempotencyKey:'request-body'},
     origin:'player_message',originalText:'合成四根木棍',requestText:'合成四根木棍',requestKind:'task',constraints:[],
-  }});
+  },snapshotRef:TEST_SNAPSHOT});
   initial.rootGoal={schema:'mineclaw.goal/v1',goalId:'root-body',profileId:'body-integration',goalText:'合成四根木棍',createdAt:at,
     successCriteria:[{type:'inventory',item:'stick',count:4}]};
   try {

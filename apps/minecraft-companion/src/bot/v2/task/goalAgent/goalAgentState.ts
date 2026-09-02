@@ -1,4 +1,4 @@
-﻿import type { ActionProposal } from '../../atomic/contracts/atomicContractRegistry.js';
+import type { ActionProposal } from '../../atomic/contracts/atomicContractRegistry.js';
 import type { GoalRequestV2 } from '../../decision/goalAgentPort/contracts.js';
 import type { WorldStateView } from '../../types.js';
 import type { GoalContractV1 } from '../contracts/goalContract.js';
@@ -214,6 +214,8 @@ export interface CreateGoalAgentStateInput {
   request: GoalRequestV2;
   mode?: GoalAgentSessionMode;
   now?: string;
+  /** P1-3 · 插件代快照；缺失=dashboard 前旧记录，执行链按 needs_rebind 处理。 */
+  snapshotRef?: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
   budget?: Partial<Pick<GoalAgentBudget,
     'maxLlmCalls' | 'maxTotalTokens' | 'maxActions' | 'maxRecoveries' | 'maxGraphReplans'>>;
 }
@@ -233,6 +235,7 @@ export function createGoalAgentState(input: CreateGoalAgentStateInput): GoalAgen
   const state: GoalAgentStateV1 = {
     schema: GOAL_AGENT_STATE_SCHEMA_V1,
     mode: input.mode ?? 'planned_goal',
+    ...(input.snapshotRef ? { snapshotRef: structuredClone(input.snapshotRef) } : {}),
     sessionId,
     interactionSessionId,
     requestId,

@@ -1,5 +1,5 @@
 import type { BoundGoalScope } from './goalDraft.js';
-import type { ContributionRef } from '../../plugin-sdk/identity.js';
+import type { ContributionRef, RegistrySnapshotRef } from '../../plugin-sdk/identity.js';
 
 /** An owner is an incarnation, not merely a task or policy name. */
 export type ExecutionOwner =
@@ -10,10 +10,13 @@ export type ExecutionOwner =
 /**
  * Body command. `ref.contribution` is the exact contribution identity copied
  * from the authorized candidate/grant — the execution layer never invents a
- * default version and must fail closed when it is missing.
+ * default version and must fail closed when it is missing. `snapshot` pins the
+ * Registry Generation that authored/validated this command; resolvers never
+ * fall back to a live registry.
  */
 export interface OperationCommand {
   readonly ref: { readonly id: string; readonly contribution: ContributionRef };
+  readonly snapshot: RegistrySnapshotRef;
   readonly args: Readonly<Record<string, unknown>>;
 }
 

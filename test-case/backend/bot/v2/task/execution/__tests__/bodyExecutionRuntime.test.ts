@@ -31,7 +31,8 @@ const owners: ExecutionOwner[] = [
   { kind: 'safety', policyId: 'policy', ownerEpoch: 1 },
 ];
 const contribution = (id: string) => ({ pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: id, contributionVersion: '1.0.0' });
-const command = (id = 'move'): OperationCommand => ({ ref: { id, contribution: contribution(id) }, args: { position: { x: 1, y: 64, z: 1 } } });
+const TEST_SNAPSHOT = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
+const command = (id = 'move'): OperationCommand => ({ ref: { id, contribution: contribution(id) }, snapshot: TEST_SNAPSHOT, args: { position: { x: 1, y: 64, z: 1 } } });
 const intent = (id = 'op', patch: Partial<OperationIntent> = {}): OperationIntent => ({
   operationId: id, owner: owners[0], command: command(),
   scope: { dimension: 'overworld', targetRefs: ['plot'], bindings: [] },

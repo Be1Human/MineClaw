@@ -43,6 +43,8 @@ export class BodyActionService {
     game: GameAdapter; nav: NavigationAdapter; registry: IBehaviorRegistry; bus: EventBusV2;
     tasks: TaskRuntime; getWorld(): WorldStateView; isEmbodied(): boolean;
     getGoalState(sessionId: string): GoalAgentStateV1 | null;
+    /** P3-4 · 当前已发布插件代快照（Task/Safety 命令的代际来源；Goal 命令固定自身 snapshotRef）。 */
+    getSnapshot(): import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
   }) {
     this.driver = new GameBodyDriver(deps);
     this.runtime = new BodyExecutionRuntime({driver:this.driver,authority:this.authority});
@@ -95,7 +97,9 @@ export class BodyActionService {
         && live.epoch===owner.epoch && live.plan.revision===owner.planRevision && live.phase==='running';
     };
     return this.execute(request,{owner,operationId:input.operationId,scope:state.rootGoal?.schema==='mineclaw.goal/v2'
-      ? state.rootGoal.scope : this.worldScope(),isCurrent,signal});
+      ? state.rootGoal.scope : this.worldScope(),isCurrent,signal,
+      // P3-4 · 固定编译快照；旧记录（无 snapshotRef）→ needs_rebind fail-closed。
+      snapshot: state.snapshotRef});
   }
 
   cancelAll(reason: string): void {
@@ -121,13 +125,19 @@ export class BodyActionService {
 
   private async execute(request: ActionRequest, policy: {
     owner: ExecutionOwner; operationId: string; scope: BoundGoalScope; isCurrent(): boolean; signal?: AbortSignal;
+    /** P3-4 · Goal 命令的代际快照（state.snapshotRef；缺失=旧记录 needs_rebind fail-closed）。 */
+    snapshot?: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
   }): Promise<BodyActionResult> {
     const start = Date.now();
     try {
       if (!this.deps.isEmbodied()) throw new Error('game_body_unavailable');
       const dimension=policy.scope.dimension;
+      // Goal 命令锁定编译时快照；Task/Safety 用组合根注入的当前代快照。绝不回退 live registry。
+      const snapshot = policy.owner.kind === 'goal'
+        ? (policy.snapshot ?? failRebind('goal_snapshot_missing'))
+        : this.deps.getSnapshot();
       const intent: OperationIntent = {
-        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, ownerContribution(request)),scope:policy.scope,
+        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, ownerContribution(request), snapshot),scope:policy.scope,
         deadlineAt:start+Math.min(request.timeout_ms,tuning().controlledExecution.operationTimeoutMs),
         budget:{maxActions:tuning().controlledExecution.maxSubActions},priority:request.priority,
         preemption:request.interrupt_level==='hard' ? 'request':'none',
@@ -198,4 +208,9 @@ function ownerContribution(request: ActionRequest): ContributionRef {
     contributionId: id,
     contributionVersion: '1.0.0',
   };
+}
+
+/** P3-4 · Goal 命令没有固定快照 = 旧持久记录；fail-closed needs_rebind，不转查最新代。 */
+function failRebind(reason: string): never {
+  throw new Error(`needs_rebind:${reason}`);
 }

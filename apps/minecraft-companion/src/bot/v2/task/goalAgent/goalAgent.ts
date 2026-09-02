@@ -52,6 +52,8 @@ export interface GoalAgentOptions {
   onState?: (state: Readonly<GoalAgentStateV1>, event: GoalAgentLoopEvent) => void;
   disposeTools?: () => void;
   log?: (message: string) => void;
+  /** P1-3 · 组合根注入的插件代快照；新 Goal 固定该代（旧记录缺失时 needs_rebind）。 */
+  snapshotRef?: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
 }
 
 export interface GoalAgentSubmission {
@@ -157,6 +159,7 @@ export class GoalAgent {
       request,
       mode: 'persistent_monitor',
       budget: this.options.budget,
+      ...(this.options.snapshotRef ? { snapshotRef: this.options.snapshotRef } : {}),
     });
     state.world = {
       latest: structuredClone(input.world),
@@ -261,6 +264,7 @@ export class GoalAgent {
       interactionSessionId: request.meta.sessionId,
       request,
       budget: this.options.budget,
+      ...(this.options.snapshotRef ? { snapshotRef: this.options.snapshotRef } : {}),
     });
     this.sessionByInteraction.set(state.interactionSessionId, sessionId);
     this.reportRequestBySession.set(sessionId, request);

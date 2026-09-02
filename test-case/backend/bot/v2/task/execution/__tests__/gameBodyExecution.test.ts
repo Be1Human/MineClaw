@@ -25,7 +25,8 @@ function fixture() {
     entities:[],inventory:{items:bot.game.getInventoryItems(),held:null,freeSlots:36},taskContext:null} as WorldStateView);
   const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,registry,getWorld:world,
     tasks:{list:()=>[{id:'task',state:'running'}],isRunning:(id:string)=>id==='task'&&running} as never,
-    isEmbodied:()=>embodied,getGoalState:()=>goal});
+    isEmbodied:()=>embodied,getGoalState:()=>goal,
+    getSnapshot:()=>({generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'})});
   return {bot,bus,registry,body,pause:()=>{running=false;bus.publish('task.paused','info',{taskId:'task'});},
     resume:()=>{running=true;bus.publish('task.resumed','info',{taskId:'task'});},detach:()=>{embodied=false;},
     goal:(state:GoalAgentStateV1)=>{goal=state;}};
@@ -148,7 +149,8 @@ test('body cancellation stops a control pulse and cannot continue into its follo
 });
 
 test('code-owned support reflects the live registry and excludes removed execution aliases',()=>{
-  const f=fixture(),supports=(id:string)=>f.body.supports({ref:{id,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:id,contributionVersion:'1.0.0'}},args:{}});
+  const f=fixture(),snapshot={generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'};
+  const supports=(id:string)=>f.body.supports({ref:{id,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:id,contributionVersion:'1.0.0'}},snapshot,args:{}});
   assert.equal(supports('atomic:move_to'),true);assert.equal(supports('atomic:stop'),false);
   assert.equal(supports('behavior:new-definition'),false);
   f.registry.register({id:'new-definition',kind:'sequence',compile:()=>[]});
@@ -167,7 +169,7 @@ test('navigation range stays numeric, preserves zero, and rejects malformed rang
 
 test('goal owner plan revision is captured, not retargeted by a mutable caller state',async()=>{
   const f=fixture(),native=deferred<void>();let calls=0;
-  const state={sessionId:'goal',epoch:1,phase:'running',plan:{revision:1}} as GoalAgentStateV1;
+  const state={sessionId:'goal',epoch:1,phase:'running',plan:{revision:1},snapshotRef:{generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'}} as GoalAgentStateV1;
   f.goal(state);f.bot.game.equip=async()=>{calls++;await native.promise;};
   f.registry.register({id:'goal-generation',kind:'sequence',compile:()=>[
     {...request('equip'),target:{itemName:'stick'}},{...request('equip'),target:{itemName:'stick'}},

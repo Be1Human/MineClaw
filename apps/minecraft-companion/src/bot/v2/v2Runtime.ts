@@ -816,6 +816,8 @@ export class V2Runtime {
       getWorld:()=>this.perception.getWorldState() ?? this.perception.perceive(),
       isEmbodied:()=>this.isEmbodied(),
       getGoalState:sessionId=>this.goalAgent?.snapshot(sessionId) ?? null,
+      // P3-4 · Task/Safety 命令固定当前已发布插件代；kernel 未就绪显式 fail-closed（needs_rebind:kernel_not_ready）。
+      getSnapshot:()=>this.runtimeSnapshotRef(),
     });
 
     if (goalSystemOn && llmClient) {
@@ -967,7 +969,7 @@ export class V2Runtime {
           executionSupport: [
             ...createDefaultAtomicContractRegistry().list().map(value=>({kind:'atomic' as const,id:value.action})),
             ...this.behaviorRegistry.list().map(value=>({kind:'behavior' as const,id:value.id})),
-          ].map(value=>({...value,controlledCancellation:this.body.supports({ref:{id:`${value.kind}:${value.id}`,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:`${value.kind}:${value.id}`,contributionVersion:'1.0.0'}},args:{}})})),
+          ].map(value=>{ const snapshot = this.runtimeSnapshotRefSafe(); return {...value,controlledCancellation:snapshot ? this.body.supports({ref:{id:`${value.kind}:${value.id}`,contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:`${value.kind}:${value.id}`,contributionVersion:'1.0.0'}},snapshot,args:{}}) : false};}),
           tasks: this.taskRegistry.listAll(),
           strategies: [...taskStrategies, this.reflex, ...autoDefenseStrategies].map(value => ({
             id: value.id, name: value.constructor.name, kind: value.kind,
@@ -2047,6 +2049,20 @@ export class V2Runtime {
 
   private isEmbodied(): boolean {
     return this.cfg.isEmbodied ? this.cfg.isEmbodied() : this.cfg.embodied !== false;
+  }
+
+  /** P3-4 · 当前已发布活动代的 RegistrySnapshotRef；kernel 未就绪 → fail-closed。 */
+  private runtimeSnapshotRef(): import('./plugin-sdk/identity.js').RegistrySnapshotRef {
+    const kernel = this.pluginKernel;
+    if (!kernel?.ok || !kernel.slot) throw new Error('needs_rebind:kernel_not_ready');
+    const active = kernel.slot.read().active;
+    return { generationId: active.generationId, buildId: active.buildId, graphHash: active.graphHash };
+  }
+
+  /** 软版本：kernel 未就绪返回 null（调用方把能力标记为不可用，而非抛出中断装配）。 */
+  private runtimeSnapshotRefSafe(): import('./plugin-sdk/identity.js').RegistrySnapshotRef | null {
+    try { return this.runtimeSnapshotRef(); }
+    catch { return null; }
   }
 
   /**

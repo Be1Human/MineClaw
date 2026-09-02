@@ -1,7 +1,7 @@
 import type { ActionRequest } from '../../types.js';
 import { jsonSnapshot } from '../../infra/jsonSnapshot.js';
 import { tuning } from '../../infra/tuning.js';
-import type { ContributionRef } from '../../plugin-sdk/identity.js';
+import type { ContributionRef, RegistrySnapshotRef } from '../../plugin-sdk/identity.js';
 import type { OperationCommand } from '../contracts/bodyOperation.js';
 import type { ControlledExecutionContext } from './ports/controlledExecution.js';
 import { defaultActionPreparer } from './actionPreparer.js';
@@ -10,16 +10,18 @@ import { failureDetail } from './failureEnvelope.js';
 /**
  * Convert an authorized producer's request into the immutable body command,
  * copying the exact contribution identity from the granted candidate. The
- * execution layer never invents a default contribution version.
+ * execution layer never invents a default contribution version; the pinned
+ * Registry snapshot travels with every command so resolvers never fall back to
+ * a live registry.
  */
-export function actionCommand(request: ActionRequest, contribution: ContributionRef): OperationCommand {
+export function actionCommand(request: ActionRequest, contribution: ContributionRef, snapshot: RegistrySnapshotRef): OperationCommand {
   if (request.type === 'invoke_behavior') {
     const id = request.target?.behavior;
     if (!id) throw new Error('behavior_id_required');
-    return jsonSnapshot({ ref: { id: `behavior:${id}`, contribution }, args: request.target?.behaviorParams ?? {} });
+    return jsonSnapshot({ ref: { id: `behavior:${id}`, contribution }, snapshot, args: request.target?.behaviorParams ?? {} });
   }
   if (request.type === 'stop' || request.type === 'stop_follow') throw new Error('stop_is_activity_control');
-  return jsonSnapshot({ ref: { id: `atomic:${request.type}`, contribution }, args: {
+  return jsonSnapshot({ ref: { id: `atomic:${request.type}`, contribution }, snapshot, args: {
     target: request.target ?? {}, source: request.source,
     timeoutMs: request.timeout_ms ?? tuning().controlledExecution.operationTimeoutMs,
   } });

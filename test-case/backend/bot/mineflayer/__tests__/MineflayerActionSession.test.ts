@@ -46,7 +46,7 @@ function fixture(game: GameAdapter, run: (actions: GameActions) => Promise<void>
   } });
   const start = (id = 'op') => {
     const intent: OperationIntent = { operationId: id, owner: { kind: 'task', taskId: 'task', ownerEpoch: 1 },
-      command: { ref: { id: 'fixture', contribution: { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: 'fixture', contributionVersion: '1.0.0' } }, args: {} },
+      command: { ref: { id: 'fixture', contribution: { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: 'fixture', contributionVersion: '1.0.0' } }, snapshot: { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' }, args: {} },
       scope: { dimension: 'overworld', targetRefs: [], bindings: [] },
       deadlineAt: Date.now() + 60_000, budget: { maxActions: 5 }, priority: 1, preemption: 'none' };
     return runtime.submit({ intent, grant: authority.issue(intent, { isCurrent: () => true, allowsChild: () => false }) });

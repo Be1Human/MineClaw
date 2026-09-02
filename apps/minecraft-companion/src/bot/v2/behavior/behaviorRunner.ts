@@ -21,7 +21,7 @@ export class BehaviorRunner {
       }
       const started = Date.now();
       const childContribution = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: `atomic:${request.type}`, contributionVersion: '1.0.0' };
-      const result = await context.execute(actionCommand(request, childContribution));
+      const result = await context.execute(actionCommand(request, childContribution, context.command.snapshot));
       context.assertCurrent('behavior_after_child');
       return { ok: result.ok, request, durationMs: Date.now() - started,
         ...(result.failure ? { error: failureDetail(result.failure) } : {}) };
