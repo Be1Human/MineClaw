@@ -100,7 +100,7 @@ export function createBoundedObservationPorts(ports: MineclawSystemPorts): {
   block: BoundedBlockObservationPort;
   inventory: BoundedInventoryObservationPort;
 } {
-  const block: BoundedBlockObservationPort = {
+  const block: BoundedBlockObservationPort = ports.blockObservation ?? {
     observe: async (input) => {
       if (!ports.getWorld) throw new Error('world_unavailable');
       void input;

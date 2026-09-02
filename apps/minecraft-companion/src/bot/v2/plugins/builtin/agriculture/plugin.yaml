@@ -1,0 +1,88 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.agriculture
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+    - pluginId: mineclaw.minecraft-presence
+      range: ^1.0.0
+    - pluginId: mineclaw.inventory
+      range: ^1.0.0
+    - pluginId: mineclaw.storage-system
+      range: ^1.0.0
+permissions:
+  - world.read:bounded-block-snapshot
+  - fact.read:mineclaw.inventory.observation.owner-inventory
+  - fact.read:mineclaw.minecraft-presence.observation.owner-context
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+  - body.submit:mineclaw.minecraft-system.atomic.equip
+  - body.submit:mineclaw.minecraft-system.atomic.place-block
+  - body.submit:mineclaw.minecraft-system.atomic.dig
+  - body.submit:mineclaw.storage-system.atomic.deposit
+  - body.submit:mineclaw.storage-system.atomic.withdraw
+contributions:
+  - kind: goal
+    id: mineclaw.agriculture.goal.harvest-mature-crops-to-chest
+    version: 1.0.0
+    target:
+      registryId: mineclaw.agriculture.goal.harvest-mature-crops-to-chest
+      goalKind: item
+      aliases:
+        - 收割
+        - 收获
+        - 收麦子
+        - 成熟作物归仓
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.agriculture.verification.harvested-to-chest
+  - kind: goal
+    id: mineclaw.agriculture.binding.harvest-area-and-chest
+    version: 1.0.0
+    target:
+      registryId: mineclaw.agriculture.binding.harvest-area-and-chest
+      goalKind: location
+      aliases:
+        - 这块田
+        - 这片农田
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.agriculture.verification.harvested-to-chest
+  - kind: observation
+    id: mineclaw.agriculture.observation.harvest-state
+    version: 1.0.0
+    factKinds:
+      - nearby_crops
+  - kind: planning
+    id: mineclaw.agriculture.planning.harvest-to-chest-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.agriculture.operation.harvest-to-chest
+  - kind: verification
+    id: mineclaw.agriculture.verification.harvested-to-chest
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.agriculture.execution.harvest-to-chest
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.agriculture.operation.harvest-to-chest
+      goalContributionId: mineclaw.agriculture.goal.harvest-mature-crops-to-chest
+      bindingContributionId: mineclaw.agriculture.binding.harvest-area-and-chest
+      factKinds:
+        - nearby_crops
+      candidateContributionId: mineclaw.agriculture.planning.harvest-to-chest-candidates
+      predicateContributionId: mineclaw.agriculture.verification.harvested-to-chest
+      progressContributionId: mineclaw.agriculture.progress.harvest-to-chest
+      resultContributionId: mineclaw.agriculture.result.harvest-to-chest
+      cancellable: true
+  - kind: planning
+    id: mineclaw.agriculture.progress.harvest-to-chest
+    version: 1.0.0
+    operationIds:
+      - mineclaw.agriculture.operation.harvest-to-chest
+  - kind: result
+    id: mineclaw.agriculture.result.harvest-to-chest
+    version: 1.0.0

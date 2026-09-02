@@ -1,0 +1,24 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.storage-system
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: system
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - system.atomic
+contributions:
+  - kind: execution
+    id: mineclaw.storage-system.execution.container
+    version: 1.0.0
+    atomicIds:
+      - open_container
+      - transfer_chest
+      - deposit
+      - withdraw
+  - kind: integration
+    id: mineclaw.storage-system.integration.chest
+    version: 1.0.0
