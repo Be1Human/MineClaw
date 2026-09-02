@@ -28,7 +28,6 @@ export class GameBodyDriver implements BodyOperationDriver {
     /** P3-4 · 原子存在性只经固定 snapshot 校验（绝不回退 live registry 或自建默认目录）。 */
     atomicResolver: GenerationAtomicEntryPort;
   }) { this.behaviors = new BehaviorRunner(deps); }
-
   accepts(command: OperationCommand): boolean {
     if (!command.ref.contribution?.contributionId) return false;
     if (command.ref.id.startsWith('behavior:')) return !!this.deps.registry.get(command.ref.id.slice(9));
