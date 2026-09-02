@@ -12,6 +12,7 @@ import { evaluateGoalCriteriaState } from '../../goalRunner/goalCriteriaEvaluato
 import type { Goal, GoalSuccessCriterion } from '../../contracts/goalTypes.js';
 import { legacyGoalFromContract } from '../../contracts/goalContract.js';
 import { ActionPreparer } from '../../execution/actionPreparer.js';
+import type { GenerationContractResolverPort } from '../../execution/generationResolversPorts.js';
 import { failureDetail, failureFromLegacy } from '../../execution/failureEnvelope.js';
 import type { FailureEnvelope } from '../../contracts/failureEnvelope.js';
 import type { PlannerExperienceFreezeResult } from '../../planner/experience/plannerExperienceProvider.js';
@@ -61,16 +62,20 @@ export interface GoalAgentProductionExecutionOptions {
   plans?: GoalPlanAuthorizationPort;
   maxCandidates?: number;
   log?: (message: string) => void;
+  /** P3-4 · Generation contract resolver（schema/list/prepare 从固定代取；缺省=迁移期旧 registry）。 */
+  contractResolver?: GenerationContractResolverPort;
 }
 
 export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort {
   private readonly contracts = createDefaultAtomicContractRegistry();
-  private readonly preparer = new ActionPreparer(this.contracts);
+  private readonly preparer: ActionPreparer;
   private readonly cache = new Map<string, Promise<Awaited<ReturnType<GoalAgentExecutionPort['execute']>>>>();
   private readonly strategyMatcher?: StrategyMatcher;
   private readonly strategyExecutor?: StrategyExecutor;
 
   constructor(private readonly options: GoalAgentProductionExecutionOptions) {
+    // P3-4 · Generation 模式：preparer 改挂 contractResolver（prepare 按 snapshot 解析）。
+    this.preparer = new ActionPreparer(this.contracts, options.contractResolver);
     if (options.strategyStore) {
       this.strategyMatcher = new StrategyMatcher({
         usable: () => options.strategyStore!.usable(),
@@ -144,7 +149,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
               position: structuredClone(groundPickup.position),
             },
           },
-          argumentSchema: this.contracts.get('invoke_behavior')?.schema as unknown as Record<string, unknown>,
+          argumentSchema: this.contractSchema(input.state, 'invoke_behavior'),
           evidenceRefs: [`ground-item:${groundPickup.entityId}:${groundPickup.item}`],
         });
       }
@@ -164,7 +169,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
             behavior: 'deliver_to_owner',
             behaviorParams: { item: delivery.item, count: delivery.count },
           },
-          argumentSchema: this.contracts.get('invoke_behavior')?.schema as unknown as Record<string, unknown>,
+          argumentSchema: this.contractSchema(input.state, 'invoke_behavior'),
           evidenceRefs: [`delivery-target:owner:${world.owner!.username}`],
         });
       }
@@ -187,7 +192,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
             behavior: 'deposit_to_chest',
             behaviorParams: { chestPos: target.pos, item: deposit.item, count: deposit.count },
           },
-          argumentSchema: this.contracts.get('invoke_behavior')?.schema as unknown as Record<string, unknown>,
+          argumentSchema: this.contractSchema(input.state, 'invoke_behavior'),
           evidenceRefs: [`container-target:${target.relation}:${positionKey(target.pos)}`],
         });
       }
@@ -210,7 +215,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
             behavior: 'withdraw_from_chest',
             behaviorParams: { chestPos: target.pos, item: chestRetrieval.item, count: chestRetrieval.count },
           },
-          argumentSchema: this.contracts.get('invoke_behavior')?.schema as unknown as Record<string, unknown>,
+          argumentSchema: this.contractSchema(input.state, 'invoke_behavior'),
           evidenceRefs: [`container-target:${target.relation}:${positionKey(target.pos)}`],
         });
       }
@@ -238,7 +243,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
               ...(placement.surface === 'top' ? { surface: placement.surface } : {}),
             },
           },
-          argumentSchema: this.contracts.get('invoke_behavior')?.schema as unknown as Record<string, unknown>,
+          argumentSchema: this.contractSchema(input.state, 'invoke_behavior'),
           evidenceRefs: [`placement-target:${placement.relativeTo}:${placement.relation}`],
         });
       }
@@ -274,7 +279,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         candidates.push(candidate);
       }
     }
-    for (const definition of this.contracts.list()) {
+    for (const definition of this.atomicDefinitionsFor(input.state)) {
       const fixedArgs = applicableAtomicArgs(definition.action, criteria, world);
       if (!fixedArgs) continue;
       candidates.push({
@@ -284,7 +289,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         action: definition.action,
         description: `Execute one registered atomic action: ${definition.action}`,
         fixedArgs,
-        argumentSchema: definition.schema as unknown as Record<string, unknown>,
+        argumentSchema: definition.schema,
         ...(definition.action === 'craft' ? {
           mutableArgumentPaths: ['/itemName', '/count', '/inventoryTargetCount', '/needTable'],
           argumentSchema: craftArgumentSchema(),
@@ -293,6 +298,33 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
       });
     }
     return finish();
+  }
+
+  /** P3-4 · 原子定义列表：Generation 模式经固定代 contract resolver；迁移期用旧 registry。 */
+  private atomicDefinitionsFor(state: Readonly<GoalAgentStateV1>): Array<{ action: string; schema: Record<string, unknown> }> {
+    if (this.options.contractResolver) {
+      const snapshot = state.snapshotRef;
+      if (snapshot) {
+        return this.preparer.listContracts(snapshot).map(contract => ({
+          action: contract.atomicId,
+          schema: (contract.schema ?? {}) as Record<string, unknown>,
+        }));
+      }
+    }
+    return this.contracts.list().map(definition => ({
+      action: definition.action,
+      schema: definition.schema as unknown as Record<string, unknown>,
+    }));
+  }
+
+  /** P3-4 · 原子 schema：Generation 模式经固定代；迁移期用旧 registry。 */
+  private contractSchema(state: Readonly<GoalAgentStateV1>, action: string): Record<string, unknown> {
+    if (this.options.contractResolver) {
+      const snapshot = state.snapshotRef;
+      const contract = snapshot ? this.preparer.resolveContract(snapshot, action) : null;
+      if (contract) return (contract.schema ?? {}) as Record<string, unknown>;
+    }
+    return this.contracts.get(action)?.schema as unknown as Record<string, unknown>;
   }
 
   isOwnerNeedActionable(input: { missingInformation: string; state: Readonly<GoalAgentStateV1> }): boolean {

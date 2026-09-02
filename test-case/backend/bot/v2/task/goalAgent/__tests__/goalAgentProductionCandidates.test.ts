@@ -876,3 +876,42 @@ function managedTaskHarness(body:import('../../../../../../../apps/minecraft-com
   });
   return { memory, tasks, rootId: root.id, port };
 }
+
+test('P3-4 generation contract resolver 驱动原子候选 schema 与存在性', async () => {
+  const { createContractResolver } = await import('../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/generationResolversPorts.js');
+  const { GenerationResolvers } = await import('../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/lifecycle.js');
+  const { PluginHost } = await import('../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/index.js');
+  const { loadProductionBuiltinIndex } = await import('../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/productionIndex.js');
+  const { fileURLToPath } = await import('node:url');
+  const { join } = await import('node:path');
+  const kernelDir = fileURLToPath(new URL('../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/', import.meta.url));
+  const host = new PluginHost({
+    hostApiVersion: '2.0.0', buildId: 'test-build',
+    builtinIndex: loadProductionBuiltinIndex({ manifestPath: join(kernelDir, 'builtin-manifest.generated.json') }),
+    trustedSystemPlugins: ['mineclaw.minecraft-system', 'mineclaw.storage-system', 'mineclaw.llm-system'],
+  });
+  const result = await host.boot();
+  assert.deepEqual(result.failures, [], JSON.stringify(result.failures));
+  const active = result.slot.read().active;
+  const snapshot = { generationId: active.generationId, buildId: active.buildId, graphHash: active.graphHash };
+  const contractResolver = createContractResolver(new GenerationResolvers(result.slot));
+  const s = state([{ type: 'inventory', item: 'oak_log', count: 1 }]);
+  s.snapshotRef = snapshot;
+
+  const port = new GoalAgentProductionExecutionPort({
+    game: { getCraftRecipes: () => [], getItemSource: () => null },
+    bus: new EventBusV2(),
+    getWorld: world,
+    body: unexpectedBody as never,
+    actionLedger: newLedger(),
+    behaviors: { list: () => [] } as never,
+    tasks: {} as never,
+    parentTaskId: () => null,
+    contractResolver,
+  });
+  const candidates = await port.listCandidates({ state: s, planNodeId: 'task-1', signal: new AbortController().signal });
+  // Generation 模式：原子候选来自代 contract list（craft 由 inventory criteria 暴露）
+  const atomicCandidate = candidates.find(candidate => candidate.action === 'craft');
+  assert.ok(atomicCandidate, JSON.stringify(candidates.map(c => c.action)));
+  assert.ok(atomicCandidate!.argumentSchema);
+});
