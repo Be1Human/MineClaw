@@ -1,0 +1,60 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.combat
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+  - body.submit:mineclaw.minecraft-system.atomic.attack
+contributions:
+  - kind: goal
+    id: mineclaw.combat.goal.combat-target
+    version: 1.0.0
+    target:
+      registryId: mineclaw.combat.goal.combat-target
+      goalKind: entity
+      aliases:
+        - 攻击
+        - 打
+        - 杀
+        - 消灭
+        - attack
+        - fight
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.combat.verification.target-dead
+  - kind: planning
+    id: mineclaw.combat.planning.combat-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.combat.operation.combat-target
+  - kind: verification
+    id: mineclaw.combat.verification.target-dead
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.combat.execution.combat-target
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.combat.operation.combat-target
+      goalContributionId: mineclaw.combat.goal.combat-target
+      bindingContributionId: mineclaw.combat.goal.combat-target
+      factKinds:
+        - nearby_entities
+      candidateContributionId: mineclaw.combat.planning.combat-candidates
+      predicateContributionId: mineclaw.combat.verification.target-dead
+      progressContributionId: mineclaw.combat.progress.combat
+      resultContributionId: mineclaw.combat.result.combat
+      cancellable: true
+  - kind: planning
+    id: mineclaw.combat.progress.combat
+    version: 1.0.0
+    operationIds:
+      - mineclaw.combat.operation.combat-target
+  - kind: result
+    id: mineclaw.combat.result.combat
+    version: 1.0.0

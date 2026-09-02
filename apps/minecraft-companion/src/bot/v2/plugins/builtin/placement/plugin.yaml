@@ -1,0 +1,58 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.placement
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - body.submit:mineclaw.minecraft-system.atomic.place-block
+  - body.submit:mineclaw.minecraft-system.atomic.equip
+contributions:
+  - kind: goal
+    id: mineclaw.placement.goal.place-relative
+    version: 1.0.0
+    target:
+      registryId: mineclaw.placement.goal.place-relative
+      goalKind: location
+      aliases:
+        - 放置
+        - 放个
+        - 摆
+        - place
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.placement.verification.placed
+  - kind: planning
+    id: mineclaw.placement.planning.place-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.placement.operation.place-relative
+  - kind: verification
+    id: mineclaw.placement.verification.placed
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.placement.execution.place-relative
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.placement.operation.place-relative
+      goalContributionId: mineclaw.placement.goal.place-relative
+      bindingContributionId: mineclaw.placement.goal.place-relative
+      factKinds:
+        - nearby_blocks
+      candidateContributionId: mineclaw.placement.planning.place-candidates
+      predicateContributionId: mineclaw.placement.verification.placed
+      progressContributionId: mineclaw.placement.progress.place
+      resultContributionId: mineclaw.placement.result.place
+      cancellable: true
+  - kind: planning
+    id: mineclaw.placement.progress.place
+    version: 1.0.0
+    operationIds:
+      - mineclaw.placement.operation.place-relative
+  - kind: result
+    id: mineclaw.placement.result.place
+    version: 1.0.0

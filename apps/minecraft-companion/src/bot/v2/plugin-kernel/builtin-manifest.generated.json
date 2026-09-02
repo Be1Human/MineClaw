@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T15:51:14.962Z",
+  "generatedAt": "2026-09-02T15:54:06.895Z",
   "schema": "mineclaw.builtin-index/v1",
   "plugins": [
     {
@@ -149,6 +149,110 @@
         "plugin-sdk/contracts/execution.ts",
         "plugin-sdk/contracts/result.ts",
         "plugin-sdk/contracts/integration.ts",
+        "plugin-sdk/identity.ts"
+      ]
+    },
+    {
+      "pluginId": "mineclaw.combat",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.combat",
+      "manifestHash": "7c708ab20b30652d5f0dd0dce6cfc9f87c522846c03c522657c4d6e3399efa1c",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.combat",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {
+          "plugins": [
+            {
+              "pluginId": "mineclaw.minecraft-system",
+              "range": "^1.0.0"
+            }
+          ]
+        },
+        "permissions": [
+          "body.submit:mineclaw.minecraft-system.atomic.move-to",
+          "body.submit:mineclaw.minecraft-system.atomic.attack"
+        ],
+        "contributions": [
+          {
+            "kind": "goal",
+            "id": "mineclaw.combat.goal.combat-target",
+            "version": "1.0.0",
+            "target": {
+              "registryId": "mineclaw.combat.goal.combat-target",
+              "goalKind": "entity",
+              "aliases": [
+                "攻击",
+                "打",
+                "杀",
+                "消灭",
+                "attack",
+                "fight"
+              ],
+              "successCriteria": [
+                {
+                  "type": "predicate",
+                  "predicate": "mineclaw.combat.verification.target-dead"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.combat.planning.combat-candidates",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.combat.operation.combat-target"
+            ]
+          },
+          {
+            "kind": "verification",
+            "id": "mineclaw.combat.verification.target-dead",
+            "version": "1.0.0"
+          },
+          {
+            "kind": "execution",
+            "id": "mineclaw.combat.execution.combat-target",
+            "version": "1.0.0",
+            "operation": {
+              "operationId": "mineclaw.combat.operation.combat-target",
+              "goalContributionId": "mineclaw.combat.goal.combat-target",
+              "bindingContributionId": "mineclaw.combat.goal.combat-target",
+              "factKinds": [
+                "nearby_entities"
+              ],
+              "candidateContributionId": "mineclaw.combat.planning.combat-candidates",
+              "predicateContributionId": "mineclaw.combat.verification.target-dead",
+              "progressContributionId": "mineclaw.combat.progress.combat",
+              "resultContributionId": "mineclaw.combat.result.combat",
+              "cancellable": true
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.combat.progress.combat",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.combat.operation.combat-target"
+            ]
+          },
+          {
+            "kind": "result",
+            "id": "mineclaw.combat.result.combat",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts",
+        "plugin-sdk/contracts/planning.ts",
+        "plugin-sdk/contracts/verification.ts",
+        "plugin-sdk/contracts/execution.ts",
+        "plugin-sdk/contracts/result.ts",
         "plugin-sdk/identity.ts"
       ]
     },
@@ -864,6 +968,108 @@
         "pter/GameActions.ts",
         "pter/NavigationExecution.ts",
         "infra/eventBus.ts"
+      ]
+    },
+    {
+      "pluginId": "mineclaw.placement",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.placement",
+      "manifestHash": "0f34d22762cc477915bf3b47cdfc9bdadc9a4e647e16832f88a1436c6638cb9e",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.placement",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {
+          "plugins": [
+            {
+              "pluginId": "mineclaw.minecraft-system",
+              "range": "^1.0.0"
+            }
+          ]
+        },
+        "permissions": [
+          "body.submit:mineclaw.minecraft-system.atomic.place-block",
+          "body.submit:mineclaw.minecraft-system.atomic.equip"
+        ],
+        "contributions": [
+          {
+            "kind": "goal",
+            "id": "mineclaw.placement.goal.place-relative",
+            "version": "1.0.0",
+            "target": {
+              "registryId": "mineclaw.placement.goal.place-relative",
+              "goalKind": "location",
+              "aliases": [
+                "放置",
+                "放个",
+                "摆",
+                "place"
+              ],
+              "successCriteria": [
+                {
+                  "type": "predicate",
+                  "predicate": "mineclaw.placement.verification.placed"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.placement.planning.place-candidates",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.placement.operation.place-relative"
+            ]
+          },
+          {
+            "kind": "verification",
+            "id": "mineclaw.placement.verification.placed",
+            "version": "1.0.0"
+          },
+          {
+            "kind": "execution",
+            "id": "mineclaw.placement.execution.place-relative",
+            "version": "1.0.0",
+            "operation": {
+              "operationId": "mineclaw.placement.operation.place-relative",
+              "goalContributionId": "mineclaw.placement.goal.place-relative",
+              "bindingContributionId": "mineclaw.placement.goal.place-relative",
+              "factKinds": [
+                "nearby_blocks"
+              ],
+              "candidateContributionId": "mineclaw.placement.planning.place-candidates",
+              "predicateContributionId": "mineclaw.placement.verification.placed",
+              "progressContributionId": "mineclaw.placement.progress.place",
+              "resultContributionId": "mineclaw.placement.result.place",
+              "cancellable": true
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.placement.progress.place",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.placement.operation.place-relative"
+            ]
+          },
+          {
+            "kind": "result",
+            "id": "mineclaw.placement.result.place",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts",
+        "plugin-sdk/contracts/planning.ts",
+        "plugin-sdk/contracts/verification.ts",
+        "plugin-sdk/contracts/execution.ts",
+        "plugin-sdk/contracts/result.ts",
+        "plugin-sdk/identity.ts"
       ]
     },
     {
