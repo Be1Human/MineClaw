@@ -74,7 +74,7 @@ export function createMineclawContainerPlugin(): PluginFactory {
             const chest = (ctx.facts[0]?.payload as { chest?: Record<string, unknown> } | undefined)?.chest;
             if (!chest) return { ok: false, cancelled: false, error: 'chest_required' };
             if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const receipt = await bodySubmit({ action: 'storage-system:transfer_chest', chest });
+            const receipt = await bodySubmit({ action: 'storage-system:deposit', chest });
             return (receipt as { ok?: boolean }).ok === false
               ? { ok: false, cancelled: false, error: 'transfer_failed' }
               : { ok: true, cancelled: false };

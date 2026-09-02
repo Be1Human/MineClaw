@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T16:39:25.572Z",
+  "generatedAt": "2026-09-02T16:40:50.174Z",
   "schema": "mineclaw.builtin-index/v1",
   "plugins": [
     {
@@ -1248,7 +1248,7 @@
       "pluginId": "mineclaw.storage-system",
       "kind": "system",
       "entryKey": "plugins/builtin/mineclaw.storage-system",
-      "manifestHash": "a51878a83b936678086c409dd662e80689379006bc8c5d4c4925a786bab15876",
+      "manifestHash": "dd896ba352bbdf1beb4b86cd7783b4a20a02b034c5dee7bf7169a09473737282",
       "manifest": {
         "schema": "mineclaw.plugin/v1",
         "id": "mineclaw.storage-system",
@@ -1273,8 +1273,6 @@
             "id": "mineclaw.storage-system.execution.container",
             "version": "1.0.0",
             "atomicIds": [
-              "open_container",
-              "transfer_chest",
               "deposit",
               "withdraw"
             ]
@@ -1291,6 +1289,7 @@
         "plugin-sdk/index.ts",
         "plugin-sdk/contracts/execution.ts",
         "pter/GameAdapter.ts",
+        "pter/GameActions.ts",
         "infra/eventBus.ts",
         "types.ts"
       ]
