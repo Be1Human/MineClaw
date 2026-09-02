@@ -42,16 +42,15 @@ describe('GoalCapabilityDispatcher', () => {
     assert.equal(dispatcher.findByRequestId(follow.meta.messageId)?.runtimeRef, 'task-follow');
   });
 
-  it('delegates planned, query and cancel requests to their registered handlers', () => {
+  it('delegates planned and cancel requests to their registered handlers', () => {
     const dispatcher = new GoalCapabilityDispatcher();
     const calls: string[] = [];
-    for (const id of ['production_planner_gateway', 'goal_agent.query', 'goal_agent.cancel']) {
+    for (const id of ['production_planner_gateway', 'goal_agent.cancel']) {
       dispatcher.register(id, { submit: () => { calls.push(id); return { accepted: true }; } });
     }
     dispatcher.submit(request('制作木板'));
-    dispatcher.submit(request('背包里有什么', 'query'));
     dispatcher.submit(request('停下', 'cancel'));
-    assert.deepEqual(calls, ['production_planner_gateway', 'goal_agent.query', 'goal_agent.cancel']);
+    assert.deepEqual(calls, ['production_planner_gateway', 'goal_agent.cancel']);
   });
 
   it('fails closed when a matched capability handler is not registered', () => {

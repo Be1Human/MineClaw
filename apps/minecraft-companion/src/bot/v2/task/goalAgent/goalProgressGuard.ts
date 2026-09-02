@@ -21,7 +21,7 @@ export class GoalProgressGuard {
   afterRound(state: GoalAgentStateV1, now: number, catalogVersion: string, acted: boolean): string | null {
     const progress = goalProgress(state); progress.catalogVersion = catalogVersion;
     progress.rounds++; progress.inactiveRounds = acted ? 0 : progress.inactiveRounds + 1;
-    if (state.terminal || state.phase === 'paused_owner' || state.mode !== 'planned_goal' || state.request.requestKind === 'query') return null;
+    if (state.terminal || state.phase === 'paused_owner' || state.mode !== 'planned_goal') return null;
     const cfg = tuning().goalProgress;
     if (!cfg.enabled) return null;
     if (!validConfig()) return this.fail(state, 'invalid_progress_guard_configuration', now);

@@ -67,7 +67,6 @@ export class GoalCapabilityRouter implements GoalCapabilityKnowledgePort {
   }
 
   resolve(request: Pick<GoalRequestV2, 'requestKind' | 'requestText' | 'originalText'>): GoalCapabilityMatch {
-    if (request.requestKind === 'query') return { definition: this.require('game_query') };
     if (request.requestKind === 'cancel') return { definition: this.require('stop_execution') };
 
     const text = normalize(`${request.originalText}\n${request.requestText}`);

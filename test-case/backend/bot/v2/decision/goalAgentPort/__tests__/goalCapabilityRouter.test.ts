@@ -31,10 +31,11 @@ describe('GoalCapabilityRouter', () => {
     assert.equal(router.get('missing'), null);
   });
 
-  it('query/cancel 不经过 Planner', () => {
+  it('cancel 不经过 Planner；实时事实查询不再进入任务路由', () => {
     const router = new GoalCapabilityRouter();
-    assert.equal(router.resolve(request('背包里有什么', 'query')).definition.mode, 'query');
     assert.equal(router.resolve(request('别跟了', 'cancel')).definition.mode, 'cancel');
+    // FEAT-CROSS-28: knowledge_query 走独立合同，不再成为任务/查询能力路由输入。
+    assert.equal(router.resolve(request('背包里有什么', 'cancel')).definition.mode, 'cancel');
   });
 
   it('注册新持续行为无需修改路由框架', () => {

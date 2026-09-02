@@ -25,32 +25,25 @@ describe('BUG-CROSS-51 · InteractionSessionV2', () => {
     assert.equal(session?.replyObligation, 'must_reply');
   });
 
-  it('准备型 query 回答后恢复原任务，并只允许同 session follow-up', () => {
+  it('一次任务委托在 answered 报告后进入 completed', () => {
     const sessions = new InteractionSessionManager();
     sessions.beginPlayerTurn('turn-1', '给我一把稿子');
     const query = sessions.createRequest({
-      requestKind: 'query',
-      queryPurpose: 'prepare_task',
+      requestKind: 'task',
       requestText: '看看我背包里有哪些镐',
     });
     const continuation = sessions.handleReport(reportFor(query.meta.messageId, 'answered', '有木镐和石镐'));
 
     assert.equal(continuation?.session.originalText, '给我一把稿子');
-    assert.equal(continuation?.session.state, 'ready_for_decision');
-    assert.deepEqual(continuation?.allowedDecisions, ['respond', 'submit_followup']);
-
-    sessions.beginContinuation('continuation-1', query.meta.sessionId);
-    const followup = sessions.createRequest({ requestKind: 'task', requestText: '给玩家石镐' });
-    assert.equal(followup.meta.sessionId, query.meta.sessionId);
-    assert.equal(followup.parentRequestId, query.meta.messageId);
-    assert.equal(sessions.getSession(query.meta.sessionId)?.childRequestIds.length, 2);
+    assert.equal(continuation?.session.state, 'completed');
+    assert.deepEqual(continuation?.allowedDecisions, ['respond']);
   });
 
-  it('直接回答玩家的 query 终止 session，且玩家来源不得静默', () => {
+  it('直接回答的任务终止 session，且玩家来源不得静默', () => {
     const sessions = new InteractionSessionManager();
     sessions.beginPlayerTurn('turn-1', '我背包里有什么');
     const query = sessions.createRequest({
-      requestKind: 'query', queryPurpose: 'answer_player', requestText: '我背包里有什么',
+      requestKind: 'task', requestText: '我背包里有什么',
     });
     const continuation = sessions.handleReport(reportFor(query.meta.messageId, 'answered', '有石头'));
     assert.equal(continuation?.session.state, 'completed');

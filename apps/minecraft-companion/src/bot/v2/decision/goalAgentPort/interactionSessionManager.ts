@@ -11,7 +11,7 @@ import {
 
 type RequestInput = {
   requestText: string;
-  requestKind: 'task' | 'query' | 'cancel';
+  requestKind: 'task' | 'cancel';
   queryPurpose?: 'answer_player' | 'prepare_task';
   constraints?: string[];
   initiative?: GoalInitiativeProvenanceV2;
@@ -22,7 +22,6 @@ type MutableSession = InteractionSessionV2 & {
   conversationId: string;
   sequence: number;
   lastRequestKind?: GoalRequestV2['requestKind'];
-  lastQueryPurpose?: GoalRequestV2['queryPurpose'];
   repliedAt?: string;
 };
 
@@ -125,7 +124,6 @@ export class InteractionSessionManager {
       originalText: session.originalText,
       requestText,
       requestKind: input.requestKind,
-      ...(input.requestKind === 'query' ? { queryPurpose: input.queryPurpose ?? 'answer_player' } : {}),
       constraints: input.constraints ?? [],
       ...(!isPlayerOrigin(session) && input.initiative
         ? { initiative: cloneInitiative(input.initiative) }
@@ -136,7 +134,6 @@ export class InteractionSessionManager {
     session.activeRequestId = messageId;
     session.childRequestIds.push(messageId);
     session.lastRequestKind = input.requestKind;
-    session.lastQueryPurpose = input.queryPurpose;
     session.state = 'awaiting_report';
     this.requestToSession.set(messageId, session.sessionId);
     this.requestMeta.set(messageId, meta);
@@ -211,11 +208,7 @@ export class InteractionSessionManager {
         this.awaitingPlayerSessionId = session.sessionId;
         break;
       case 'answered':
-        if (session.lastRequestKind === 'query' && session.lastQueryPurpose === 'prepare_task') {
-          session.state = 'ready_for_decision';
-        } else {
-          session.state = 'completed';
-        }
+        session.state = 'completed';
         break;
       case 'completed':
         session.state = 'completed';
@@ -242,9 +235,7 @@ export class InteractionSessionManager {
         ? ['respond', 'wait']
         : session.state === 'awaiting_player'
         ? ['clarify']
-        : session.state === 'ready_for_decision'
-          ? ['respond', 'submit_followup']
-          : ['respond'],
+        : ['respond'],
     };
   }
 

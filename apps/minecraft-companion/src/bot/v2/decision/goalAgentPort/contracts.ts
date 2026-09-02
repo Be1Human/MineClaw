@@ -29,10 +29,9 @@ export interface GoalRequestV2 {
   origin: 'player_message' | 'mainbrain_self';
   /** 玩家原话（自主任务等于 requestText），用于歧义和审计，MainBrain 不得覆盖。 */
   originalText: string;
-  /** MainBrain 当前委托意图；可直接任务，也可先查询。 */
+  /** MainBrain 当前委托意图；仅任务语义。实时事实查询走 FEAT-CROSS-28 判别合同（AgentRequestV1/KnowledgeQueryV1）。 */
   requestText: string;
-  requestKind: 'task' | 'query' | 'cancel';
-  queryPurpose?: 'answer_player' | 'prepare_task';
+  requestKind: 'task' | 'cancel';
   constraints: string[];
   /** 仅 mainbrain_self 主动能力携带；玩家请求不得伪造。 */
   initiative?: GoalInitiativeProvenanceV2;

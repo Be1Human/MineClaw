@@ -56,7 +56,7 @@ describe('MainBrain tool boundary', () => {
     assert.equal(result.ok, true);
     assert.deepEqual(calls, [{
       requestKind:'task', requestText:'从零开始制作一把铁镐',
-      queryPurpose:'answer_player', constraints:['保留在背包'],
+      constraints:['保留在背包'],
     }]);
   });
 

@@ -456,19 +456,6 @@ export class GoalAgentRoundLoop {
     content: string,
     messages: Array<{ role: 'user' | 'assistant' | 'system' | 'tool'; content: string; tool_call_id?: string }>,
   ): void {
-    if (state.request.requestKind === 'query' && state.world.latest && content.trim()) {
-      const evidenceRefs = [`world:${state.world.latest.tick}:${state.world.latest.timestamp}`];
-      state.verdict = {
-        decision: 'complete', summary: content.trim(), machineCriteriaSatisfied: true,
-        ownerActionable: false, retryable: false, evidenceRefs,
-      };
-      state.terminal = {
-        outcome: 'completed', summary: content.trim(), completedAt: this.now(), evidenceRefs,
-      };
-      state.phase = 'completed';
-      state.activeNode = 'round';
-      return;
-    }
     messages.push({
       role: 'user',
       content: [
@@ -603,7 +590,6 @@ function roundInstruction(state: Readonly<GoalAgentStateV1>): string {
 }
 
 function roleFor(state: Readonly<GoalAgentStateV1>): string {
-  if (state.request.requestKind === 'query') return state.world.latest ? 'answer from observed facts' : 'observe query facts';
   if (!state.rootGoal) return 'understand and create the root goal';
   if (!state.world.latest) return 'observe the current world';
   if (state.action.result?.ok === false || state.verdict?.decision === 'revise_action' || state.verdict?.decision === 'replan') {

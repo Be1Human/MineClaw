@@ -703,7 +703,7 @@ describe('LLMToolLoop (function calling)', () => {
   it('BUG-CROSS-56 · MainBrain 提交 GoalAgent 时保留玩家完整高层原文', async () => {
     const original = '请创建10个不可合并的有序任务，让背包最终有10个橡木原木';
     const { llm } = makeMockLLM([
-      fcResponse('submit_goal_request', { requestText: '背包有1个原木', requestKind: 'query' }),
+      fcResponse('submit_goal_request', { requestText: '采集1个原木并放进背包', requestKind: 'task' }),
     ]);
     const { dispatcher } = makeMockDispatcher();
     const submissions: ToolCall[] = [];
@@ -741,7 +741,7 @@ describe('LLMToolLoop (function calling)', () => {
   it('BUG-CROSS-62 · MainBrain 将误报为 query 的箱间搬运请求纠正为 task', async () => {
     const original = '把左边箱子里的八根橡木原木搬到右边箱子';
     const { llm } = makeMockLLM([
-      fcResponse('submit_goal_request', { requestText: '右边箱子里有什么', requestKind: 'query' }),
+      fcResponse('submit_goal_request', { requestText: '打开右边的箱子', requestKind: 'task' }),
     ]);
     const { dispatcher } = makeMockDispatcher();
     const submissions: ToolCall[] = [];

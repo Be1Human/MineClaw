@@ -502,7 +502,7 @@ export class GoalAgent {
     } else {
       const outcome = state.terminal?.outcome ?? 'failed';
       this.publishReport(request, {
-        status: outcome === 'completed' ? (request.requestKind === 'query' ? 'answered' : 'completed')
+        status: outcome === 'completed' ? 'completed'
           : outcome === 'cancelled' ? 'cancelled' : 'failed',
         summary: state.terminal?.summary ?? state.verdict?.summary ?? `GoalAgent ${outcome}`,
         evidence: evidenceRefs.map(ref => ({ type: 'root_verdict', ref, observedAt })),

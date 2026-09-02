@@ -2,13 +2,12 @@ import type { ToolDefinition } from '../types.js';
 
 export const goalAgentTools: ToolDefinition[] = [{
   name: 'submit_goal_request',
-  description: '这是你的内部执行循环，也是唯一游戏能力入口；Planner、Actor、Critic、Recovery 等节点共享同一上下文，仍然是你在做。可委托完整 task，也可先 query 游戏事实；禁止在 MainBrain 拆原子动作。准备型 query 必须标记 prepare_task，确保原任务能续接。',
+  description: '这是你的内部执行循环，也是唯一游戏任务入口；Planner、Actor、Critic、Recovery 等节点共享同一上下文，仍然是你在做。只提交任务/取消；实时事实查询走独立 query 合同（KnowledgeQueryV1）。',
   parameters: {
     type: 'object',
     properties: {
       requestText: { type: 'string', description: '完整游戏任务；玩家任务尽量保留原始意图，自主任务填写自然语言高层目标' },
-      requestKind: { type: 'string', enum: ['task', 'query', 'cancel'] },
-      queryPurpose: { type: 'string', enum: ['answer_player', 'prepare_task'], description: '仅 query 使用：直接回答玩家，或为当前任务准备事实' },
+      requestKind: { type: 'string', enum: ['task', 'cancel'] },
       constraints: { type: 'array', items: { type: 'string' } },
     },
     required: ['requestText', 'requestKind'],
@@ -21,13 +20,12 @@ export const goalAgentTools: ToolDefinition[] = [{
     const requestText = typeof input.requestText === 'string' ? input.requestText.trim() : '';
     if (!requestText) throw new Error('invalid_goal_request:requestText 缺失');
     const requestKind = input.requestKind;
-    if (requestKind !== 'task' && requestKind !== 'query' && requestKind !== 'cancel') {
+    if (requestKind !== 'task' && requestKind !== 'cancel') {
       throw new Error('invalid_goal_request:requestKind');
     }
     const receipt = ctx.goalAgentPort.request({
       requestText,
       requestKind,
-      queryPurpose: input.queryPurpose === 'prepare_task' ? 'prepare_task' : 'answer_player',
       constraints: Array.isArray(input.constraints)
         ? input.constraints.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
         : undefined,

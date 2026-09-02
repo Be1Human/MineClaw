@@ -233,8 +233,7 @@ export class GoalAgentPort {
 
   request(input: {
     requestText: string;
-    requestKind: 'task' | 'query' | 'cancel';
-    queryPurpose?: 'answer_player' | 'prepare_task';
+    requestKind: 'task' | 'cancel';
     constraints?: string[];
     initiative?: GoalInitiativeProvenanceV2;
   }): GoalMessageReceiptV2 {

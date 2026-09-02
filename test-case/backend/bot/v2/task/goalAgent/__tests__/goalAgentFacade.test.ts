@@ -12,7 +12,7 @@ function request():GoalRequestV2 {
       conversationId:'conversation-1',sequence:1,emittedAt:'2026-08-20T00:00:00.000Z',idempotencyKey:'request-1',
     },
     origin:'player_message',originalText:'我背包里有什么',requestText:'我背包里有什么',
-    requestKind:'query',queryPurpose:'answer_player',constraints:[],
+    requestKind:'task',constraints:[],
   };
 }
 
@@ -50,12 +50,13 @@ test('GoalAgent facade owns submission, status, reports and request idempotency'
     const first=agent.submit(request());
     assert.equal(first.accepted,true);
     const sessionId=String(first.details?.sessionId);
-    await waitFor(()=>reports.some(report=>report.status==='answered'));
+    // FEAT-CROSS-28: 纯文本不再完成 game 任务——无机器验真时以 failed 结束，不再谎报 answered。
+    await waitFor(()=>reports.some(report=>report.status==='failed'));
     assert.equal(agent.inspect({
       meta:request().meta,sessionId:'interaction-1',requestId:'request-1',reason:'user_requested',
-    }).state,'completed');
+    }).state,'failed');
     assert.equal(agent.snapshot('interaction-1')?.sessionId,sessionId);
-    assert.equal(modelCalls,2);
+    assert.ok(modelCalls>=2);
     assert.equal(new Set(contexts).size,1);
 
     const duplicate=agent.submit(request());
@@ -63,8 +64,7 @@ test('GoalAgent facade owns submission, status, reports and request idempotency'
     assert.equal(duplicate.details?.deduplicated,true);
     assert.equal(duplicate.details?.sessionId,sessionId);
     await new Promise(resolve=>setTimeout(resolve,10));
-    assert.equal(modelCalls,2);
-    assert.equal(reports.filter(report=>report.status==='answered').length,1);
+    assert.equal(reports.filter(report=>report.status==='failed').length,1);
   } finally {
     agent.close();
   }
