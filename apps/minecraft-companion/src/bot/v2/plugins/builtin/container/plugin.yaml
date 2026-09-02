@@ -1,0 +1,66 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.container
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+    - pluginId: mineclaw.storage-system
+      range: ^1.0.0
+    - pluginId: mineclaw.inventory
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.inventory.observation.owner-inventory
+  - body.submit:mineclaw.storage-system.atomic.open_container
+  - body.submit:mineclaw.storage-system.atomic.transfer_chest
+  - body.submit:mineclaw.storage-system.atomic.deposit
+  - body.submit:mineclaw.storage-system.atomic.withdraw
+contributions:
+  - kind: goal
+    id: mineclaw.container.goal.chest-access
+    version: 1.0.0
+    target:
+      registryId: mineclaw.container.goal.chest-access
+      goalKind: item
+      aliases:
+        - 存取
+        - 放箱子
+        - 拿箱子
+        - 存东西
+        - 取东西
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.container.verification.chest-access-done
+  - kind: planning
+    id: mineclaw.container.planning.chest-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.container.operation.chest-access
+  - kind: verification
+    id: mineclaw.container.verification.chest-access-done
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.container.execution.chest-access
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.container.operation.chest-access
+      goalContributionId: mineclaw.container.goal.chest-access
+      bindingContributionId: mineclaw.container.goal.chest-access
+      factKinds:
+        - inventory
+      candidateContributionId: mineclaw.container.planning.chest-candidates
+      predicateContributionId: mineclaw.container.verification.chest-access-done
+      progressContributionId: mineclaw.container.progress.chest
+      resultContributionId: mineclaw.container.result.chest
+      cancellable: true
+  - kind: planning
+    id: mineclaw.container.progress.chest
+    version: 1.0.0
+    operationIds:
+      - mineclaw.container.operation.chest-access
+  - kind: result
+    id: mineclaw.container.result.chest
+    version: 1.0.0

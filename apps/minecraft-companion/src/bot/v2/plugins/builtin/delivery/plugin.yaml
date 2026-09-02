@@ -1,0 +1,62 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.delivery
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+    - pluginId: mineclaw.minecraft-presence
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.minecraft-presence.observation.owner-context
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+  - body.submit:mineclaw.minecraft-system.atomic.toss
+contributions:
+  - kind: goal
+    id: mineclaw.delivery.goal.deliver-to-owner
+    version: 1.0.0
+    target:
+      registryId: mineclaw.delivery.goal.deliver-to-owner
+      goalKind: item
+      aliases:
+        - 交给
+        - 送给你
+        - 给你
+        - 交给你
+        - deliver
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.delivery.verification.delivered
+  - kind: planning
+    id: mineclaw.delivery.planning.deliver-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.delivery.operation.deliver-to-owner
+  - kind: verification
+    id: mineclaw.delivery.verification.delivered
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.delivery.execution.deliver-to-owner
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.delivery.operation.deliver-to-owner
+      goalContributionId: mineclaw.delivery.goal.deliver-to-owner
+      bindingContributionId: mineclaw.delivery.goal.deliver-to-owner
+      factKinds:
+        - owner_location
+      candidateContributionId: mineclaw.delivery.planning.deliver-candidates
+      predicateContributionId: mineclaw.delivery.verification.delivered
+      progressContributionId: mineclaw.delivery.progress.deliver
+      resultContributionId: mineclaw.delivery.result.deliver
+      cancellable: true
+  - kind: planning
+    id: mineclaw.delivery.progress.deliver
+    version: 1.0.0
+    operationIds:
+      - mineclaw.delivery.operation.deliver-to-owner
+  - kind: result
+    id: mineclaw.delivery.result.deliver
+    version: 1.0.0
