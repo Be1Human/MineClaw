@@ -1,0 +1,13 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.llm-system
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: system
+entry: index
+dependencies: {}
+permissions:
+  - system.llm
+contributions:
+  - kind: integration
+    id: mineclaw.llm-system.integration.llm
+    version: 1.0.0

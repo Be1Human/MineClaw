@@ -1,0 +1,57 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.flee
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+contributions:
+  - kind: goal
+    id: mineclaw.flee.goal.flee-threat
+    version: 1.0.0
+    target:
+      registryId: mineclaw.flee.goal.flee-threat
+      goalKind: location
+      aliases:
+        - 逃跑
+        - 撤退
+        - 躲开
+        - flee
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.flee.verification.fled
+  - kind: planning
+    id: mineclaw.flee.planning.flee-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.flee.operation.flee-threat
+  - kind: verification
+    id: mineclaw.flee.verification.fled
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.flee.execution.flee-threat
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.flee.operation.flee-threat
+      goalContributionId: mineclaw.flee.goal.flee-threat
+      bindingContributionId: mineclaw.flee.goal.flee-threat
+      factKinds:
+        - self_location
+      candidateContributionId: mineclaw.flee.planning.flee-candidates
+      predicateContributionId: mineclaw.flee.verification.fled
+      progressContributionId: mineclaw.flee.progress.flee
+      resultContributionId: mineclaw.flee.result.flee
+      cancellable: true
+  - kind: planning
+    id: mineclaw.flee.progress.flee
+    version: 1.0.0
+    operationIds:
+      - mineclaw.flee.operation.flee-threat
+  - kind: result
+    id: mineclaw.flee.result.flee
+    version: 1.0.0

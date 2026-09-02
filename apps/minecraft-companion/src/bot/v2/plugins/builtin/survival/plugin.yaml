@@ -1,0 +1,59 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.survival
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - body.submit:mineclaw.minecraft-system.atomic.use_item
+  - body.submit:mineclaw.minecraft-system.atomic.sleep
+contributions:
+  - kind: goal
+    id: mineclaw.survival.goal.survive
+    version: 1.0.0
+    target:
+      registryId: mineclaw.survival.goal.survive
+      goalKind: item
+      aliases:
+        - 睡觉
+        - 吃东西
+        - 恢复
+        - eat
+        - sleep
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.survival.verification.survived
+  - kind: planning
+    id: mineclaw.survival.planning.survive-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.survival.operation.survive
+  - kind: verification
+    id: mineclaw.survival.verification.survived
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.survival.execution.survive
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.survival.operation.survive
+      goalContributionId: mineclaw.survival.goal.survive
+      bindingContributionId: mineclaw.survival.goal.survive
+      factKinds:
+        - self_location
+      candidateContributionId: mineclaw.survival.planning.survive-candidates
+      predicateContributionId: mineclaw.survival.verification.survived
+      progressContributionId: mineclaw.survival.progress.survive
+      resultContributionId: mineclaw.survival.result.survive
+      cancellable: true
+  - kind: planning
+    id: mineclaw.survival.progress.survive
+    version: 1.0.0
+    operationIds:
+      - mineclaw.survival.operation.survive
+  - kind: result
+    id: mineclaw.survival.result.survive
+    version: 1.0.0

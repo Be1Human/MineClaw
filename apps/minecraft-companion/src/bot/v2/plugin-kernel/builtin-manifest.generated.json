@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T15:54:06.895Z",
+  "generatedAt": "2026-09-02T15:56:41.908Z",
   "schema": "mineclaw.builtin-index/v1",
   "plugins": [
     {
@@ -150,6 +150,47 @@
         "plugin-sdk/contracts/result.ts",
         "plugin-sdk/contracts/integration.ts",
         "plugin-sdk/identity.ts"
+      ]
+    },
+    {
+      "pluginId": "mineclaw.ambient",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.ambient",
+      "manifestHash": "50a6ab245493b5003c8830b7b3a7abd9dc8aa3de11ea73480fc742874ea3ced1",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.ambient",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {
+          "plugins": [
+            {
+              "pluginId": "mineclaw.minecraft-presence",
+              "range": "^1.0.0"
+            }
+          ]
+        },
+        "permissions": [
+          "fact.read:mineclaw.minecraft-presence.observation.owner-context"
+        ],
+        "contributions": [
+          {
+            "kind": "proactive",
+            "id": "mineclaw.ambient.proactive.owner-presence",
+            "version": "1.0.0",
+            "label": "主人在场观察",
+            "description": "主人上线/出现时主动反馈",
+            "goalTarget": "mineclaw.minecraft-presence.observation.owner-context",
+            "rate": "slow",
+            "priority": 0.2
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts"
       ]
     },
     {
@@ -587,6 +628,107 @@
       ]
     },
     {
+      "pluginId": "mineclaw.flee",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.flee",
+      "manifestHash": "93f45206998c0d41219d6b88cba2bde0f46d8c389322ec5c7eef1d3a8dd02a9b",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.flee",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {
+          "plugins": [
+            {
+              "pluginId": "mineclaw.minecraft-system",
+              "range": "^1.0.0"
+            }
+          ]
+        },
+        "permissions": [
+          "body.submit:mineclaw.minecraft-system.atomic.move-to"
+        ],
+        "contributions": [
+          {
+            "kind": "goal",
+            "id": "mineclaw.flee.goal.flee-threat",
+            "version": "1.0.0",
+            "target": {
+              "registryId": "mineclaw.flee.goal.flee-threat",
+              "goalKind": "location",
+              "aliases": [
+                "逃跑",
+                "撤退",
+                "躲开",
+                "flee"
+              ],
+              "successCriteria": [
+                {
+                  "type": "predicate",
+                  "predicate": "mineclaw.flee.verification.fled"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.flee.planning.flee-candidates",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.flee.operation.flee-threat"
+            ]
+          },
+          {
+            "kind": "verification",
+            "id": "mineclaw.flee.verification.fled",
+            "version": "1.0.0"
+          },
+          {
+            "kind": "execution",
+            "id": "mineclaw.flee.execution.flee-threat",
+            "version": "1.0.0",
+            "operation": {
+              "operationId": "mineclaw.flee.operation.flee-threat",
+              "goalContributionId": "mineclaw.flee.goal.flee-threat",
+              "bindingContributionId": "mineclaw.flee.goal.flee-threat",
+              "factKinds": [
+                "self_location"
+              ],
+              "candidateContributionId": "mineclaw.flee.planning.flee-candidates",
+              "predicateContributionId": "mineclaw.flee.verification.fled",
+              "progressContributionId": "mineclaw.flee.progress.flee",
+              "resultContributionId": "mineclaw.flee.result.flee",
+              "cancellable": true
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.flee.progress.flee",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.flee.operation.flee-threat"
+            ]
+          },
+          {
+            "kind": "result",
+            "id": "mineclaw.flee.result.flee",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts",
+        "plugin-sdk/contracts/planning.ts",
+        "plugin-sdk/contracts/verification.ts",
+        "plugin-sdk/contracts/execution.ts",
+        "plugin-sdk/contracts/result.ts",
+        "plugin-sdk/identity.ts"
+      ]
+    },
+    {
       "pluginId": "mineclaw.follow",
       "kind": "domain",
       "entryKey": "plugins/builtin/mineclaw.follow",
@@ -869,6 +1011,35 @@
       ]
     },
     {
+      "pluginId": "mineclaw.llm-system",
+      "kind": "system",
+      "entryKey": "plugins/builtin/mineclaw.llm-system",
+      "manifestHash": "de5bcf22be8d339f4d0bd0ac49a4c1ef24b07f2a39da95e04f115c9de39dd1c0",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.llm-system",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "system",
+        "entry": "index",
+        "dependencies": {},
+        "permissions": [
+          "system.llm"
+        ],
+        "contributions": [
+          {
+            "kind": "integration",
+            "id": "mineclaw.llm-system.integration.llm",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts"
+      ]
+    },
+    {
       "pluginId": "mineclaw.minecraft-presence",
       "kind": "domain",
       "entryKey": "plugins/builtin/mineclaw.minecraft-presence",
@@ -1121,6 +1292,109 @@
         "pter/GameAdapter.ts",
         "infra/eventBus.ts",
         "types.ts"
+      ]
+    },
+    {
+      "pluginId": "mineclaw.survival",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.survival",
+      "manifestHash": "5b4b64bfef48dc24a115f276afa71d969e6b198f8c337c5ace1942203468c972",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.survival",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {
+          "plugins": [
+            {
+              "pluginId": "mineclaw.minecraft-system",
+              "range": "^1.0.0"
+            }
+          ]
+        },
+        "permissions": [
+          "body.submit:mineclaw.minecraft-system.atomic.use_item",
+          "body.submit:mineclaw.minecraft-system.atomic.sleep"
+        ],
+        "contributions": [
+          {
+            "kind": "goal",
+            "id": "mineclaw.survival.goal.survive",
+            "version": "1.0.0",
+            "target": {
+              "registryId": "mineclaw.survival.goal.survive",
+              "goalKind": "item",
+              "aliases": [
+                "睡觉",
+                "吃东西",
+                "恢复",
+                "eat",
+                "sleep"
+              ],
+              "successCriteria": [
+                {
+                  "type": "predicate",
+                  "predicate": "mineclaw.survival.verification.survived"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.survival.planning.survive-candidates",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.survival.operation.survive"
+            ]
+          },
+          {
+            "kind": "verification",
+            "id": "mineclaw.survival.verification.survived",
+            "version": "1.0.0"
+          },
+          {
+            "kind": "execution",
+            "id": "mineclaw.survival.execution.survive",
+            "version": "1.0.0",
+            "operation": {
+              "operationId": "mineclaw.survival.operation.survive",
+              "goalContributionId": "mineclaw.survival.goal.survive",
+              "bindingContributionId": "mineclaw.survival.goal.survive",
+              "factKinds": [
+                "self_location"
+              ],
+              "candidateContributionId": "mineclaw.survival.planning.survive-candidates",
+              "predicateContributionId": "mineclaw.survival.verification.survived",
+              "progressContributionId": "mineclaw.survival.progress.survive",
+              "resultContributionId": "mineclaw.survival.result.survive",
+              "cancellable": true
+            }
+          },
+          {
+            "kind": "planning",
+            "id": "mineclaw.survival.progress.survive",
+            "version": "1.0.0",
+            "operationIds": [
+              "mineclaw.survival.operation.survive"
+            ]
+          },
+          {
+            "kind": "result",
+            "id": "mineclaw.survival.result.survive",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts",
+        "plugin-sdk/contracts/planning.ts",
+        "plugin-sdk/contracts/verification.ts",
+        "plugin-sdk/contracts/execution.ts",
+        "plugin-sdk/contracts/result.ts",
+        "plugin-sdk/identity.ts"
       ]
     }
   ]

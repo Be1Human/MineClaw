@@ -1,0 +1,21 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.ambient
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-presence
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.minecraft-presence.observation.owner-context
+contributions:
+  - kind: proactive
+    id: mineclaw.ambient.proactive.owner-presence
+    version: 1.0.0
+    label: 主人在场观察
+    description: 主人上线/出现时主动反馈
+    goalTarget: mineclaw.minecraft-presence.observation.owner-context
+    rate: slow
+    priority: 0.2
