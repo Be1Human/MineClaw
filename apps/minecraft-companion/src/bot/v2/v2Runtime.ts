@@ -50,7 +50,9 @@ import {
   createRuntimeObservationPorts,
   type RuntimePluginKernelResult,
 } from './infra/pluginRuntimeBridge.js';
-import { createAtomicEntryResolver, type GenerationAtomicEntryPort } from './task/execution/generationResolversPorts.js';
+import { createAtomicEntryResolver, createContractResolver, type GenerationAtomicEntryPort } from './task/execution/generationResolversPorts.js';
+import { projectAtomicContractsToKnowledge } from './plugin-kernel/generationKnowledgeProjection.js';
+import type { ActionContractDefinition } from './atomic/contracts/atomicContractRegistry.js';
 import type { FailureCode } from './task/failureReason.js';
 import { TaskRegistry } from './knowledge/taskRegistry.js';
 import { createRuntimeCapabilityKnowledge } from './capabilities/capabilityRuntimeProjection.js';
@@ -968,9 +970,9 @@ export class V2Runtime {
         domainKnowledge,
         capabilityKnowledge: createRuntimeCapabilityKnowledge(() => ({
           snapshot: capabilitySnapshot, routes: capabilityRouter.list(),
-          atomics: createDefaultAtomicContractRegistry().list(), behaviors: this.behaviorRegistry.list(),
+          atomics: this.runtimeAtomicKnowledge(), behaviors: this.behaviorRegistry.list(),
           executionSupport: [
-            ...createDefaultAtomicContractRegistry().list().map(value=>({kind:'atomic' as const,id:value.action})),
+            ...this.runtimeAtomicKnowledge().map(value=>({kind:'atomic' as const,id:value.action})),
             ...this.behaviorRegistry.list().map(value=>({kind:'behavior' as const,id:value.id})),
           ].map(value=>{
             const snapshot = this.runtimeSnapshotRefSafe();
@@ -2098,6 +2100,19 @@ export class V2Runtime {
         return createAtomicEntryResolver(kernel.resolvers).resolve(snapshot, atomicId);
       },
     };
+  }
+
+  /**
+   * P3-4 · capabilityKnowledge 的原子知识经当前代 contract list 投影
+   * （不再自建默认 registry）；kernel 未就绪 → 空列表（展示降级，执行层仍由 resolver fail-closed）。
+   */
+  private runtimeAtomicKnowledge(): readonly ActionContractDefinition[] {
+    const kernel = this.pluginKernel;
+    if (!kernel?.ok || !kernel.resolvers) return [];
+    const snapshot = this.runtimeSnapshotRefSafe();
+    if (!snapshot) return [];
+    const resolved = createContractResolver(kernel.resolvers).list(snapshot);
+    return resolved.status === 'resolved' ? projectAtomicContractsToKnowledge(resolved.value) : [];
   }
 
   /**
