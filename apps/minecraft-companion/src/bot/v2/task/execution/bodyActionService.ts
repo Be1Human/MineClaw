@@ -139,8 +139,14 @@ export class BodyActionService {
       const snapshot = policy.owner.kind === 'goal'
         ? (policy.snapshot ?? failRebind('goal_snapshot_missing'))
         : this.deps.getSnapshot();
+      // P3-4 · 原子命令的贡献引用经固定代解析（P08 同 ref；不再写死 legacy-builtin）。
+      // invoke_behavior/stop/stop_follow 是控制/行为命令：行为贡献仍处一次性迁移命名空间，
+      // 控制命令无设备贡献，二者保持 ownerContribution。
+      const contribution = request.type === 'invoke_behavior' || request.type === 'stop' || request.type === 'stop_follow'
+        ? ownerContribution(request)
+        : resolveAtomicContribution(this.deps.atomicResolver, snapshot, request.type);
       const intent: OperationIntent = {
-        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, ownerContribution(request), snapshot),scope:policy.scope,
+        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, contribution, snapshot),scope:policy.scope,
         deadlineAt:start+Math.min(request.timeout_ms,tuning().controlledExecution.operationTimeoutMs),
         budget:{maxActions:tuning().controlledExecution.maxSubActions},priority:request.priority,
         preemption:request.interrupt_level==='hard' ? 'request':'none',
@@ -216,4 +222,21 @@ function ownerContribution(request: ActionRequest): ContributionRef {
 /** P3-4 · Goal 命令没有固定快照 = 旧持久记录；fail-closed needs_rebind，不转查最新代。 */
 function failRebind(reason: string): never {
   throw new Error(`needs_rebind:${reason}`);
+}
+
+/** P3-4 · 原子贡献引用经固定代解析；in_doubt（代内缺失/未知原子）→ fail-closed。 */
+function resolveAtomicContributionFail(reason: string): never {
+  throw new Error(`needs_rebind:${reason}`);
+}
+
+function resolveAtomicContribution(
+  resolver: GenerationAtomicEntryPort,
+  snapshot: import('../../plugin-sdk/identity.js').RegistrySnapshotRef,
+  actionType: string,
+): import('../../plugin-sdk/identity.js').ContributionRef {
+  const entry = resolver.resolve(snapshot, actionType);
+  if (entry.status === 'in_doubt') {
+    return resolveAtomicContributionFail(`atomic_contribution_missing:${actionType}:${entry.reason}`);
+  }
+  return entry.value.contribution;
 }

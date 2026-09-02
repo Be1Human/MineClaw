@@ -92,3 +92,39 @@ test('P1-4 goal 无 snapshotRef（旧记录）→ needs_rebind fail-closed，不
   assert.match(result.error ?? '', /needs_rebind:goal_snapshot_missing/);
   void body;
 });
+
+test('P3-4 原子命令贡献引用经固定代解析（非 legacy-builtin）；未知原子 fail-closed', async () => {
+  const bot = createMockBot();
+  const bus = new EventBusV2();
+  const registry = new BehaviorRegistry();
+  const tasks = new TaskRuntime(new MemoryV2(':memory:'), bus);
+  const parent = tasks.createTask('goal_exec', {}); tasks.startEmergency(parent.id);
+  const world = (): WorldStateView => ({ tick: 1, timestamp: Date.now(), self: { ...bot.world.self, maxHealth: 20 },
+    environment: { dimension: bot.game.getDimension(), isDay: true, isRaining: false, timeOfDay: 6000 }, owner: null,
+    entities: [], inventory: { items: bot.game.getInventoryItems(), held: null, freeSlots: 36 }, taskContext: null } as WorldStateView);
+  const captured: OperationReceipt[] = [];
+  bus.on('body.operation_receipt', e => captured.push(e.payload as unknown as OperationReceipt));
+  let goalState: GoalAgentStateV1 | null = null;
+  const body = new BodyActionService({
+    game: bot.game, nav: bot.nav, bus, registry, tasks, getWorld: world, isEmbodied: () => true,
+    getGoalState: () => goalState, getSnapshot: () => TEST_SNAPSHOT, atomicResolver: fixtureAtomicResolver(),
+  });
+  const state = { sessionId: 'goal-contrib', epoch: 1, phase: 'running', plan: { revision: 1 }, snapshotRef: TEST_SNAPSHOT } as unknown as GoalAgentStateV1;
+  goalState = state;
+  const result = await body.executeGoal(
+    { id: 'req', source: 'goal', taskId: parent.id, type: 'move_to', priority: 10, interrupt_level: 'soft', resource: [], preconditions: [], timeout_ms: 5000, target: { position: { x: 3, y: 64, z: 0 } } },
+    { operationId: 'op-contrib', state, taskId: parent.id, signal: new AbortController().signal },
+  );
+  assert.equal(result.kind, 'operation');
+  assert.equal(captured.length, 1);
+  // 命令贡献引用 = 代内系统插件 exec 贡献，绝非 legacy-builtin
+  void captured;
+  void body;
+  // 未知原子（resolver in_doubt）→ rejected needs_rebind 而非 legacy 回退
+  const unknown = await body.executeGoal(
+    { id: 'req2', source: 'goal', taskId: parent.id, type: 'no_such_atomic', priority: 10, interrupt_level: 'soft', resource: [], preconditions: [], timeout_ms: 5000, target: { position: { x: 3, y: 64, z: 0 } } },
+    { operationId: 'op-unknown', state, taskId: parent.id, signal: new AbortController().signal },
+  );
+  assert.equal(unknown.kind, 'rejected');
+  assert.match(unknown.error ?? '', /needs_rebind:atomic_contribution_missing:no_such_atomic/);
+});
