@@ -1,0 +1,64 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.gathering
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+    - pluginId: mineclaw.inventory
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.inventory.observation.owner-inventory
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+  - body.submit:mineclaw.minecraft-system.atomic.dig
+contributions:
+  - kind: goal
+    id: mineclaw.gathering.goal.gather-material
+    version: 1.0.0
+    target:
+      registryId: mineclaw.gathering.goal.gather-material
+      goalKind: item
+      aliases:
+        - 采集
+        - 收集
+        - 挖
+        - 砍
+        - gather
+        - collect
+        - mine
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.gathering.verification.gathered
+  - kind: planning
+    id: mineclaw.gathering.planning.gather-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.gathering.operation.gather-material
+  - kind: verification
+    id: mineclaw.gathering.verification.gathered
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.gathering.execution.gather-material
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.gathering.operation.gather-material
+      goalContributionId: mineclaw.gathering.goal.gather-material
+      bindingContributionId: mineclaw.gathering.goal.gather-material
+      factKinds:
+        - inventory
+      candidateContributionId: mineclaw.gathering.planning.gather-candidates
+      predicateContributionId: mineclaw.gathering.verification.gathered
+      progressContributionId: mineclaw.gathering.progress.gather
+      resultContributionId: mineclaw.gathering.result.gather
+      cancellable: true
+  - kind: planning
+    id: mineclaw.gathering.progress.gather
+    version: 1.0.0
+    operationIds:
+      - mineclaw.gathering.operation.gather-material
+  - kind: result
+    id: mineclaw.gathering.result.gather
+    version: 1.0.0

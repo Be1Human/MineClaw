@@ -1,0 +1,62 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.crafting
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+    - pluginId: mineclaw.inventory
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.inventory.observation.owner-inventory
+  - body.submit:mineclaw.minecraft-system.atomic.equip
+  - body.submit:mineclaw.minecraft-system.atomic.use_item
+contributions:
+  - kind: goal
+    id: mineclaw.crafting.goal.craft-item
+    version: 1.0.0
+    target:
+      registryId: mineclaw.crafting.goal.craft-item
+      goalKind: item
+      aliases:
+        - 合成
+        - 制作
+        - 造
+        - craft
+        - make
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.crafting.verification.crafted
+  - kind: planning
+    id: mineclaw.crafting.planning.craft-candidates
+    version: 1.0.0
+    operationIds:
+      - mineclaw.crafting.operation.craft-item
+  - kind: verification
+    id: mineclaw.crafting.verification.crafted
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.crafting.execution.craft-item
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.crafting.operation.craft-item
+      goalContributionId: mineclaw.crafting.goal.craft-item
+      bindingContributionId: mineclaw.crafting.goal.craft-item
+      factKinds:
+        - inventory
+      candidateContributionId: mineclaw.crafting.planning.craft-candidates
+      predicateContributionId: mineclaw.crafting.verification.crafted
+      progressContributionId: mineclaw.crafting.progress.craft
+      resultContributionId: mineclaw.crafting.result.craft
+      cancellable: true
+  - kind: planning
+    id: mineclaw.crafting.progress.craft
+    version: 1.0.0
+    operationIds:
+      - mineclaw.crafting.operation.craft-item
+  - kind: result
+    id: mineclaw.crafting.result.craft
+    version: 1.0.0
