@@ -72,6 +72,7 @@ export class KnowledgeAnswerValidator {
       const result = results.find(r => r.factKind === factKind);
       if (!result) continue;
       if (result.outcome.status === 'fulfilled') {
+        if (isEmptyFactPayload(result.outcome.fact.payload)) continue; // 完整扫描但零条目 → not_found（范围性）
         facts.push({
           factKind,
           payload: result.outcome.fact.payload,
@@ -132,6 +133,18 @@ export class KnowledgeAnswerValidator {
       registryGeneration: query.registryGeneration,
     });
   }
+}
+
+function isEmptyFactPayload(payload: Readonly<Record<string, unknown>>): boolean {
+  const count = payload.count;
+  if (typeof count === 'number') return count <= 0;
+  const entries = payload.entries;
+  if (Array.isArray(entries)) return entries.length === 0;
+  const crops = payload.crops;
+  if (Array.isArray(crops)) return crops.length === 0;
+  const slots = payload.slots;
+  if (Array.isArray(slots)) return slots.length === 0;
+  return Object.keys(payload).length === 0;
 }
 
 export class QueryRunner {
