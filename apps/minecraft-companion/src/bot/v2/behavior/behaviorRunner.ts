@@ -5,10 +5,11 @@ import { actionCommand } from '../task/execution/actionCommand.js';
 import { failureDetail, failureFromLegacy } from '../task/execution/failureEnvelope.js';
 import type { IBehavior, AdaptiveBehaviorContext } from './types.js';
 import { assertBehaviorDefinition } from './behaviorDefinition.js';
+import type { GenerationAtomicEntryPort } from '../task/execution/generationResolversPorts.js';
 
 /** One-way composition: Behavior -> authorized child operation -> Atomic. */
 export class BehaviorRunner {
-  constructor(private readonly deps: { getWorld(): WorldStateView; bus: EventBusV2 }) {}
+  constructor(private readonly deps: { getWorld(): WorldStateView; bus: EventBusV2; atomicResolver: GenerationAtomicEntryPort }) {}
 
   async run(behavior: IBehavior, context: ControlledExecutionContext): Promise<OperationOutcome> {
     assertBehaviorDefinition(behavior);
@@ -20,8 +21,12 @@ export class BehaviorRunner {
         throw new Error('behavior_child_must_be_atomic');
       }
       const started = Date.now();
-      const childContribution = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: `atomic:${request.type}`, contributionVersion: '1.0.0' };
-      const result = await context.execute(actionCommand(request, childContribution, context.command.snapshot));
+      // P3-4 · 子原子贡献引用同源（固定代解析）；in_doubt → fail-closed 子命令失败。
+      const entry = this.deps.atomicResolver.resolve(context.command.snapshot, request.type);
+      if (entry.status === 'in_doubt') {
+        throw new Error(`needs_rebind:atomic_contribution_missing:${request.type}:${entry.reason}`);
+      }
+      const result = await context.execute(actionCommand(request, entry.value.contribution, context.command.snapshot));
       context.assertCurrent('behavior_after_child');
       return { ok: result.ok, request, durationMs: Date.now() - started,
         ...(result.failure ? { error: failureDetail(result.failure) } : {}) };

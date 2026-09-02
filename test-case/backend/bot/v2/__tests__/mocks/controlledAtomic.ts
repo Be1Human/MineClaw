@@ -35,7 +35,9 @@ export async function runControlledAtomic(request: ActionRequest, fixture: Atomi
         if (req.type==='invoke_behavior') {
           const behavior=fixture.behaviorRegistry?.get(String(req.target?.behavior));
           if (!behavior) return {ok:false,failure:failureFromLegacy('behavior_not_found')};
-          return new BehaviorRunner({bus:fixture.bus,getWorld:()=>fixture.worldState!}).run(behavior,{
+          return new BehaviorRunner({bus:fixture.bus,getWorld:()=>fixture.worldState!,atomicResolver:{
+            resolve:(_snapshot, atomicId)=>({status:'resolved' as const,value:{executor:{id:`a.${atomicId}`,version:'1.0.0',execute:async()=>({ok:true})},contract:null,contribution:{pluginId:'mineclaw.minecraft-system',pluginVersion:'1.0.0',contributionId:'mineclaw.minecraft-system.execution.atomics',contributionVersion:'1.0.0'}}}),
+          }}).run(behavior,{
             ...context,command:{ref:{id:`behavior:${behavior.id}`,contribution:contribution(`behavior:${behavior.id}`)},snapshot:context.command.snapshot,args:req.target?.behaviorParams ?? {}},
           });
         }
