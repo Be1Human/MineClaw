@@ -45,6 +45,11 @@ import { PreconditionRegistry } from './task/preconditionRegistry.js';
 import { TriggerOutcomeMemory } from './decision/triggerOutcomeMemory.js';
 import { tuning } from './infra/tuning.js';
 import { gamePresenceFromWorld } from './gamePresenceContext.js';
+import {
+  buildRuntimePluginKernel,
+  createRuntimeObservationPorts,
+  type RuntimePluginKernelResult,
+} from './infra/pluginRuntimeBridge.js';
 import type { FailureCode } from './task/failureReason.js';
 import { TaskRegistry } from './knowledge/taskRegistry.js';
 import { createRuntimeCapabilityKnowledge } from './capabilities/capabilityRuntimeProjection.js';
@@ -370,6 +375,11 @@ export class V2Runtime {
     relativeTo:'owner'|'self';referencePosition:{x:number;y:number;z:number};referenceYaw?:number;
     relation:'near'|'right'|'front'|'at';ref:string;
   }>=[];
+  /** FEAT-CROSS-26-001-004-004 · P3-4 插件内核装配结果（boot 异步；fail-visible 事件同步到 bus）。 */
+  private pluginKernelResult: RuntimePluginKernelResult | null = null;
+  readonly pluginKernelReady: Promise<RuntimePluginKernelResult> | null;
+  /** 已 boot 完成的内核结果（null=未就绪）；仅只读暴露，切换由 P3-4 同一提交完成。 */
+  get pluginKernel(): RuntimePluginKernelResult | null { return this.pluginKernelResult; }
 
   constructor(private readonly cfg: V2RuntimeConfig) {
     const log = (msg: string) => cfg.onLog?.('info', `[v2] ${msg}`);
@@ -1634,6 +1644,34 @@ export class V2Runtime {
     this.bus.on('heartbeat.executing_watchdog', ev => {
       const p = ev.payload as { tick: number; stuckMs: number; req: string };
       log(`⚠️ executing watchdog · stuck ${p.stuckMs}ms · req=${p.req} · 强制重置`);
+    });
+
+    // FEAT-CROSS-26-001-004-004 · P3-4 第 1 步：装配插件内核（生成索引 + world/设备端口注入）。
+    // boot 异步且 fail-visible：结果同步到 bus 事件与日志，切换提交前不阻断既有启动路径。
+    const runtimeGetWorld = () => this.perception.getWorldState() ?? this.perception.perceive();
+    const observationPorts = createRuntimeObservationPorts(runtimeGetWorld);
+    this.pluginKernelReady = buildRuntimePluginKernel({
+      buildId: `runtime-${cfg.botName ?? 'mineclaw'}-${process.pid}`,
+      systemPorts: {
+        game: cfg.game,
+        nav: cfg.nav,
+        bus: this.bus,
+        getWorld: runtimeGetWorld,
+        inventoryObservation: observationPorts.inventory,
+        ownerContextObservation: observationPorts.owner,
+        ...(llmClient ? { llm: llmClient } : {}),
+      },
+    });
+    void this.pluginKernelReady.then(result => {
+      this.pluginKernelResult = result;
+      this.bus.publish('plugin.kernel.status', result.ok ? 'info' : 'recoverable', {
+        ok: result.ok,
+        installed: result.installed.length,
+        failures: result.failures,
+      });
+      log(result.ok
+        ? `[plugin-kernel] 就绪 · ${result.installed.length} 个插件已发布`
+        : `[plugin-kernel] boot 失败: ${result.failures.join('; ') || 'unknown'}`);
     });
   }
 
