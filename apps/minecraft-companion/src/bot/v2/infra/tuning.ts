@@ -263,6 +263,21 @@ export interface TuningConfig {
     /** FEAT-CROSS-21 · 完成声明被复核拒绝后的同请求重试上限。 */
     confirmationRetryLimit: number;
   };
+  /** FEAT-CROSS-28 · 只读知识查询预算（范围/时效/超时/上限均为行为参数，热加载）。 */
+  knowledgeQuery: {
+    /** 默认查询半径（米/格）。 */
+    defaultRadius: number;
+    /** 查询整体超时 ms。 */
+    timeoutMs: number;
+    /** 单查询最多扇出 Provider 数。 */
+    maxFanOut: number;
+    /** 单 Fact 最大结果条目数。 */
+    maxResultsPerFact: number;
+    /** 结果时效窗口 ms（超出即 stale）。 */
+    maxFreshnessMs: number;
+    /** 玩家侧投递重试上限（至少一次投递）。 */
+    maxDeliveryAttempts: number;
+  };
   /** FEAT-CROSS-07 · 技能固化闭环（Strategy 自学习）· 全参热加载零裸常量 */
   strategy: {
     /** 总开关 · false = 不沉淀、不查库（GoalAgent 永远走 slow） */
@@ -517,6 +532,14 @@ const DEFAULTS: TuningConfig = {
     feedbackInactiveRounds: 5,
     managedTaskTimeoutMs: 110_000,
     confirmationRetryLimit: 1,
+  },
+  knowledgeQuery: {
+    defaultRadius: 8,
+    timeoutMs: 10_000,
+    maxFanOut: 4,
+    maxResultsPerFact: 64,
+    maxFreshnessMs: 60_000,
+    maxDeliveryAttempts: 3,
   },
   strategy: {
     enabled: true,
