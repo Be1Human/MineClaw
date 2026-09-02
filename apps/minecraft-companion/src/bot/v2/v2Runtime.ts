@@ -50,6 +50,7 @@ import {
   createRuntimeObservationPorts,
   type RuntimePluginKernelResult,
 } from './infra/pluginRuntimeBridge.js';
+import { createAtomicEntryResolver, type GenerationAtomicEntryPort } from './task/execution/generationResolversPorts.js';
 import type { FailureCode } from './task/failureReason.js';
 import { TaskRegistry } from './knowledge/taskRegistry.js';
 import { createRuntimeCapabilityKnowledge } from './capabilities/capabilityRuntimeProjection.js';
@@ -818,6 +819,8 @@ export class V2Runtime {
       getGoalState:sessionId=>this.goalAgent?.snapshot(sessionId) ?? null,
       // P3-4 · Task/Safety 命令固定当前已发布插件代；kernel 未就绪显式 fail-closed（needs_rebind:kernel_not_ready）。
       getSnapshot:()=>this.runtimeSnapshotRef(),
+      // P3-4 · 原子存在性经当前代（惰性：kernel boot 后可用；未就绪 accepts fail-closed）。
+      atomicResolver:this.runtimeAtomicResolver(),
     });
 
     if (goalSystemOn && llmClient) {
@@ -2063,6 +2066,23 @@ export class V2Runtime {
   private runtimeSnapshotRefSafe(): import('./plugin-sdk/identity.js').RegistrySnapshotRef | null {
     try { return this.runtimeSnapshotRef(); }
     catch { return null; }
+  }
+
+  /**
+   * P3-4 · 惰性当前代原子解析器：每次 resolve 都经 kernel 最新活动代（boot 完成后生效）。
+   * kernel 未就绪 → in_doubt（fail-closed），绝无 live registry 回退。
+   */
+  private runtimeAtomicResolver(): GenerationAtomicEntryPort {
+    const ports = this;
+    return {
+      resolve(snapshot, atomicId) {
+        const kernel = ports.pluginKernel;
+        if (!kernel?.ok || !kernel.resolvers) {
+          return { status: 'in_doubt', reason: 'kernel_not_ready' };
+        }
+        return createAtomicEntryResolver(kernel.resolvers).resolve(snapshot, atomicId);
+      },
+    };
   }
 
   /**

@@ -26,7 +26,11 @@ function fixture() {
   const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,registry,getWorld:world,
     tasks:{list:()=>[{id:'task',state:'running'}],isRunning:(id:string)=>id==='task'&&running} as never,
     isEmbodied:()=>embodied,getGoalState:()=>goal,
-    getSnapshot:()=>({generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'})});
+    getSnapshot:()=>({generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'}),
+    // 夹具：本套件验证执行链语义（owner/取消/effect），exists+executor 简单通过即可。
+    atomicResolver:{resolve:(_snapshot:_s,atomicId:string)=>atomicId==='stop'||atomicId==='stop_follow'
+      ? {status:'in_doubt' as const,reason:'control'}
+      : {status:'resolved' as const,value:{executor:{id:`a.${atomicId}`,version:'1.0.0',execute:async()=>({ok:true})},contract:null,contribution:{pluginId:'mineclaw.minecraft-system',pluginVersion:'1.0.0',contributionId:'mineclaw.minecraft-system.execution.atomics',contributionVersion:'1.0.0'}}}} as never});
   return {bot,bus,registry,body,pause:()=>{running=false;bus.publish('task.paused','info',{taskId:'task'});},
     resume:()=>{running=true;bus.publish('task.resumed','info',{taskId:'task'});},detach:()=>{embodied=false;},
     goal:(state:GoalAgentStateV1)=>{goal=state;}};

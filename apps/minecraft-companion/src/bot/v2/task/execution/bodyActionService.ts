@@ -17,6 +17,7 @@ import { ExecutionAuthority } from './executionAuthority.js';
 import { GameBodyDriver } from './gameBodyDriver.js';
 import { actionCommand } from './actionCommand.js';
 import { failureDetail } from './failureEnvelope.js';
+import type { GenerationAtomicEntryPort } from './generationResolversPorts.js';
 
 export type BodyActionResult =
   | (ExecutionResult & {kind:'operation';receipt:OperationReceipt})
@@ -45,8 +46,10 @@ export class BodyActionService {
     getGoalState(sessionId: string): GoalAgentStateV1 | null;
     /** P3-4 · 当前已发布插件代快照（Task/Safety 命令的代际来源；Goal 命令固定自身 snapshotRef）。 */
     getSnapshot(): import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
+    /** P3-4 · 原子存在性经固定代解析（Driver accepts 用，不建立第二执行中枢）。 */
+    atomicResolver: GenerationAtomicEntryPort;
   }) {
-    this.driver = new GameBodyDriver(deps);
+    this.driver = new GameBodyDriver({ ...deps, atomicResolver: deps.atomicResolver });
     this.runtime = new BodyExecutionRuntime({driver:this.driver,authority:this.authority});
     for (const task of deps.tasks.list()) if (task.state==='running') this.ownerEpochs.set(task.id,1);
     for (const type of ['task.started','task.resumed','task.paused','task.completed','task.failed','task.cancelled']) {
