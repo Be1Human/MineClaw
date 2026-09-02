@@ -1,0 +1,19 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.minecraft-presence
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - fact.read:mineclaw.minecraft-presence.observation.owner-context
+contributions:
+  - kind: observation
+    id: mineclaw.minecraft-presence.observation.owner-context
+    version: 1.0.0
+    factKinds:
+      - owner_location
+      - self_location

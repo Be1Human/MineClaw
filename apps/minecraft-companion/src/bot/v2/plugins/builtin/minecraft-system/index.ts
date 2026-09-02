@@ -10,6 +10,7 @@ import type { AtomicExecutionContext } from '../../../plugin-sdk/contracts/execu
 import type {
   BoundedBlockObservationPort,
   BoundedInventoryObservationPort,
+  OwnerContextObservationPort,
 } from '../../../plugin-sdk/contracts/integration.js';
 import type { ActionRequest, WorldStateView } from '../../../types.js';
 import type { GameView } from '../../../../adapter/GameAdapter.js';
@@ -31,6 +32,7 @@ export interface MineclawSystemPorts {
   readonly getWorld?: () => WorldStateView;
   readonly blockObservation?: BoundedBlockObservationPort;
   readonly inventoryObservation?: BoundedInventoryObservationPort;
+  readonly ownerContextObservation?: OwnerContextObservationPort;
 }
 function createAtomicExecutor(atomicId: string, ports: MineclawSystemPorts) {
   return {
@@ -76,6 +78,7 @@ export function createMineclawMinecraftSystemPlugin(): PluginFactory {
           services: Object.freeze({
             'bounded.block.observation': bounded.block,
             'bounded.inventory.observation': bounded.inventory,
+            ...(ports.ownerContextObservation ? { 'context.owner': ports.ownerContextObservation } : {}),
           }),
         },
       };

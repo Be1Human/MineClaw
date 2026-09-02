@@ -61,3 +61,27 @@ export interface BoundedInventoryObservationPort {
     readonly evidenceRefs: readonly string[];
   }>;
 }
+
+/**
+ * Owner/bot presence read (kernel design §5.3). Pointing is a closed union;
+ * when the server cannot provide pitch/raycast it must return the structured
+ * `unavailable` branch rather than fabricating a direction.
+ */
+export interface OwnerContextObservationPort {
+  observe(input: {
+    readonly subjectRef: string;
+    readonly signal: AbortSignal;
+  }): Promise<{
+    readonly snapshotVersion: string;
+    readonly observedAt: string;
+    readonly dimension: string;
+    readonly botPosition: { readonly x: number; readonly y: number; readonly z: number };
+    readonly ownerPosition: { readonly x: number; readonly y: number; readonly z: number } | null;
+    readonly pointing:
+      | { readonly kind: 'observed'; readonly yaw: number; readonly pitch: number; readonly ray?: { readonly target: string } }
+      | { readonly kind: 'unavailable'; readonly reason: string }
+      | { readonly kind: 'not_visible' };
+    readonly complete: boolean;
+    readonly evidenceRefs: readonly string[];
+  }>;
+}
