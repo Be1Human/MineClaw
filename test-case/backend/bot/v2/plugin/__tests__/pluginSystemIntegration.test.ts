@@ -103,3 +103,43 @@ test('P2-2 端口注入：executor 经注入的 game/nav 端口执行原语', as
   assert.ok(calls.length >= 1, JSON.stringify(calls));
   assert.equal(outcome.ok, true);
 });
+
+test('P3-4 切换前置：原子目录 = dispatch 全集，每条目带 contract，无委托桩', async () => {
+  const { readFileSync: read } = await import('node:fs');
+  const { join: joinPath } = await import('node:path');
+  const { fileURLToPath: toPath } = await import('node:url');
+  const { execSync } = await import('node:child_process');
+  // dispatch 全集来自 atomic/atomics.ts 的 case 列表
+  const atomicsSrc = read(
+    joinPath(toPath(new URL('../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.ts', import.meta.url))),
+    'utf8',
+  );
+  const dispatchTypes = [...atomicsSrc.matchAll(/case '([a-z_]+)':/g)].map(m => m[1]);
+  assert.ok(dispatchTypes.length >= 30, `dispatch types ${dispatchTypes.length}`);
+  assert.ok(dispatchTypes.includes('toss_item'));
+  assert.ok(!dispatchTypes.includes('toss'), 'toss fake entry must not exist in dispatch');
+
+  const host = new PluginHost({
+    hostApiVersion: '2.0.0',
+    buildId: 'build-1',
+    builtinIndex: systemIndex(),
+    trustedSystemPlugins: ['mineclaw.minecraft-system'],
+    systemPorts: {},
+  });
+  const result = await host.boot();
+  assert.deepEqual(result.failures, [], JSON.stringify(result.failures));
+  const execution = result.slot.read().active.registry.byId.get('mineclaw.minecraft-system.execution.atomics')!;
+  const catalog = (execution.contribution as { atomicCatalog?: Array<{ atomicId: string; version: string; executor: { execute(...args: unknown[]): unknown }; contract?: { atomicId?: string; normalize?: unknown } }> }).atomicCatalog ?? [];
+  const ids = catalog.map(entry => entry.atomicId);
+  // 目录覆盖 dispatch 全集（每条目都是可真实执行的原子）
+  for (const type of dispatchTypes) {
+    assert.ok(ids.includes(type), `catalog missing dispatch atomic ${type}`);
+  }
+  // 每条目带 contract（schema/prepare/normalize 至少一个）
+  for (const entry of catalog) {
+    assert.ok(entry.contract !== undefined, `atomic ${entry.atomicId} missing contract`);
+    assert.equal(entry.contract!.atomicId, entry.atomicId);
+    assert.equal(typeof entry.contract!.normalize, 'function');
+  }
+  void execSync;
+});

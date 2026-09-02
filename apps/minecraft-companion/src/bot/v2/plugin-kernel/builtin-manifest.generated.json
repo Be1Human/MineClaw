@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T15:56:41.908Z",
+  "generatedAt": "2026-09-02T16:39:25.572Z",
   "schema": "mineclaw.builtin-index/v1",
   "plugins": [
     {
@@ -1130,6 +1130,7 @@
       },
       "imports": [
         "atomic/atomics.ts",
+        "plugins/builtin/minecraft-system/atomicContracts.ts",
         "plugin-kernel/discovery.ts",
         "plugin-sdk/index.ts",
         "plugin-sdk/contracts/execution.ts",

@@ -33,13 +33,32 @@ interface ContractSpec {
 /** 顶层原子参数规范（与旧 defaultContracts 一致；首期系统原子）。 */
 const SPECS: Partial<Record<string, ContractSpec>> = {
   move_to: { anyOf: [['position'], ['entityId']] },
+  goto_position: { anyOf: [['position'], ['entityId']] },
   follow_entity: { required: ['entityId'] },
   attack: { required: ['entityId'] },
   say: { required: ['text'] },
   equip: { required: ['itemName'] },
+  use_tool: { required: ['itemName'] },
   place_block: { required: ['itemName'] },
   dig: { required: ['position'] },
-  toss: { required: ['itemName'], positive: ['count'] },
+  craft: { required: ['itemName'], positive: ['count', 'inventoryTargetCount'] },
+  smelt: { required: ['itemName'], positive: ['count'] },
+  walk: { required: ['position'], positive: ['durationMs'] },
+  mine_to: { required: ['position'] },
+  look_at: { anyOf: [['position'], ['entityId']] },
+  toss_item: { required: ['itemName'], positive: ['count'] },
+  deposit: { required: ['position', 'itemName'], positive: ['count'] },
+  withdraw: { required: ['position', 'itemName'], positive: ['count'] },
+  climb_up: { required: ['position'] },
+  pillar_up: { required: ['count'], positive: ['count'] },
+  dig_down: { required: ['count'], positive: ['count'] },
+  place_scaffold: { required: ['itemName'] },
+  mount: { required: ['entityId'] },
+  vehicle_goto: { anyOf: [['position'], ['entityId']] },
+  kite: { required: ['entityId'] },
+  block_with_shield: { required: ['entityId'] },
+  bow_shoot: { required: ['entityId'] },
+  crit_jump_attack: { required: ['entityId'] },
 };
 
 function buildContract(atomicId: string, spec: ContractSpec): PluginAtomicContract {

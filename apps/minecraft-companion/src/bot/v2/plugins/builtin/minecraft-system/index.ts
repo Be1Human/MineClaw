@@ -21,9 +21,20 @@ import type { EventBusV2 } from '../../../infra/eventBus.js';
 
 export const MINECRAFT_SYSTEM_PLUGIN_ID = 'mineclaw.minecraft-system';
 
+/**
+ * Primitive catalog = the exact set dispatch() executes in atomic/atomics.ts
+ * (P3-4 switch precondition). open_container/transfer_chest/touch/toss/pickup
+ * are not dispatch types (deposit/withdraw live here; toss_item is the real
+ * toss primitive) — a catalog entry that never dispatches would be a fake
+ * success, so these stay out.
+ */
 const ATOMIC_IDS = [
-  'say', 'move_to', 'follow_entity', 'equip', 'place_block', 'dig', 'attack',
-  'touch', 'open_container', 'transfer_chest', 'toss', 'pickup', 'use_item', 'sleep',
+  'say', 'move_to', 'goto_position', 'follow_entity', 'attack', 'use_tool',
+  'equip', 'place_block', 'dig', 'craft', 'smelt', 'walk', 'escape_pit',
+  'mine_to', 'look_at', 'toss_item', 'eat', 'sleep', 'wake', 'deposit',
+  'withdraw', 'equip_best_armor', 'fish', 'climb_up', 'pillar_up', 'dig_down',
+  'place_scaffold', 'mount', 'dismount', 'vehicle_goto', 'kite',
+  'block_with_shield', 'bow_shoot', 'crit_jump_attack',
 ] as const;
 
 export interface MineclawSystemPorts {
