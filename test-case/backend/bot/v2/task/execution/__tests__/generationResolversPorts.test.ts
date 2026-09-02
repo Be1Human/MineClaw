@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PluginHost } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/index.js';
 import { loadProductionBuiltinIndex } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/productionIndex.js';
 import { GenerationResolvers } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/lifecycle.js';
-import { createBehaviorResolver, createAtomicResolver, atomicExecutionContextAdapter } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/generationResolversPorts.js';
+import { createBehaviorResolver, createAtomicResolver, createAtomicEntryResolver, createContractResolver, atomicExecutionContextAdapter } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/generationResolversPorts.js';
 import type { ContributionRef } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-sdk/identity.js';
 
 const KERNEL = fileURLToPath(new URL('../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/', import.meta.url));
@@ -72,4 +72,39 @@ test('P3-3 受控上下文适配器：assertCurrent/wait/deadline 原样转发',
   assert.equal(asserts, 1);
   assert.equal(waited, 50);
   assert.equal(adapter.deadlineAt, 999);
+});
+
+test('P3-4 F12 contract 承载：entry 解析返回 executor+contract；contract 解析返回元数据；无 contract 原子 in_doubt', async () => {
+  const result = await booted();
+  const active = result.slot.read().active;
+  const snapshot = { generationId: active.generationId, buildId: active.buildId, graphHash: active.graphHash };
+  const resolvers = new GenerationResolvers(result.slot);
+  const entryResolver = createAtomicEntryResolver(resolvers);
+  const contractResolver = createContractResolver(resolvers);
+
+  const entry = entryResolver.resolve(snapshot, 'move_to');
+  assert.equal(entry.status, 'resolved');
+  if (entry.status === 'resolved') {
+    assert.equal(typeof entry.value.executor.execute, 'function');
+    assert.ok(entry.value.contract !== null);
+    assert.equal(entry.value.contract!.atomicId, 'move_to');
+    assert.ok(entry.value.contract!.schema !== undefined);
+  }
+
+  const contract = contractResolver.resolve(snapshot, 'move_to');
+  assert.equal(contract.status, 'resolved');
+  if (contract.status === 'resolved') {
+    // prepare 校验：缺 position/entityId → invalid；正常参数 → prepared
+    const invalid = contract.value.prepare?.({ text: 'x' });
+    assert.equal(typeof invalid, 'object');
+    assert.equal((invalid as { invalid?: unknown }).invalid !== undefined, true);
+    const prepared = contract.value.prepare?.({ position: { x: 1, y: 64, z: 2 } });
+    assert.equal(typeof prepared, 'object');
+    assert.equal(JSON.stringify(prepared ?? {}).includes('position'), true);
+  }
+
+  const wrongSnapshot = entryResolver.resolve({ ...snapshot, generationId: 'gen-bootstrap' }, 'move_to');
+  assert.equal(wrongSnapshot.status, 'in_doubt');
+  const missing = entryResolver.resolve(snapshot, 'no_such_atomic');
+  assert.equal(missing.status, 'in_doubt');
 });

@@ -8,7 +8,7 @@
 import type { GenerationResolvers } from '../../plugin-kernel/lifecycle.js';
 import type { RegistrySnapshotRef, ContributionRef } from '../../plugin-sdk/identity.js';
 import type { PluginBehaviorFactory } from '../../plugin-sdk/contracts/execution.js';
-import type { PluginAtomicExecutor, AtomicExecutionContext } from '../../plugin-sdk/contracts/execution.js';
+import type { PluginAtomicExecutor, PluginAtomicContract, AtomicExecutionContext } from '../../plugin-sdk/contracts/execution.js';
 import type { ControlledExecutionContext } from './ports/controlledExecution.js';
 
 export type ResolverOutcome<T> = { readonly status: 'resolved'; readonly value: T } | { readonly status: 'in_doubt'; readonly reason: string };
@@ -19,6 +19,15 @@ export interface GenerationBehaviorResolverPort {
 
 export interface GenerationAtomicResolverPort {
   resolve(snapshot: RegistrySnapshotRef, atomicId: string): ResolverOutcome<PluginAtomicExecutor>;
+}
+
+/** F12 · Contract/Executor returned together from the pinned generation. */
+export interface GenerationAtomicEntryPort {
+  resolve(snapshot: RegistrySnapshotRef, atomicId: string): ResolverOutcome<{ readonly executor: PluginAtomicExecutor; readonly contract: PluginAtomicContract | null }>;
+}
+
+export interface GenerationContractResolverPort {
+  resolve(snapshot: RegistrySnapshotRef, atomicId: string): ResolverOutcome<PluginAtomicContract>;
 }
 
 /** Behavior factories come from the pinned generation's execution contributions. */
@@ -42,16 +51,69 @@ export function createBehaviorResolver(resolvers: GenerationResolvers): Generati
 export function createAtomicResolver(resolvers: GenerationResolvers): GenerationAtomicResolverPort {
   return {
     resolve(snapshot, atomicId) {
-      const result = resolvers.resolveById(snapshot, 'mineclaw.minecraft-system.execution.atomics');
-      if (result.status !== 'resolved' || !result.entry) {
-        return { status: 'in_doubt', reason: result.reason ?? 'system_plugin_unresolved' };
-      }
-      const catalog = (result.entry.contribution as { atomicCatalog?: Array<{ atomicId: string; version: string; executor: PluginAtomicExecutor }> }).atomicCatalog ?? [];
-      const entry = catalog.find(candidate => candidate.atomicId === atomicId);
-      if (!entry) return { status: 'in_doubt', reason: `atomic_not_in_generation:${atomicId}` };
-      return { status: 'resolved', value: entry.executor };
+      return resolveAtomicExecutor(resolvers, snapshot, atomicId);
     },
   };
+}
+
+/** F12 · Contract/Executor from the pinned generation (never a live registry). */
+export function createAtomicEntryResolver(resolvers: GenerationResolvers): GenerationAtomicEntryPort {
+  return {
+    resolve(snapshot, atomicId) {
+      return resolveAtomicEntry(resolvers, snapshot, atomicId);
+    },
+  };
+}
+
+/** F12 · Contract metadata only (schema/prepare/normalize) — LLM-facing presentation. */
+export function createContractResolver(resolvers: GenerationResolvers): GenerationContractResolverPort {
+  return {
+    resolve(snapshot, atomicId) {
+      return resolveAtomicContract(resolvers, snapshot, atomicId);
+    },
+  };
+}
+
+function resolveAtomicExecutor(
+  resolvers: GenerationResolvers,
+  snapshot: RegistrySnapshotRef,
+  atomicId: string,
+): ResolverOutcome<PluginAtomicExecutor> {
+  const entry = resolveAtomicEntry(resolvers, snapshot, atomicId);
+  return entry.status === 'resolved' ? { status: 'resolved', value: entry.value.executor } : entry;
+}
+
+function resolveAtomicContract(
+  resolvers: GenerationResolvers,
+  snapshot: RegistrySnapshotRef,
+  atomicId: string,
+): ResolverOutcome<PluginAtomicContract> {
+  const entry = resolveAtomicEntry(resolvers, snapshot, atomicId);
+  if (entry.status !== 'resolved') return entry;
+  if (!entry.value.contract) return { status: 'in_doubt', reason: `atomic_has_no_contract:${atomicId}` };
+  return { status: 'resolved', value: entry.value.contract };
+}
+
+function resolveAtomicEntry(
+  resolvers: GenerationResolvers,
+  snapshot: RegistrySnapshotRef,
+  atomicId: string,
+): ResolverOutcome<{ readonly executor: PluginAtomicExecutor; readonly contract: PluginAtomicContract | null }> {
+  const result = resolvers.resolveById(snapshot, 'mineclaw.minecraft-system.execution.atomics');
+  if (result.status !== 'resolved' || !result.entry) {
+    return { status: 'in_doubt', reason: result.reason ?? 'system_plugin_unresolved' };
+  }
+  const catalog = (result.entry.contribution as { atomicCatalog?: AtomicCatalogEntry[] }).atomicCatalog ?? [];
+  const entry = catalog.find(candidate => candidate.atomicId === atomicId);
+  if (!entry) return { status: 'in_doubt', reason: `atomic_not_in_generation:${atomicId}` };
+  return { status: 'resolved', value: { executor: entry.executor, contract: entry.contract ?? null } };
+}
+
+interface AtomicCatalogEntry {
+  readonly atomicId: string;
+  readonly version: string;
+  readonly executor: PluginAtomicExecutor;
+  readonly contract?: PluginAtomicContract;
 }
 
 /** Adapter: controlled execution context -> SDK atomic context (assertCurrent/wait/deadline). */

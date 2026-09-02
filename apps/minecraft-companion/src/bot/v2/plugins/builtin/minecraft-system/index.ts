@@ -4,6 +4,7 @@
  * access is injected at startup through PluginConstructionContext.systemPorts.
  */
 import { executeAtomic } from '../../../atomic/atomics.js';
+import { buildSystemAtomicContracts, type AtomicContractEntry } from './atomicContracts.js';
 import type { PluginFactory } from '../../../plugin-kernel/discovery.js';
 import type { PluginContribution } from '../../../plugin-sdk/index.js';
 import type { AtomicExecutionContext } from '../../../plugin-sdk/contracts/execution.js';
@@ -64,7 +65,13 @@ export function createMineclawMinecraftSystemPlugin(): PluginFactory {
     entryKey: `plugins/builtin/${MINECRAFT_SYSTEM_PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
       const ports = (context.systemPorts ?? {}) as MineclawSystemPorts;
-      const atomicCatalog = ATOMIC_IDS.map(atomicId => ({ atomicId, version: '1.0.0', executor: createAtomicExecutor(atomicId, ports) }));
+      const contracts = buildSystemAtomicContracts(ATOMIC_IDS);
+      const atomicCatalog: AtomicContractEntry[] = ATOMIC_IDS.map((atomicId, index) => ({
+        atomicId,
+        version: '1.0.0',
+        executor: createAtomicExecutor(atomicId, ports),
+        contract: contracts[index],
+      }));
       const bounded = createBoundedObservationPorts(ports);
       const integration = {
         id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.integration.game`,

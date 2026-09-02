@@ -9,7 +9,7 @@ import { pluginError } from './errors.js';
 import { isValidSemVer } from './semver.js';
 import type { PluginBindingProvider, PluginCandidateProvider, PluginProgressProvider } from './contracts/planning.js';
 import type { PluginPredicateEvaluator } from './contracts/verification.js';
-import type { PluginBehaviorFactory, PluginActivityFactory, PluginAtomicExecutor } from './contracts/execution.js';
+import type { PluginBehaviorFactory, PluginActivityFactory, PluginAtomicExecutor, PluginAtomicContract } from './contracts/execution.js';
 import type { PluginResultProjection } from './contracts/result.js';
 import type { PluginObservationProviderFactory } from './contracts/observation.js';
 import type { PluginSystemIntegration } from './contracts/integration.js';
@@ -114,6 +114,8 @@ export interface ExecutionContribution {
     readonly atomicId: string;
     readonly version: string;
     readonly executor: PluginAtomicExecutor;
+    /** Optional self-describing contract metadata (F12); absent = catalog-only atomic. */
+    readonly contract?: PluginAtomicContract;
   }[];
 }
 

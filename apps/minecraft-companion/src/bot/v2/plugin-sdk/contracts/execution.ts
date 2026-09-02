@@ -75,6 +75,27 @@ export interface PluginAtomicExecutor {
   execute(response: AtomicExecutionCommand, context: AtomicExecutionContext, signal: AbortSignal): Promise<Readonly<Record<string, unknown>>>;
 }
 
+/**
+ * Self-describing atomic contract metadata (kernel design §5.10 F12: the
+ * Generation resolver returns Contract/Executor together). The system plugin
+ * owns the shape; prepare/normalize stay pure — no device access, no side
+ * effects. Absent contract means the atomic is catalog-only (not presented as a
+ * parameter-ready tool); missing prepare → callers use raw args, missing
+ * normalize → callers keep the raw failure.
+ */
+export interface PluginAtomicContract {
+  readonly atomicId: string;
+  readonly version: string;
+  /** Closed argument schema for LLM-facing tool presentation. */
+  readonly schema?: Readonly<Record<string, unknown>>;
+  /** Normalize/validate raw args into canonical target fields. */
+  readonly prepare?: (request: Readonly<Record<string, unknown>>) =>
+    | { readonly prepared: Readonly<Record<string, unknown>>; readonly derivedFields?: readonly string[] }
+    | { readonly invalid: { readonly code: string; readonly message: string } };
+  /** Map an execution result to a structured failure envelope (null = ok). */
+  readonly normalize?: (result: Readonly<Record<string, unknown>>) => { readonly code: string; readonly message: string } | null;
+}
+
 export interface AtomicExecutionCommand {
   readonly request: Readonly<Record<string, unknown>>;
   readonly source: string;
