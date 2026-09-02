@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-09-02T14:57:46.161Z",
+  "schema": "mineclaw.builtin-index/v1",
+  "plugins": [
+    {
+      "pluginId": "mineclaw.minecraft-system",
+      "kind": "system",
+      "entryKey": "plugins/builtin/mineclaw.minecraft-system",
+      "manifestHash": "e975c7661de2a93b7fb89b952b6d044161fb8aa84041be2bf8bb1df9b78d54d6",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.minecraft-system",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "system",
+        "entry": "index",
+        "dependencies": {},
+        "permissions": [
+          "system.adapter",
+          "system.atomic"
+        ],
+        "contributions": [
+          {
+            "kind": "execution",
+            "id": "mineclaw.minecraft-system.execution.atomics",
+            "version": "1.0.0",
+            "atomicIds": [
+              "say",
+              "move_to",
+              "follow_entity",
+              "equip",
+              "place_block",
+              "dig",
+              "attack",
+              "touch",
+              "open_container",
+              "transfer_chest",
+              "toss",
+              "pickup",
+              "use_item",
+              "sleep"
+            ]
+          },
+          {
+            "kind": "integration",
+            "id": "mineclaw.minecraft-system.integration.game",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "imports": [
+        "atomic/atomics.ts",
+        "plugin-kernel/discovery.ts",
+        "plugin-sdk/index.ts",
+        "plugin-sdk/contracts/execution.ts",
+        "plugin-sdk/contracts/integration.ts",
+        "types.ts",
+        "pter/GameAdapter.ts",
+        "pter/GameActions.ts",
+        "pter/NavigationExecution.ts",
+        "infra/eventBus.ts"
+      ]
+    }
+  ]
+}

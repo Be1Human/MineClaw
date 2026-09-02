@@ -38,6 +38,9 @@ export interface ScopedHostContext {
 export interface PluginConstructionContext {
   readonly host: PluginHostIdentity;
   readonly plugin: PluginIdentity;
+  /** Present only for release-builtin system plugins (adapter/storage/LLM ports, startup assembly). */
+  readonly systemPorts?: Readonly<Record<string, unknown>>;
+  readonly signal?: AbortSignal;
 }
 
 export function createScopedHostContext(

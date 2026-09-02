@@ -34,9 +34,11 @@ export function verifyExecutionClosure(manifest: PluginManifestV1): ClosureVerif
   const missing: string[] = [];
   for (const contribution of manifest.contributions) {
     if (contribution.kind !== 'execution') continue;
-    const operation = contribution.operation;
+    const operation = (contribution as { operation?: ManifestContribution & { kind: 'execution' } extends never ? never : ExecutionContribution['operation'] }).operation;
+    if (!operation) continue; // system atomic catalog: primitive supply, no closure requirement
+    const owner = contribution as unknown as ExecutionContribution;
     for (const ring of REQUIRED_RING) {
-      if (!ringIsResolved(ring, operation, contribution, manifest)) missing.push(`${operation.operationId}:${ring}`);
+      if (!ringIsResolved(ring, operation, owner, manifest)) missing.push(`${operation.operationId}:${ring}`);
     }
   }
   return { closed: missing.length === 0, missing: Object.freeze(missing) };
@@ -54,8 +56,8 @@ export function assertExecutionClosure(manifest: PluginManifestV1): void {
 
 function ringIsResolved(
   ring: ClosureRing,
-  operation: ManifestContribution & { kind: 'execution' } extends never ? never : ExecutionContribution['operation'],
-  owner: ManifestContribution,
+  operation: NonNullable<ExecutionContribution['operation']>,
+  owner: ExecutionContribution,
   manifest: PluginManifestV1,
 ): boolean {
   const available = new Set<string>(manifest.contributions.map((contribution) => contribution.id));

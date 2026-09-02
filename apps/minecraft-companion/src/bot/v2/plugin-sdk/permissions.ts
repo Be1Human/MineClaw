@@ -41,6 +41,13 @@ export function parsePermissions(value: unknown, kind: 'data' | 'domain' | 'syst
 }
 
 function validatePermission(permission: string, kind: 'data' | 'domain' | 'system'): void {
+  if (permission.startsWith('system.')) {
+    if (!(SYSTEM_PERMISSION_NAMESPACES as readonly string[]).includes(permission)) {
+      throw pluginError('permission_denied', `unknown system permission: ${permission}`);
+    }
+    if (kind !== 'system') throw pluginError('permission_denied', `system permission ${permission} requires system plugin kind`);
+    return;
+  }
   const [action, resource] = splitPermission(permission);
   switch (action) {
     case PERMISSION_ACTIONS.worldRead:
@@ -55,10 +62,6 @@ function validatePermission(permission: string, kind: 'data' | 'domain' | 'syste
       if (!resource || !resource.includes('.')) throw pluginError('permission_denied', `invalid body.submit resource: ${resource}`);
       return;
     default:
-      if ((SYSTEM_PERMISSION_NAMESPACES as readonly string[]).includes(permission)) {
-        if (kind !== 'system') throw pluginError('permission_denied', `system permission ${permission} requires system plugin kind`);
-        return;
-      }
       throw pluginError('permission_denied', `unknown permission action: ${action}`);
   }
 }

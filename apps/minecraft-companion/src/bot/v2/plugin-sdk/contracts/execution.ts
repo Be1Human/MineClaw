@@ -56,9 +56,26 @@ export interface PluginActivityInstance {
   readonly settled: boolean;
 }
 
-/** Atomic executor registration is limited to first-party system plugins. */
+/**
+ * Primitive atomic executor — owned by the trusted `mineclaw.minecraft-system`
+ * plugin (or another release system plugin). The executor holds adapter ports
+ * injected at startup through the system ports; the body driver adapts its
+ * controlled execution context so duration, stop and budget semantics are
+ * exactly those of any other body work.
+ */
+export interface AtomicExecutionContext {
+  readonly deadlineAt: number;
+  assertCurrent(reason: string): void;
+  wait(ms: number): Promise<void>;
+}
+
 export interface PluginAtomicExecutor {
   readonly id: string;
   readonly version: string;
-  execute(request: Readonly<Record<string, unknown>>, signal: AbortSignal): Promise<Readonly<Record<string, unknown>>>;
+  execute(response: AtomicExecutionCommand, context: AtomicExecutionContext, signal: AbortSignal): Promise<Readonly<Record<string, unknown>>>;
+}
+
+export interface AtomicExecutionCommand {
+  readonly request: Readonly<Record<string, unknown>>;
+  readonly source: string;
 }

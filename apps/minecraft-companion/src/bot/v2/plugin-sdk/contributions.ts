@@ -105,11 +105,16 @@ export interface ExecutionContribution {
   readonly kind: 'execution';
   readonly id: string;
   readonly version: string;
-  readonly operation: PluginOperationDeclaration;
+  /** Present for domain operations (nine-segment closure applies); absent for catalog-only system primitives. */
+  readonly operation?: PluginOperationDeclaration;
   readonly behaviorFactory?: PluginBehaviorFactory;
   readonly activityFactory?: PluginActivityFactory;
-  /** Only first-party system plugins may register atomics. */
-  readonly atomicExecutor?: PluginAtomicExecutor;
+  /** Only first-party system plugins may register atomics (primitive catalog, no closure requirement). */
+  readonly atomicCatalog?: {
+    readonly atomicId: string;
+    readonly version: string;
+    readonly executor: PluginAtomicExecutor;
+  }[];
 }
 
 export interface ResultContribution {
@@ -258,18 +263,21 @@ export function parseContribution(
       });
     case 'execution':
       if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry execution ${id}`);
-      if (!isRecord(record.operation)) throw pluginError('manifest_invalid', `execution ${id} requires an operation declaration`);
-      if (record.atomicExecutor !== undefined && pluginKind !== 'system') {
-        throw pluginError('permission_denied', `execution ${id} atomicExecutor requires system plugin kind`);
+      const catalog = record.atomicCatalog;
+      if (catalog !== undefined && pluginKind !== 'system') {
+        throw pluginError('permission_denied', `execution ${id} atomicCatalog requires system plugin kind`);
+      }
+      if (!isRecord(record.operation) && !Array.isArray(catalog)) {
+        throw pluginError('manifest_invalid', `execution ${id} requires an operation declaration (or a system atomic catalog)`);
       }
       return freeze({
         kind, id, version,
-        operation: Object.freeze({ ...record.operation }) as unknown as ExecutionContribution['operation'],
+        ...(isRecord(record.operation) ? { operation: Object.freeze({ ...record.operation }) as unknown as ExecutionContribution['operation'] } : {}),
         ...(isRecord(record.behaviorFactory) && typeof (record.behaviorFactory as unknown as Record<string, unknown>).create === 'function'
           ? { behaviorFactory: record.behaviorFactory as unknown as ExecutionContribution['behaviorFactory'] } : {}),
         ...(isRecord(record.activityFactory) && typeof (record.activityFactory as unknown as Record<string, unknown>).create === 'function'
           ? { activityFactory: record.activityFactory as unknown as ExecutionContribution['activityFactory'] } : {}),
-        ...(record.atomicExecutor !== undefined ? { atomicExecutor: record.atomicExecutor as unknown as ExecutionContribution['atomicExecutor'] } : {}),
+        ...(Array.isArray(catalog) ? { atomicCatalog: Object.freeze([...catalog]) as ExecutionContribution['atomicCatalog'] } : {}),
       });
     case 'result':
       if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry result ${id}`);
@@ -359,7 +367,7 @@ export type ManifestContribution =
   | { readonly kind: 'goal'; readonly id: string; readonly version: string; readonly target: PluginGoalTargetDeclaration }
   | { readonly kind: 'planning'; readonly id: string; readonly version: string; readonly operationIds: readonly string[] }
   | { readonly kind: 'verification'; readonly id: string; readonly version: string }
-  | { readonly kind: 'execution'; readonly id: string; readonly version: string; readonly operation: PluginOperationDeclaration }
+  | { readonly kind: 'execution'; readonly id: string; readonly version: string; readonly operation?: PluginOperationDeclaration; readonly atomicIds?: readonly string[] }
   | { readonly kind: 'result'; readonly id: string; readonly version: string }
   | { readonly kind: 'proactive'; readonly id: string; readonly version: string; readonly label: string; readonly description: string; readonly goalTarget: string; readonly rate: 'fast' | 'std' | 'slow' | 'idle'; readonly priority: number }
   | { readonly kind: 'integration'; readonly id: string; readonly version: string };
@@ -419,10 +427,13 @@ export function parseManifestContribution(value: unknown, pluginId: string, plug
       return Object.freeze({ kind, id, version });
     case 'execution':
       if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry execution ${id}`);
-      if (!isRecord(record.operation)) throw pluginError('manifest_invalid', `execution ${id} requires an operation declaration`);
+      if (!isRecord(record.operation) && (pluginKind !== 'system' || !Array.isArray(record.atomicIds) || record.atomicIds.length === 0)) {
+        throw pluginError('manifest_invalid', `execution ${id} requires an operation declaration (or a system atomic catalog)`);
+      }
       return Object.freeze({
         kind, id, version,
-        operation: Object.freeze({ ...record.operation }) as unknown as PluginOperationDeclaration,
+        ...(isRecord(record.operation) ? { operation: Object.freeze({ ...record.operation }) as unknown as PluginOperationDeclaration } : {}),
+        ...(Array.isArray(record.atomicIds) ? { atomicIds: Object.freeze([...record.atomicIds] as string[]) } : {}),
       });
     case 'result':
       if (pluginKind === 'data') throw pluginError('manifest_invalid', `data plugin may not carry result ${id}`);
