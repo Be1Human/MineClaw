@@ -1,17 +1,19 @@
-import type { AtomicContext } from '../../../atomic/atomics.js';
-import { executeAtomic } from '../../../atomic/atomics.js';
+import type { GameView } from '../../../../adapter/GameAdapter.js';
+import type { EventBusV2 } from '../../../infra/eventBus.js';
+import type { GoalBodyExecutionPort } from '../../execution/bodyActionService.js';
 import { isDeepStrictEqual } from 'node:util';
 import { tuning } from '../../../infra/tuning.js';
 import { createDefaultAtomicContractRegistry } from '../../../atomic/contracts/defaultContracts.js';
 import type { IBehaviorRegistry } from '../../../behavior/types.js';
-import type { CapabilityActionCandidateProvider } from '../../../capabilities/types.js';
+import type { CapabilityActionCandidateProvider, CapabilityPackageSnapshot } from '../../../capabilities/types.js';
 import type { WorldStateView } from '../../../types.js';
-import { atomDisplayLabel } from '../../goalRunner/atomExec.js';
-import { evaluateGoalCriteria } from '../../goalRunner/goalCriteriaEvaluator.js';
+import { atomDisplayLabel } from '../../goalRunner/actionPresentation.js';
+import { evaluateGoalCriteriaState } from '../../goalRunner/goalCriteriaEvaluator.js';
 import type { Goal, GoalSuccessCriterion } from '../../contracts/goalTypes.js';
 import { legacyGoalFromContract } from '../../contracts/goalContract.js';
 import { ActionPreparer } from '../../execution/actionPreparer.js';
-import { failureDetail, failureFromLegacy, type FailureEnvelope } from '../../execution/failureEnvelope.js';
+import { failureDetail, failureFromLegacy } from '../../execution/failureEnvelope.js';
+import type { FailureEnvelope } from '../../contracts/failureEnvelope.js';
 import type { PlannerExperienceFreezeResult } from '../../planner/experience/plannerExperienceProvider.js';
 import { StrategyExecutor } from '../../strategy/strategyExecutor.js';
 import { StrategyMatcher } from '../../strategy/strategyMatcher.js';
@@ -19,7 +21,11 @@ import type { StrategyStore } from '../../strategy/strategyStore.js';
 import type { TaskRuntime } from '../../taskRuntime.js';
 import type { GoalAgentActionResult, GoalAgentStateV1 } from '../goalAgentState.js';
 import type { GoalAgentActionCandidate, GoalAgentExecutionPort } from '../ports/executionPort.js';
+import { candidateBinding, prepareCandidateArguments } from '../goalAgentCandidateAuthority.js';
+import { observeRequestedWorldFacts } from './goalAgentFactObservation.js';
+import type { WorldFactRequest } from '../../contracts/worldFact.js';
 import type { GoalAgentActionLedgerPort } from './goalAgentActionLedger.js';
+import type { GoalPlanAuthorizationPort } from '../ports/goalPlanPort.js';
 import type { ChestTarget } from './containerTargetResolver.js';
 import type {
   GoalAgentExperiencePort,
@@ -38,7 +44,10 @@ export interface GatherTarget {
 }
 
 export interface GoalAgentProductionExecutionOptions {
-  atomicContext: () => AtomicContext;
+  game: GameView;
+  bus: EventBusV2;
+  getWorld(): WorldStateView;
+  body: GoalBodyExecutionPort;
   behaviors: IBehaviorRegistry;
   tasks: TaskRuntime;
   parentTaskId: (sessionId: string) => string | null;
@@ -46,8 +55,10 @@ export interface GoalAgentProductionExecutionOptions {
   resolveChestTargets?: (item: string, count: number, requestText: string, world: WorldStateView) => ChestTarget[];
   strategyStore?: StrategyStore;
   categorizeTarget?: (bind: Record<string, unknown>, world: WorldStateView) => string[];
-  actionLedger?: GoalAgentActionLedgerPort;
+  actionLedger: GoalAgentActionLedgerPort;
   actionProviders?: readonly CapabilityActionCandidateProvider[];
+  operations?: CapabilityPackageSnapshot['operations'];
+  plans?: GoalPlanAuthorizationPort;
   maxCandidates?: number;
   log?: (message: string) => void;
 }
@@ -67,12 +78,8 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         onLog: options.log,
       });
       this.strategyExecutor = new StrategyExecutor({
-        atom: {
-          atomicCtx: options.atomicContext,
-          backingTaskId: () => null,
-        },
         getStrategy: id => options.strategyStore!.get(id),
-        getWorld: () => options.atomicContext().worldState ?? null,
+        getWorld: options.getWorld,
         onLog: options.log,
       });
     }
@@ -81,6 +88,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
   async listCandidates(input: {
     state: Readonly<GoalAgentStateV1>;
     planNodeId?: string;
+    includeUnavailable?: boolean;
     signal: AbortSignal;
   }): Promise<GoalAgentActionCandidate[]> {
     const node = input.planNodeId
@@ -108,9 +116,9 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
       world,
       signal: input.signal,
     });
-    if (registeredCandidates.length > 0) {
-      return filterAndCap(registeredCandidates, input.state, this.options.maxCandidates);
-    }
+    const finish = () => filterAndCap(
+      [...registeredCandidates, ...candidates], input.state, this.options.maxCandidates, input.includeUnavailable,
+    );
     const containerText = containerTargetText(goalText, requestText);
     const chestRetrieval = chestRetrievalNeed(criteria, world, containerText);
     const groundPickup = groundPickupNeed(criteria, world);
@@ -140,7 +148,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
           evidenceRefs: [`ground-item:${groundPickup.entityId}:${groundPickup.item}`],
         });
       }
-      return filterAndCap(candidates, input.state, this.options.maxCandidates);
+      return finish();
     }
 
     if (delivery) {
@@ -160,7 +168,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
           evidenceRefs: [`delivery-target:owner:${world.owner!.username}`],
         });
       }
-      return filterAndCap(candidates, input.state, this.options.maxCandidates);
+      return finish();
     }
 
     if (deposit) {
@@ -183,7 +191,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
           evidenceRefs: [`container-target:${target.relation}:${positionKey(target.pos)}`],
         });
       }
-      return filterAndCap(candidates, input.state, this.options.maxCandidates);
+      return finish();
     }
 
     if (chestRetrieval) {
@@ -206,7 +214,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
           evidenceRefs: [`container-target:${target.relation}:${positionKey(target.pos)}`],
         });
       }
-      return filterAndCap(candidates, input.state, this.options.maxCandidates);
+      return finish();
     }
 
     if (placement) {
@@ -234,7 +242,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
           evidenceRefs: [`placement-target:${placement.relativeTo}:${placement.relation}`],
         });
       }
-      return filterAndCap(candidates, input.state, this.options.maxCandidates);
+      return finish();
     }
 
     const strategy = this.strategyMatcher && this.strategyExecutor
@@ -277,10 +285,14 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         description: `Execute one registered atomic action: ${definition.action}`,
         fixedArgs,
         argumentSchema: definition.schema as unknown as Record<string, unknown>,
+        ...(definition.action === 'craft' ? {
+          mutableArgumentPaths: ['/itemName', '/count', '/inventoryTargetCount', '/needTable'],
+          argumentSchema: craftArgumentSchema(),
+        } : {}),
         evidenceRefs: [`atomic-contract:${definition.action}`],
       });
     }
-    return filterAndCap(candidates, input.state, this.options.maxCandidates);
+    return finish();
   }
 
   isOwnerNeedActionable(input: { missingInformation: string; state: Readonly<GoalAgentStateV1> }): boolean {
@@ -290,6 +302,18 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
   }
 
   execute(input: Parameters<GoalAgentExecutionPort['execute']>[0]) {
+    if (input.state.progress?.waiting) throw new Error('action_session_waiting_world');
+    if (input.state.rootGoal?.schema === 'mineclaw.goal/v2') {
+      if (!input.candidate || !this.options.plans) throw new Error('composed_execution_authority_required');
+      this.options.plans.authorize(input.state, input.candidate, input.proposal.args);
+    }
+    if (input.candidate) {
+      if (input.proposal.source !== input.candidate.source || input.proposal.action !== input.candidate.action) {
+        throw new Error('action_executor_identity_changed');
+      }
+      const validated = prepareCandidateArguments(input.candidate, input.proposal.args);
+      if (!isDeepStrictEqual(validated, input.proposal.args)) throw new Error('action_bound_arguments_missing');
+    }
     const existing = this.cache.get(input.idempotencyKey);
     if (existing) return existing;
     const operation = this.executeOnce(input);
@@ -300,15 +324,15 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
   private async executeOnce(input: Parameters<GoalAgentExecutionPort['execute']>[0]) {
     const startedAt = new Date().toISOString();
     const executionSessionId = `execution:${input.idempotencyKey}`;
-    const replay = this.options.actionLedger?.begin({
+    const replay = this.options.actionLedger.begin({
       idempotencyKey:input.idempotencyKey,
       sessionId:input.sessionId,
       epoch:input.epoch,
       proposal:input.proposal,
       startedAt,
     });
-    if(replay?.status==='completed')return replay.result;
-    if(replay?.status==='in_doubt')return interruptedActionResult(
+    if(replay.status==='completed')return replay.result;
+    if(replay.status==='in_doubt')return interruptedActionResult(
       input.idempotencyKey,executionSessionId,replay.startedAt,
     );
     const parentId = this.options.parentTaskId(input.sessionId);
@@ -323,6 +347,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
     let ok = false;
     let detail = '';
     let failure: FailureEnvelope | undefined;
+    const bodyEvidence:string[]=[];
     try {
       if (input.signal.aborted) throw abortError();
       if (input.proposal.action === 'invoke_task') {
@@ -337,7 +362,21 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         if (!strategy || !this.strategyExecutor) {
           failure = failureFromLegacy(`strategy_not_found:${strategyId}`, { origin: 'decision', stage: 'preparing' });
         } else {
-          const result = await this.strategyExecutor.run(strategy, bind, () => input.signal.aborted);
+          let leafSequence = 0;
+          const result = await this.strategyExecutor.run(strategy, bind, {
+            execute: async (action,args) => {
+              if (!parentId) throw new Error('goal_body_owner_missing');
+              const prepared = this.preparer.prepare({action,args,source:'fast_strategy'},{
+                execId:`${executionSessionId}:leaf:${++leafSequence}`,taskId:parentId,
+              });
+              if (prepared.kind==='invalid') return {ok:false,detail:failureDetail(prepared.failure)};
+              const execution = await this.options.body.executeGoal(prepared.request,{
+                operationId:prepared.request.id,state:input.state,taskId:parentId,signal:input.signal,
+              });
+              if(execution.kind==='operation') bodyEvidence.push(`body-operation:${execution.receipt.operationId}:${execution.receipt.status}`);
+              return {ok:execution.ok,detail:execution.error ?? 'completed'};
+            },
+          }, () => input.signal.aborted);
           ok = result.status === 'success';
           detail = result.detail ?? result.status;
           if (!ok) failure = failureFromLegacy(detail, { origin: 'behavior', stage: 'executing' });
@@ -355,8 +394,13 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         if (prepared.kind === 'invalid') {
           failure = prepared.failure;
         } else {
-          const result = await executeAtomic(prepared.request, this.options.atomicContext());
-          failure = this.preparer.normalize(input.proposal.action, result) ?? undefined;
+          if (!parentId) throw new Error('goal_body_owner_missing');
+          const result = await this.options.body.executeGoal(prepared.request,{
+            operationId:executionSessionId,state:input.state,taskId:parentId,signal:input.signal,
+          });
+          if(result.kind==='operation') bodyEvidence.push(`body-operation:${result.receipt.operationId}:${result.receipt.status}`);
+          failure = result.kind==='operation' && result.receipt.failure
+            ? result.receipt.failure : this.preparer.normalize(input.proposal.action, result) ?? undefined;
           ok = result.ok && !failure;
           detail = failure ? failureDetail(failure) : `action ${input.proposal.action} completed`;
         }
@@ -382,9 +426,10 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         `action:${input.idempotencyKey}:${ok ? 'ok' : 'failed'}`,
         ...(input.proposal.action === 'invoke_task' && detail ? [`task-action:${detail}`] : []),
         ...(failure?.evidenceRefs ?? []),
+        ...bodyEvidence,
       ],
     };
-    this.options.actionLedger?.complete(result);
+    this.options.actionLedger.complete(result);
     return result;
   }
 
@@ -410,7 +455,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
       priority: validated.taskKind === 'craft_item' ? 56 : 55,
     }, parentId);
     return new Promise(resolve => {
-      const bus = this.options.atomicContext().bus;
+      const bus = this.options.bus;
       let settled = false;
       const unsubscribers: Array<() => void> = [];
       const finish = (result: { ok: boolean; detail: string; failure?: FailureEnvelope }): void => {
@@ -418,7 +463,11 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
         settled = true;
         for (const unsubscribe of unsubscribers) unsubscribe();
         input.signal.removeEventListener('abort', onAbort);
-        resolve(result);
+        // A task terminal event closes admission but does not prove its device work has stopped.
+        void this.options.body.drainTask(task.id,'managed_task_settled').then(()=>resolve(result),error=>{
+          const failure=failureFromLegacy(String(error),{origin:'infra',stage:'executing'});
+          resolve({ok:false,detail:`${validated.taskKind}:${task.id}:stop_unconfirmed`,failure});
+        });
       };
       const matchingPayload = (payload: unknown): Record<string, unknown> | null => {
         const record = plainRecord(payload);
@@ -490,6 +539,17 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
       return [{
         ...base,
         id: `behavior:${behaviorId}`,
+        mutableArgumentPaths: ['/behaviorParams/item', '/behaviorParams/count', '/behaviorParams/inventoryTargetCount'],
+        argumentSchema: {
+          type: 'object', additionalProperties: false, required: ['behavior', 'behaviorParams'],
+          properties: {
+            behavior: { type: 'string', enum: [behaviorId] },
+            behaviorParams: {
+              type: 'object', additionalProperties: false, required: ['item', 'count'],
+              properties: { item: { type: 'string', minLength: 1 }, count: positiveCount(), inventoryTargetCount: positiveCount() },
+            },
+          },
+        },
         description: `Craft items via the recursive crafting behavior (item defaults to ${inventory.item}; the model may override item to craft a required tool or intermediate)`,
         fixedArgs: {
           behavior: behaviorId,
@@ -517,7 +577,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
 
   private craftRecipes(item: string) {
     try {
-      return this.options.atomicContext().game.getCraftRecipes(item, true);
+      return this.options.game.getCraftRecipes(item, true);
     } catch {
       return [];
     }
@@ -525,7 +585,7 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
 
   private hasGatherSource(item: string): boolean {
     try {
-      return Boolean(this.options.atomicContext().game.getItemSource(item));
+      return Boolean(this.options.game.getItemSource(item));
     } catch {
       return false;
     }
@@ -535,12 +595,12 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
     input: Parameters<CapabilityActionCandidateProvider['list']>[0],
   ): Promise<GoalAgentActionCandidate[]> {
     const candidates: GoalAgentActionCandidate[] = [];
-    for (const provider of this.options.actionProviders ?? []) {
+    for (const provider of [...(this.options.actionProviders ?? [])].sort((a, b) => a.id.localeCompare(b.id))) {
       if (input.signal.aborted) return [];
       try {
         const listed = await provider.list(input);
-        for (const candidate of listed) {
-          if (this.isRegisteredProviderCandidate(candidate)) candidates.push(structuredClone(candidate));
+        for (const candidate of [...listed].sort((a, b) => a.id.localeCompare(b.id))) {
+          if (this.isRegisteredProviderCandidate(candidate)) candidates.push(this.bindRegisteredOperation(provider.id, candidate));
           else this.options.log?.(`capability candidate rejected: ${provider.id}/${candidate.id}`);
         }
       } catch (error) {
@@ -551,25 +611,59 @@ export class GoalAgentProductionExecutionPort implements GoalAgentExecutionPort 
     return candidates;
   }
 
+  private bindRegisteredOperation(providerId: string, input: GoalAgentActionCandidate): GoalAgentActionCandidate {
+    const candidate = structuredClone(input);
+    const operations = (this.options.operations ?? []).filter(value => value.definition.actionProviderId === providerId);
+    if (!operations.length && !candidate.operationRef) return candidate;
+    const matches = operations.filter(({ definition }) => {
+      const executorId = candidate.kind === 'behavior' ? candidate.fixedArgs.behavior
+        : candidate.kind === 'task' ? candidate.fixedArgs.taskKind
+          : candidate.kind === 'strategy' ? candidate.fixedArgs.strategyId : candidate.action;
+      return definition.kind === candidate.kind && definition.executorRef.id === executorId
+        && (!candidate.operationRef || candidate.operationRef.id === definition.id);
+    });
+    if (matches.length !== 1) {
+      candidate.authorization = { status: 'blocked', reasons: ['operation_binding_missing_or_ambiguous'] };
+      return candidate;
+    }
+    const operation = matches[0]!;
+    if (candidate.operationRef && candidate.operationRef.version !== operation.packageVersion) {
+      candidate.authorization = { status: 'blocked', reasons: ['operation_version_stale'] };
+    } else if (!candidate.authorization) {
+      candidate.authorization = { status: 'unknown', reasons: ['operation_authorization_missing'] };
+    }
+    candidate.operationRef = { id: operation.definition.id, version: operation.packageVersion };
+    return candidate;
+  }
+
   private isRegisteredProviderCandidate(candidate: GoalAgentActionCandidate): boolean {
-    if (!candidate.id.trim() || !candidate.action.trim()) return false;
-    if (candidate.action === 'invoke_strategy') return Boolean(this.options.strategyStore?.get(
+    if (typeof candidate.id !== 'string' || !candidate.id.trim() || typeof candidate.action !== 'string' || !candidate.action.trim()) return false;
+    if (candidate.authorization && !['ready', 'blocked', 'unknown'].includes(candidate.authorization.status)) return false;
+    if (candidate.action === 'invoke_task') return candidate.kind === 'task' && candidate.source === 'registered_task'
+      && validateManagedTask(String(candidate.fixedArgs.taskKind ?? ''), plainRecord(candidate.fixedArgs.params)).ok;
+    if (candidate.action === 'invoke_strategy') return candidate.kind === 'strategy' && candidate.source === 'fast_strategy' && Boolean(this.options.strategyStore?.get(
       String(candidate.fixedArgs.strategyId ?? ''),
     ));
     if (!this.contracts.get(candidate.action)) return false;
-    if (candidate.action !== 'invoke_behavior') return true;
+    if (candidate.action !== 'invoke_behavior') return candidate.kind === 'atomic' && candidate.source === 'slow_llm';
     const behaviorId = String(candidate.fixedArgs.behavior ?? '');
-    return Boolean(behaviorId && this.options.behaviors.get(behaviorId));
+    return candidate.kind === 'behavior' && candidate.source === 'registered_behavior'
+      && Boolean(behaviorId && this.options.behaviors.get(behaviorId));
   }
 }
 
 export class GoalAgentProductionPerceptionPort implements GoalAgentPerceptionPort {
-  constructor(private readonly observeWorld: () => Promise<WorldStateView> | WorldStateView) {}
-  async observe(signal: AbortSignal): Promise<WorldStateView> {
+  constructor(
+    private readonly observeWorld: () => Promise<WorldStateView> | WorldStateView,
+    private readonly worldFactProviders: () => CapabilityPackageSnapshot['worldFactProviders'] = () => [],
+  ) {}
+  async observe(signal: AbortSignal, factRequests: readonly WorldFactRequest[] = []): Promise<WorldStateView> {
     if (signal.aborted) throw abortError();
     const world = await this.observeWorld();
     if (signal.aborted) throw abortError();
-    return world;
+    if (!factRequests.length) return world;
+    const facts = await observeRequestedWorldFacts(world, factRequests, this.worldFactProviders(), signal);
+    return { ...structuredClone(world), capabilityFacts: facts };
   }
 }
 
@@ -592,27 +686,31 @@ export class GoalAgentProductionVerificationPort implements GoalAgentVerificatio
   verifyTask(input: { state: Readonly<GoalAgentStateV1>; planNodeId: string }): GoalAgentVerificationResult {
     const node = input.state.plan.graph?.nodes.find(value => value.id === input.planNodeId);
     if (!node) return { ok: false, detail: 'active plan task not found', evidenceRefs: [] };
-    const verdict = evaluateGoalCriteria({
+    const verdict = evaluateGoalCriteriaState({
       goalText: node.goal.goalText,
       successCriteria: structuredCriteria(node.goal.metadata?.structuredSuccessCriteria),
     }, input.state.world.latest, {
       deliveries: this.deliveries(), deposits: this.deposits(), placements: this.placements(),
       predicateEvaluators: this.predicateEvaluators(),
     });
-    return { ok: verdict.ok, detail: verdict.detail, evidenceRefs: verdict.evidenceRefs ?? [] };
+    return { ok: verdict.status === 'satisfied', status: verdict.status, detail: verdict.detail, evidenceRefs: verdict.evidenceRefs ?? [] };
   }
 
   verifyRoot(input: { state: Readonly<GoalAgentStateV1> }): GoalAgentVerificationResult {
     if (!input.state.rootGoal) return { ok: false, detail: 'root goal missing', evidenceRefs: [] };
-    const verdict = evaluateGoalCriteria(
-      legacyGoalFromContract(input.state.rootGoal),
+    const root = input.state.rootGoal;
+    if (root.schema === 'mineclaw.goal/v2' && input.state.world.latest?.environment.dimension !== root.scope.dimension) {
+      return { ok: false, status: 'unknown', detail: 'root_goal_dimension_mismatch', evidenceRefs: [] };
+    }
+    const verdict = evaluateGoalCriteriaState(
+      root.schema === 'mineclaw.goal/v2' ? { goalText: root.goalText, successCriteria: [...root.successCriteria] } : legacyGoalFromContract(root),
       input.state.world.latest,
       {
         deliveries: this.deliveries(), deposits: this.deposits(), placements: this.placements(),
         predicateEvaluators: this.predicateEvaluators(),
       },
     );
-    return { ok: verdict.ok, detail: verdict.detail, evidenceRefs: verdict.evidenceRefs ?? [] };
+    return { ok: verdict.status === 'satisfied', status: verdict.status, detail: verdict.detail, evidenceRefs: verdict.evidenceRefs ?? [] };
   }
 }
 
@@ -702,13 +800,14 @@ function managedInventoryTaskCandidates(
       ? `Run the registered recursive crafting task for ${inventory.item}`
       : `Run the registered recursive crafting task (item defaults to ${inventory.item}; the model may override item to craft a required tool or intermediate)`,
     fixedArgs: { taskKind: 'craft_item', params: { item: inventory.item, count: target } },
+    mutableArgumentPaths: ['/params/item', '/params/count'],
     argumentSchema: {
       type: 'object',
       properties: {
         taskKind: { type: 'string', enum: ['craft_item'] },
         params: {
           type: 'object',
-          properties: { item: { type: 'string' }, count: { type: 'number' } },
+          properties: { item: { type: 'string', minLength: 1 }, count: positiveCount() },
           additionalProperties: false,
         },
       },
@@ -725,13 +824,14 @@ function managedInventoryTaskCandidates(
       action: 'invoke_task',
       description: `Run the registered gathering task for ${inventory.item}, including bounded exploration`,
       fixedArgs: { taskKind: 'gather_material', params: { material: inventory.item, count: target } },
+      mutableArgumentPaths: ['/params/count'],
       argumentSchema: {
         type: 'object',
         properties: {
           taskKind: { type: 'string', enum: ['gather_material'] },
           params: {
             type: 'object',
-            properties: { material: { type: 'string' }, count: { type: 'number' } },
+            properties: { material: { type: 'string', minLength: 1 }, count: positiveCount() },
             additionalProperties: false,
           },
         },
@@ -771,19 +871,45 @@ function inventoryCount(world: WorldStateView, item: string): number {
 }
 
 function uniqueCandidates(candidates: GoalAgentActionCandidate[]): GoalAgentActionCandidate[] {
-  return [...new Map(candidates.map(candidate => [candidate.id, candidate])).values()];
+  const unique = new Map<string, GoalAgentActionCandidate>();
+  for (const candidate of candidates) {
+    const previous = unique.get(candidate.id);
+    if (!previous) unique.set(candidate.id, structuredClone(candidate));
+    else if (!isDeepStrictEqual(candidateBinding(previous), candidateBinding(candidate))) {
+      // An ID collision cannot silently change which executable the agent authorizes.
+      previous.authorization = { status: 'blocked', reasons: ['candidate_identity_conflict'] };
+    } else previous.evidenceRefs = [...new Set([...previous.evidenceRefs, ...candidate.evidenceRefs])].sort();
+  }
+  return [...unique.values()];
 }
 
 function filterAndCap(
   candidates: GoalAgentActionCandidate[],
   state: Readonly<GoalAgentStateV1>,
   maxCandidates: number | undefined,
+  includeUnavailable = false,
 ): GoalAgentActionCandidate[] {
   const unique = uniqueCandidates(candidates);
   const filtered = state.verdict?.decision === 'revise_action' && state.action.result?.failure
     ? unique.filter(candidate => !matchesFailedProposal(candidate, state.action.proposal))
     : unique;
-  return filtered.slice(0, Math.max(1, maxCandidates ?? 12));
+  const configured = maxCandidates ?? tuning().capabilityCatalog.searchLimit;
+  const limit = Number.isFinite(configured) ? Math.max(1, Math.floor(configured)) : tuning().capabilityCatalog.searchLimit;
+  const ready = filtered.filter(candidate => !candidate.authorization || candidate.authorization.status === 'ready');
+  const unavailable = filtered.filter(candidate => candidate.authorization && candidate.authorization.status !== 'ready');
+  return [...ready.slice(0, limit), ...(includeUnavailable ? unavailable.slice(0, limit) : [])];
+}
+
+function positiveCount(): Record<string, unknown> { return { type: 'integer', minimum: 1 }; }
+
+function craftArgumentSchema(): Record<string, unknown> {
+  return {
+    type: 'object', additionalProperties: false, required: ['itemName'],
+    properties: {
+      itemName: { type: 'string', minLength: 1 }, count: positiveCount(), inventoryTargetCount: positiveCount(),
+      needTable: { type: 'boolean' },
+    },
+  };
 }
 
 function chestRetrievalNeed(

@@ -1,3 +1,4 @@
+import type { BoundNavigation, NavigationBindingInput } from './NavigationExecution.js';
 import type { DoorPassageRequest, GotoOptions, NavGoal, NavigationAdapter } from './NavigationAdapter.js';
 import type { MovementOptions, NavResult, Unsubscribe, Vec3 } from './types.js';
 
@@ -22,6 +23,20 @@ export class SwitchableNavAdapter implements NavigationAdapter {
     }
   }
 
+  bind(input: NavigationBindingInput): BoundNavigation {
+    const target = this.target;
+    const scope = input.scope;
+    const check = (stage?: string) => {
+      scope.assertCurrent(stage);
+      if (target !== this.target) throw new Error('navigation_generation_changed');
+    };
+    return target.bind({ ...input, scope: {
+      signal: scope.signal, assertCurrent: check,
+      effect: run => scope.effect(() => { check('navigation_dispatch'); return run(); }),
+      wait: ms => scope.wait(ms),
+    } });
+  }
+
   getTarget(): NavigationAdapter { return this.target; }
 
   private track(rebind: (t: NavigationAdapter) => Unsubscribe): Unsubscribe {
@@ -33,16 +48,6 @@ export class SwitchableNavAdapter implements NavigationAdapter {
       if (i >= 0) this.subs.splice(i, 1);
     };
   }
-
-  goto(goal: NavGoal, opts?: GotoOptions): Promise<NavResult> { return this.target.goto(goal, opts); }
-  guideThroughDoor(request: DoorPassageRequest): Promise<NavResult> {
-    return this.target.guideThroughDoor(request);
-  }
-  stop(): void { this.target.stop(); }
-  startFollow(entityId: number, range: number, force?: boolean): { ok: boolean; reason?: string } {
-    return this.target.startFollow(entityId, range, force);
-  }
-  stopFollow(): void { this.target.stopFollow(); }
   isFollowing(entityId?: number): boolean { return this.target.isFollowing(entityId); }
   isMoving(): boolean { return this.target.isMoving(); }
   isMining(): boolean { return this.target.isMining(); }

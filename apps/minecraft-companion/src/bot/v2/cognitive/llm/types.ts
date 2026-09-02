@@ -97,6 +97,7 @@ export interface LLMToolSchema {
       type: 'object';
       properties: Record<string, unknown>;
       required?: string[];
+      anyOf?: Array<Record<string, unknown>>;
     };
   };
 }

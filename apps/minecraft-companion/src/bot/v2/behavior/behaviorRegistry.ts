@@ -6,11 +6,13 @@
  */
 
 import type { IBehavior, IBehaviorRegistry } from './types.js';
+import { assertBehaviorDefinition } from './behaviorDefinition.js';
 
 export class BehaviorRegistry implements IBehaviorRegistry {
   private readonly skills = new Map<string, IBehavior>();
 
   register(skill: IBehavior): void {
+    assertBehaviorDefinition(skill);
     this.skills.set(skill.id, skill);
   }
 

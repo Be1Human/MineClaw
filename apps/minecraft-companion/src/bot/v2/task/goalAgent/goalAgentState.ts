@@ -2,7 +2,10 @@ import type { ActionProposal } from '../../atomic/contracts/atomicContractRegist
 import type { GoalRequestV2 } from '../../decision/goalAgentPort/contracts.js';
 import type { WorldStateView } from '../../types.js';
 import type { GoalContractV1 } from '../contracts/goalContract.js';
-import type { FailureEnvelope } from '../execution/failureEnvelope.js';
+import { assertGoalContractV2, type GoalContractV2 } from '../contracts/goalContractV2.js';
+import type { WorldFactRequest } from '../contracts/worldFact.js';
+import type { GoalProgressState } from '../contracts/goalProgress.js';
+import type { FailureEnvelope } from '../contracts/failureEnvelope.js';
 import type { PlannerExperienceBundle } from '../planner/experience/plannerExperienceProvider.js';
 import type { GoalTargetCandidate } from '../../knowledge/goalTargetKnowledge.js';
 import type {
@@ -34,6 +37,7 @@ export type GoalAgentStepOutcomeKind =
 export type GoalAgentEventSource = GoalAgentNodeId | GoalAgentStepRole;
 
 export const GOAL_AGENT_STATE_SCHEMA_V1 = 'mineclaw.goal-agent-state/v1' as const;
+export const GOAL_AGENT_STATE_SCHEMA_V2 = 'mineclaw.goal-agent-state/v2' as const;
 
 export type GoalAgentSessionMode = 'planned_goal' | 'persistent_monitor';
 
@@ -124,7 +128,7 @@ export interface GoalAgentTerminal {
 }
 
 export interface GoalAgentStateV1 {
-  schema: typeof GOAL_AGENT_STATE_SCHEMA_V1;
+  schema: typeof GOAL_AGENT_STATE_SCHEMA_V1 | typeof GOAL_AGENT_STATE_SCHEMA_V2;
   mode: GoalAgentSessionMode;
   sessionId: string;
   interactionSessionId: string;
@@ -149,7 +153,7 @@ export interface GoalAgentStateV1 {
   };
 
   request: GoalRequestV2;
-  rootGoal: GoalContractV1 | null;
+  rootGoal: GoalContractV1 | GoalContractV2 | null;
   interpretation: {
     candidates: GoalTargetCandidate[];
     evidenceRefs: string[];
@@ -166,6 +170,7 @@ export interface GoalAgentStateV1 {
     latest: WorldStateView | null;
     beforeAction: WorldStateView | null;
     observedAt: string | null;
+    factRequests?: readonly WorldFactRequest[];
   };
   experience: {
     bundle: PlannerExperienceBundle | null;
@@ -190,6 +195,8 @@ export interface GoalAgentStateV1 {
     timeline: GoalAgentTimelineEntry[];
   };
   budget: GoalAgentBudget;
+  /** Optional for pre-guard checkpoints; once present, never reset by slicing or replay. */
+  progress?: GoalProgressState;
   owner: {
     question: string | null;
     answer: string | null;
@@ -274,7 +281,12 @@ export function createGoalAgentState(input: CreateGoalAgentStateInput): GoalAgen
 }
 
 export function assertGoalAgentStateV1(state: GoalAgentStateV1): void {
-  if (state.schema !== GOAL_AGENT_STATE_SCHEMA_V1) throw new Error(`unsupported GoalAgent state schema: ${state.schema}`);
+  if (state.schema !== GOAL_AGENT_STATE_SCHEMA_V1 && state.schema !== GOAL_AGENT_STATE_SCHEMA_V2) throw new Error(`unsupported GoalAgent state schema: ${state.schema}`);
+  if (state.rootGoal && !['mineclaw.goal/v1', 'mineclaw.goal/v2'].includes(state.rootGoal.schema)) throw new Error('unsupported_goal_contract_schema');
+  if (state.rootGoal?.schema === 'mineclaw.goal/v2') {
+    if (state.schema !== GOAL_AGENT_STATE_SCHEMA_V2) throw new Error('composed_goal_requires_state_v2');
+    assertGoalContractV2(state.rootGoal);
+  } else if (state.schema === GOAL_AGENT_STATE_SCHEMA_V2) throw new Error('state_v2_requires_composed_goal');
   if (state.mode !== 'planned_goal' && state.mode !== 'persistent_monitor') {
     throw new Error(`unsupported GoalAgent session mode: ${String(state.mode)}`);
   }
@@ -309,11 +321,24 @@ export function assertGoalAgentStateV1(state: GoalAgentStateV1): void {
   if (state.plan.graph && state.plan.revision < 1) throw new Error('a planned graph requires plan revision >= 1');
   if (!state.plan.graph && state.plan.activeNodeId) throw new Error('an active plan node requires a plan graph');
   assertBudget(state.budget);
+  if (state.progress) {
+    if (state.progress.schema !== 'mineclaw.goal-progress/v1') throw new Error('unsupported_progress_schema');
+    for (const key of ['rounds', 'noProgressRounds', 'totalNoProgressRounds', 'recoveryAttempts', 'recoveryStartedRound', 'emptySearchStreak', 'inactiveRounds'] as const) {
+      if (!Number.isSafeInteger(state.progress[key]) || state.progress[key] < 0) throw new Error(`invalid_progress_counter:${key}`);
+    }
+    if (!Array.isArray(state.progress.seenFingerprints) || !Array.isArray(state.progress.sentFeedbackKinds)) throw new Error('invalid_progress_history');
+    if (!['running', 'recovery', 'waiting_world', 'paused_owner', 'failed'].includes(state.progress.mode)) throw new Error('invalid_progress_mode');
+    if (state.progress.mode === 'waiting_world' && !state.progress.waiting) throw new Error('waiting_condition_missing');
+    if (state.progress.waiting && (![state.progress.waiting.nextCheckAt, state.progress.waiting.deadlineAt, state.progress.waitStartedAt].every(value => typeof value === 'number' && Number.isFinite(value))
+      || !Number.isSafeInteger(state.progress.waiting.checks) || state.progress.waiting.checks < 0 || !state.progress.waiting.key)) throw new Error('invalid_wait_condition');
+  }
   assertTimeline(state.context.timeline, state.revision);
 }
 
 /** Upgrade persisted pre-Interpret checkpoints without changing their identity or revision. */
 export function migrateGoalAgentStateV1(state: GoalAgentStateV1): GoalAgentStateV1 {
+  // v2 never enters the permissive legacy migration that can clear an old goal.
+  if (state.schema === GOAL_AGENT_STATE_SCHEMA_V2) { assertGoalAgentStateV1(state); return state; }
   const legacy = state as GoalAgentStateV1 & {
     mode?: GoalAgentSessionMode;
     interpretation?: GoalAgentStateV1['interpretation'];

@@ -27,6 +27,10 @@ export interface GoalAgentSkillIndexEvidence {
   readonly version: string;
   readonly score: number;
   readonly evidenceRef: string;
+  readonly toolCompatibility?: {
+    readonly state: 'compatible' | 'unsupported_tools';
+    readonly missingTools: readonly string[];
+  };
 }
 
 export interface GoalAgentSkillDocumentEvidence extends GoalAgentSkillIndexEvidence {
@@ -35,7 +39,7 @@ export interface GoalAgentSkillDocumentEvidence extends GoalAgentSkillIndexEvide
   readonly estimatedTokens: number;
 }
 
-export type GoalAgentSkillLookupFailureReason = 'not_found' | 'stale' | 'corrupt' | 'budget_exceeded';
+export type GoalAgentSkillLookupFailureReason = 'not_found' | 'stale' | 'corrupt' | 'budget_exceeded' | 'unsupported_tools';
 
 export type GoalAgentSkillLookupResult =
   | { readonly ok: true; readonly skill: GoalAgentSkillDocumentEvidence }
@@ -47,6 +51,7 @@ export type GoalAgentSkillLookupResult =
       readonly actualVersion?: string;
       readonly estimatedTokens?: number;
       readonly maxTokens?: number;
+      readonly missingTools?: readonly string[];
     };
 
 export interface GoalAgentSkillKnowledgePort {
@@ -63,7 +68,17 @@ export interface GoalAgentSkillKnowledgePort {
  * cannot expose an agent=main document through either search or get.
  */
 export class GoalAgentSkillKnowledgeAdapter implements GoalAgentSkillKnowledgePort {
-  constructor(private readonly registry: Pick<AgentSkillRegistry, 'list'>) {}
+  constructor(
+    private readonly registry: Pick<AgentSkillRegistry, 'list'>,
+    private readonly toolNames?: () => readonly string[],
+  ) {}
+
+  private compatibility(skill: AgentSkill): Pick<GoalAgentSkillIndexEvidence, 'toolCompatibility'> {
+    if (!this.toolNames) return {};
+    const available = new Set(this.toolNames());
+    const missingTools = Object.freeze([...(skill.meta.uses ?? [])].filter(name => !available.has(name)));
+    return { toolCompatibility: Object.freeze({ state: missingTools.length ? 'unsupported_tools' : 'compatible', missingTools }) };
+  }
 
   catalog(input: { readonly limit?: number } = {}): GoalAgentSkillIndexEvidence[] {
     const limit = boundedLimit(input.limit ?? 32, 64);
@@ -72,7 +87,7 @@ export class GoalAgentSkillKnowledgeAdapter implements GoalAgentSkillKnowledgePo
       .filter(isValidSkill)
       .sort((left, right) => left.meta.name.localeCompare(right.meta.name))
       .slice(0, limit)
-      .map(skill => Object.freeze({ ...indexEvidence(skill), score: 0 }));
+      .map(skill => Object.freeze({ ...indexEvidence(skill), ...this.compatibility(skill), score: 0 }));
   }
 
   search(input: GoalAgentSkillSearchInput): GoalAgentSkillIndexEvidence[] {
@@ -92,6 +107,7 @@ export class GoalAgentSkillKnowledgeAdapter implements GoalAgentSkillKnowledgePo
       .slice(0, limit)
       .map(({ skill, score }) => Object.freeze({
         ...indexEvidence(skill),
+        ...this.compatibility(skill),
         score,
       }));
   }
@@ -113,6 +129,10 @@ export class GoalAgentSkillKnowledgeAdapter implements GoalAgentSkillKnowledgePo
         actualVersion: index.version,
       };
     }
+    const compatibility = this.compatibility(skill);
+    if (compatibility.toolCompatibility?.state === 'unsupported_tools') {
+      return { ok: false, reason: 'unsupported_tools', ref, missingTools: compatibility.toolCompatibility.missingTools };
+    }
     const estimatedTokens = estimateTokens(skill.body);
     const maxTokens = input.maxTokens ?? 8_192;
     if (!Number.isInteger(maxTokens) || maxTokens < 1) {
@@ -125,6 +145,7 @@ export class GoalAgentSkillKnowledgeAdapter implements GoalAgentSkillKnowledgePo
       ok: true,
       skill: Object.freeze({
         ...index,
+        ...compatibility,
         score: 1,
         body: skill.body,
         contentHash: index.version,

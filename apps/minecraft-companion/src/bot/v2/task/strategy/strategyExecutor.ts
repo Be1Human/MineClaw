@@ -1,18 +1,16 @@
 /**
  * L6 · StrategyExecutor —— fast-path：跑一棵命中的固化 BT（FEAT-CROSS-07 R4/R6）
  *
- * 把 BTInterpreter 接到真实执行：叶子 atomic/behavior → runAtomicOnce（心跳环外直驱，背书任务由 caller 管）；
+ * 把 BTInterpreter 接到真实执行：叶子 atomic/behavior → 必需的受控活动动作端口；
  *   strategy → 递归（静态查环防成环）；condition/loop-until → 查 WorldState 谓词（bind 注入解析 {target}）。
  * 返回 BTResult；fast 失败由上层 router 决定降级 slow。
  */
 
 import { BTInterpreter, type BTExecutors } from './btInterpreter.js';
-import { runAtomicOnce, type AtomDispatchDeps } from '../goalRunner/atomExec.js';
 import type { Strategy, BTResult } from './strategyTypes.js';
 import type { WorldStateView } from '../../types.js';
 
 export interface StrategyExecDeps {
-  atom: AtomDispatchDeps;
   getStrategy: (id: string) => Strategy | undefined;
   getWorld: () => WorldStateView | null;
   /** 自定义谓词（可选）；缺省走内置 defaultCheckCondition */
@@ -26,37 +24,34 @@ export interface StrategyActionExecutionPort {
 }
 
 export class StrategyExecutor {
-  private seq = 0;
   constructor(private readonly deps: StrategyExecDeps) {}
 
   async run(
     strategy: Strategy,
     bind: Record<string, unknown>,
+    actionPort: StrategyActionExecutionPort,
     isPreempted?: () => boolean,
-    actionPort?: StrategyActionExecutionPort,
   ): Promise<BTResult> {
-    const interp = new BTInterpreter(this.buildExecutors(bind, new Set([strategy.id]), isPreempted, actionPort));
+    if (!actionPort || typeof actionPort.execute !== 'function') throw new Error('strategy_action_port_required');
+    const interp = new BTInterpreter(this.buildExecutors(bind, new Set([strategy.id]), actionPort, isPreempted));
     return interp.run(strategy.bt, bind);
   }
 
   private buildExecutors(
     bind: Record<string, unknown>,
     stack: Set<string>,
+    actionPort: StrategyActionExecutionPort,
     runIsPreempted?: () => boolean,
-    actionPort?: StrategyActionExecutionPort,
   ): BTExecutors {
-    const eid = () => `bt-${++this.seq}-${Date.now()}`;
     return {
-      runAtomic: (atomic, args) => actionPort?.execute(atomic, args)
-        ?? runAtomicOnce(atomic, args, eid(), this.deps.atom),
-      runBehavior: (behavior, args) => actionPort?.execute('invoke_behavior', { behavior, behaviorParams: args })
-        ?? runAtomicOnce('invoke_behavior', { behavior, behaviorParams: args }, eid(), this.deps.atom),
+      runAtomic: (atomic, args) => actionPort.execute(atomic, args),
+      runBehavior: (behavior, args) => actionPort.execute('invoke_behavior', { behavior, behaviorParams: args }),
       runStrategy: async (id, args) => {
         if (stack.has(id)) { this.deps.onLog?.(`[strategy] 递归成环 ${id} → 拒绝`); return { status: 'failure', detail: 'cycle' }; }
         const sub = this.deps.getStrategy(id);
         if (!sub) return { status: 'failure', detail: `no strategy ${id}` };
         const interp = new BTInterpreter(this.buildExecutors(
-          { ...bind, ...args }, new Set([...stack, id]), runIsPreempted, actionPort));
+          { ...bind, ...args }, new Set([...stack, id]), actionPort, runIsPreempted));
         return interp.run(sub.bt, { ...bind, ...args });
       },
       // 谓词求值：bind 注入（loop until 空参时也能拿到 {target}），args 覆盖 bind

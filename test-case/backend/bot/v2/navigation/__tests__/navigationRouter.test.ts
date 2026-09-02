@@ -12,7 +12,14 @@
  * 全部用 MockNav + MockWorldMapStore，零外部依赖。
  */
 
-import { describe, it } from 'node:test';
+import { describe, it as nodeIt, before, after } from 'node:test';
+import { withinBody } from '../../__tests__/mocks/withinBody.js';
+import type { ControlledExecutionContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/ports/controlledExecution.js';
+import { __setTuningOverride } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
+const it=(name:string,work:(scope:ControlledExecutionContext)=>unknown)=>nodeIt(name,()=>withinBody(async scope=>work(scope)));
+before(()=>__setTuningOverride({navigationMaintenance:{recoveryAttempts:0}}));
+after(()=>__setTuningOverride(null));
+const actions={setControlState:async()=>{},clearControlStates:async()=>{}};
 import assert from 'node:assert/strict';
 
 import { NavigationRouterImpl } from '../../../../../../apps/minecraft-companion/src/bot/v2/navigation/navigationRouter.js';
@@ -81,9 +88,9 @@ const at0 = (): Vec3 => ({ x: 0, y: 64, z: 0 });
 
 describe('NavigationRouter · 退避式寻路 · FEAT-L1-07', () => {
 
-  it('L0 · pathfinder 直冲成功 → mode=direct · 单次 goto', async () => {
+  it('L0 · pathfinder 直冲成功 → mode=direct · 单次 goto', async (scope) => {
     const nav = new MockNav();
-    const router = new NavigationRouterImpl(nav, new MockWorldMapStore(), at0);
+    const router = new NavigationRouterImpl(nav as never,new MockWorldMapStore(),at0,actions as never,scope);
 
     const r = await router.navigateTo({ x: 50, y: 64, z: 0 });
 
@@ -92,10 +99,10 @@ describe('NavigationRouter · 退避式寻路 · FEAT-L1-07', () => {
     assert.equal(nav.calls.length, 1); // 只 L0 一次，不进绕路
   });
 
-  it('L0 失败 + 已贴近目标（≤stuckArriveDist）→ mode=direct 失败 · 不绕路', async () => {
+  it('L0 失败 + 已贴近目标（≤stuckArriveDist）→ mode=direct 失败 · 不绕路', async (scope) => {
     const nav = new MockNav();
     nav.default = { ok: false, reason: 'noPath' };
-    const router = new NavigationRouterImpl(nav, new MockWorldMapStore(), at0);
+    const router = new NavigationRouterImpl(nav as never,new MockWorldMapStore(),at0,actions as never,scope);
 
     // 目标距 3 格 < stuckArriveDist(4) → 哨兵判定已尽力，不升级
     const r = await router.navigateTo({ x: 3, y: 64, z: 0 });
@@ -105,10 +112,10 @@ describe('NavigationRouter · 退避式寻路 · FEAT-L1-07', () => {
     assert.equal(nav.calls.length, 1); // 没进绕路
   });
 
-  it('L0 失败 + 离目标远 + 记忆无路 → 升级绕路后仍失败 mode=detour', async () => {
+  it('L0 失败 + 离目标远 + 记忆无路 → 升级绕路后仍失败 mode=detour', async (scope) => {
     const nav = new MockNav();
     nav.default = { ok: false, reason: 'noPath' };
-    const router = new NavigationRouterImpl(nav, new MockWorldMapStore(), at0);
+    const router = new NavigationRouterImpl(nav as never,new MockWorldMapStore(),at0,actions as never,scope);
 
     // 远(50) + 空记忆 → 哨兵升级 L1；记忆无真路 → frontier 摸黑步进也失败 → L2 失败
     const r = await router.navigateTo({ x: 50, y: 64, z: 0 });
@@ -118,7 +125,7 @@ describe('NavigationRouter · 退避式寻路 · FEAT-L1-07', () => {
     assert.ok(/no_path|detour_failed/.test(r.reason ?? ''), `reason=${r.reason}`);
   });
 
-  it('L1 · L0 失败 + 记忆有路 → DetourPlanner 绕路 → mode=detour 成功', async () => {
+  it('L1 · L0 失败 + 记忆有路 → DetourPlanner 绕路 → mode=detour 成功', async (scope) => {
     const nav = new MockNav();
     // 第一次 goto(L0) 失败，其余（绕路 waypoint + 末段）成功
     nav.queue = [{ ok: false, reason: 'noPath' }];
@@ -127,7 +134,7 @@ describe('NavigationRouter · 退避式寻路 · FEAT-L1-07', () => {
     const worldMap = new MockWorldMapStore();
     worldMap.fillCorridorX(-1, 51, 64, 0); // 记忆里有一条到 goal 的走廊
 
-    const router = new NavigationRouterImpl(nav, worldMap, at0);
+    const router = new NavigationRouterImpl(nav as never,worldMap,at0,actions as never,scope);
     const r = await router.navigateTo({ x: 50, y: 64, z: 0 });
 
     assert.equal(r.success, true);
@@ -138,13 +145,13 @@ describe('NavigationRouter · 退避式寻路 · FEAT-L1-07', () => {
     assert.equal(last.position?.x, 50);
   });
 
-  it('cancel() → nav.stop 被调用 · mode=cancelled', async () => {
+  it('cancel() → nav.stop 被调用 · mode=cancelled', async (scope) => {
     const nav = new MockNav();
     nav.default = { ok: false, reason: 'cancelled' };
-    const router = new NavigationRouterImpl(nav, new MockWorldMapStore(), at0);
+    const router = new NavigationRouterImpl(nav as never,new MockWorldMapStore(),at0,actions as never,scope);
 
     const p = router.navigateTo({ x: 200, y: 64, z: 0 });
-    router.cancel();
+    await router.cancel();
     const r = await p;
 
     assert.ok(nav.stopCalled >= 1, 'nav.stop 应被调用');

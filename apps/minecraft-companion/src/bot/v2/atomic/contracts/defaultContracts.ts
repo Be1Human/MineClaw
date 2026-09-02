@@ -1,9 +1,6 @@
 import type { ActionRequest, ActionType, ExecutionResult } from '../../types.js';
-import {
-  contractFailure,
-  failureFromLegacy,
-  type FailureEnvelope,
-} from '../../task/execution/failureEnvelope.js';
+import { contractFailure, failureFromLegacy } from '../../task/execution/failureEnvelope.js';
+import type { FailureEnvelope } from '../../task/contracts/failureEnvelope.js';
 import {
   AtomicContractRegistry,
   type ActionContractDefinition,
@@ -24,7 +21,7 @@ const ACTION_TYPES: readonly ActionType[] = [
 const TARGET_FIELDS = [
   'entityId', 'position', 'text', 'itemName', 'behavior', 'behaviorParams', 'faceVector',
   'referencePosition', 'count', 'inventoryTargetCount', 'needTable', 'tablePos', 'fuelName',
-  'durationMs', 'backDurationMs', 'drawMs', 'forceRepath',
+  'durationMs', 'backDurationMs', 'drawMs', 'forceRepath', 'range',
 ] as const;
 
 type TargetField = typeof TARGET_FIELDS[number];
@@ -89,6 +86,10 @@ function prepareProposal(action: ActionType, proposal: ActionProposal, spec: Con
   const normalized = normalizeTarget(action, proposal.args);
   if ('failure' in normalized) return { kind: 'invalid', failure: normalized.failure };
   const { target, derivedFields } = normalized;
+
+  if (target.range != null && (typeof target.range!=='number' || !Number.isFinite(target.range) || target.range<0)) {
+    return {kind:'invalid',failure:contractFailure('contract.invalid_parameter',`${action}.range must be a finite non-negative number`)};
+  }
 
   for (const field of spec.required ?? []) {
     if (!hasValue(target[field])) {
@@ -229,6 +230,7 @@ function schemaFor(spec: ContractSpec): JsonSchema {
 }
 
 function propertySchema(field: TargetField): Record<string, unknown> {
+  if (field==='range') return {type:'number',minimum:0};
   if (['position', 'faceVector', 'referencePosition', 'tablePos'].includes(field)) {
     return { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } } };
   }

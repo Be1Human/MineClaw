@@ -1,49 +1,29 @@
 ---
 name: 农活种植
 agent: goal
-description: 耕地/播种/收割/补种循环。主人说"种麦子/打理田/收菜"时触发。支持一次性收割与持续循环两种模式。
+description: 处理“帮我把这个田种一下”：先查真实农业能力，再定位已有田块、选择作物、补齐合法种子来源并逐格验真。发现能力不代表已经接通执行。
 category: task
-triggers: [种, 播, 收, 打理, 浇水, 农]
-uses: [decompose_task, start_task, update_task, create_plan, submit_goals, say, ask_master]
+triggers: [种田, 种一下, 播种, 补种, 农活]
+uses: [capability_search, capability_get, world_observe, goal_search_targets, goal_get_target, goal_create, plan_read, plan_commit, action_list, action_execute, progress_verify, knowledge_search, knowledge_get, owner_ask]
 ---
 
-# 农活种植 · Skill
+# 农活种植
 
-## 何时用我
+先确认可执行操作、观察入口和成功判据；本说明不授权新工具，也不承诺开荒、灌溉或持续收割。
 
-主人要 bot 做农活：
-- "种 3 亩麦子"
-- "把田收了"
-- "持续打理这片田"（continuous 模式）
+## 判断与计划
 
-## 执行步骤
+1. 用 capability_search 搜播种，capability_get 读取可用性与调用入口。只有任务定义或内部资源不等于可以启动。
+2. 根据实际可用的观察证据绑定“这个田”，不能编造玩家视线或默认自身前方一格。唯一候选自主选择；确实有歧义才 owner_ask。
+3. 作物依据依次是明确要求、田块唯一已有作物、背包唯一受支持种植物；缺依据或冲突时询问。
+4. 保留初始空耕地集合和已有作物保护范围。未知、截断和未加载不能当成田块边界。
+5. 缺种子先查合法来源；只能对已授权且有库存依据的容器规划取料，不擅自收割、打草或找未知箱子。
 
-1. **解析参数**：
-   - `crop`：作物名（wheat / carrot / potato / beetroot）
-   - `plots`：亩数，1 亩 ≈ 9×9（默认 1）
-   - `mode`：`oneshot`（默认）一次性 / `continuous` 持续循环
-2. **创建任务**：
-   ```
-   decompose_task({
-     kind: "farm",
-     crop, plots, mode
-   })
-   ```
-3. **启动**：`start_task({taskId})`
-4. **回应**：`say("好嘞，去打理 3 亩麦田～")`
+## 执行与结果
 
-## 持续模式（continuous）
+按当前 goal_create schema 创建合法目标，用 plan_read / plan_commit 表达必要前置步骤。
+只执行 action_list 返回且 authorization 为 ready 的 candidateHandle；Behavior ID 或策略类名不是顶层工具。句柄过期先重新查询，不自行拼装。
+执行后用 progress_verify 验真；逐格区分新增、原有、受阻和未知，不能把部分完成说成整田完成。
 
-主人说"持续打理 / 长期种" → `mode: "continuous"`。
-- 状态机：planting → waiting_growth → 收割 → 补种 → ...
-- 永远 partial，不会 complete
-- 只有主人说"停" → 用「任务管理」cancel_task
-
-## 失败兜底
-
-- 没有种子 → 先 invoke_skill("合成造物") 或 ask_master 让主人提供
-- 找不到田地 → ask_master 让主人指明位置
-
-## 关联
-
-- FEAT-L7-05 已实现的能力，本 skill 是 LLM 视角的接口
+缺播种执行器、定位观察或验真器时，准确报告开发缺口，不循环换词搜索，也不要求用户替系统提供动作脚本。
+成熟作物收割归仓是另一项能力，不能以收割冒充播种。

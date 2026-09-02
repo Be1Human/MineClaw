@@ -1,12 +1,13 @@
 import type { ActionRequest } from '../types.js';
-import type { BehaviorContext, IBehavior } from './types.js';
+import type { BehaviorContext, SequenceBehavior } from './types.js';
 
 /** Registered physical handoff: approach the owner, then toss toward their pickup radius. */
-export class DeliverToOwnerBehavior implements IBehavior {
+export class DeliverToOwnerBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'deliver_to_owner';
   private sequence = 0;
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const owner = ctx.world.owner;
     const params = ctx.taskParams ?? {};
     const item = typeof params.item === 'string' ? params.item : '';

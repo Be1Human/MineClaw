@@ -5,7 +5,7 @@ import type { WorldStateView } from '../../../../../../apps/minecraft-companion/
 import { DeliverToOwnerBehavior } from '../../../../../../apps/minecraft-companion/src/bot/v2/behavior/deliverToOwnerBehavior.js';
 
 test('BUG-CROSS-60/69 · delivery approaches a distant owner then tosses toward their pickup radius', () => {
-  const actions = new DeliverToOwnerBehavior().plan({
+  const actions = new DeliverToOwnerBehavior().compile({
     world: world(),
     taskParams: { item: 'iron_pickaxe', count: 1 },
   });
@@ -23,8 +23,8 @@ test('BUG-CROSS-60/69 · delivery approaches a distant owner then tosses toward 
 
 test('BUG-CROSS-60 · missing owner or item fails closed', () => {
   const behavior = new DeliverToOwnerBehavior();
-  assert.deepEqual(behavior.plan({ world: { ...world(), owner: null }, taskParams: { item: 'iron_pickaxe' } }), []);
-  assert.deepEqual(behavior.plan({ world: world(), taskParams: {} }), []);
+  assert.deepEqual(behavior.compile({ world: { ...world(), owner: null }, taskParams: { item: 'iron_pickaxe' } }), []);
+  assert.deepEqual(behavior.compile({ world: world(), taskParams: {} }), []);
 });
 
 function world(): WorldStateView {

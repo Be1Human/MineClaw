@@ -1,17 +1,16 @@
 import type { Vec3 } from '../../adapter/types.js';
 import type { ActionRequest } from '../types.js';
-import type { AdaptiveBehaviorContext, IBehavior } from './types.js';
+import type { AdaptiveBehaviorContext, AdaptiveBehavior } from './types.js';
 
 export type PlacementRelation = 'near' | 'right' | 'front' | 'at';
 export type PlacementSurface = 'ground' | 'top';
 export type PlacementReference = 'owner' | 'self';
 
 /** Place one inventory block at a deterministic cell relative to the requested actor. */
-export class PlaceRelativeBehavior implements IBehavior {
+export class PlaceRelativeBehavior implements AdaptiveBehavior {
+  readonly kind = 'adaptive' as const;
   readonly id = 'place_relative';
   private sequence = 0;
-
-  plan(): ActionRequest[] { return []; }
 
   async run(ctx: AdaptiveBehaviorContext) {
     const world = ctx.getWorld();

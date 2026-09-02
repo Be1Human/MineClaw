@@ -13,7 +13,7 @@
  * 失败：原子单发不自重试，enforce 档判 fail 交 GoalAgent Recovery 节点；observe 档只告警不阻断。
  */
 
-import type { GameAdapter } from '../../adapter/GameAdapter.js';
+import type { GameView } from '../../adapter/GameAdapter.js';
 import type { Vec3 } from '../../adapter/types.js';
 import type { ActionRequest, ActionType } from '../types.js';
 
@@ -25,9 +25,9 @@ export interface VerifyVerdict {
 
 export interface AtomVerifier {
   /** 动作前拍快照（只拍本原子要对比的状态：背包数/饱食/血量…）· 可选 */
-  snapshot?(req: ActionRequest, game: GameAdapter): unknown;
+  snapshot?(req: ActionRequest, game: GameView): unknown;
   /** 动作后回查世界 → 三态。同步纯读，短轮询由 atomics.runVerify 控制。 */
-  verify(req: ActionRequest, game: GameAdapter, before: unknown): VerifyVerdict;
+  verify(req: ActionRequest, game: GameView, before: unknown): VerifyVerdict;
 }
 
 // ── 小工具 ────────────────────────────────────────────
@@ -35,10 +35,10 @@ const isSolid = (b: { boundingBox?: string; name: string } | null): boolean =>
   !!b && b.boundingBox === 'block';
 const isEmpty = (b: { boundingBox?: string } | null): boolean =>
   !b || b.boundingBox === 'empty';
-function invCount(game: GameAdapter, name: string): number {
+function invCount(game: GameView, name: string): number {
   return game.getInventoryItems().filter(i => i.name === name).reduce((s, i) => s + i.count, 0);
 }
-function invTotal(game: GameAdapter): number {
+function invTotal(game: GameView): number {
   return game.getInventoryItems().reduce((s, i) => s + i.count, 0);
 }
 
@@ -176,7 +176,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
  * place_block 缺 referencePosition 时自动找：脚边空格 + 脚下实心块(顶面放) 或 侧邻实心块(侧面放)。
  */
 export function resolvePlacement(
-  game: GameAdapter,
+  game: GameView,
   selfPos: Vec3,
 ): { refPos: Vec3; faceVector: Vec3; placePos: Vec3 } | null {
   const fx = Math.floor(selfPos.x), fy = Math.floor(selfPos.y), fz = Math.floor(selfPos.z);

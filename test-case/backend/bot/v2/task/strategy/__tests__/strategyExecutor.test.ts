@@ -48,13 +48,12 @@ test('BUG-CROSS-17 · per-run preemption 覆盖默认值并阻止 Strategy 动�
     lifecycle: { state: 'trusted', confidence: 1, trialRuns: 1, cleanSuccess: 1, deps: [], ownerVerdict: null },
   };
   const executor = new StrategyExecutor({
-    atom: {} as never,
     getStrategy: () => undefined,
     getWorld: () => world(),
     isPreempted: () => false,
   });
 
-  const result = await executor.run(strategy, {}, () => true);
+  const result = await executor.run(strategy, {}, { execute: async () => { throw new Error('must not execute'); } }, () => true);
   assert.equal(result.status, 'preempted');
 });
 
@@ -66,11 +65,10 @@ test('FEAT-CROSS-14-006 - injected execution port owns Strategy side effects', a
   };
   const calls: Array<{ action: string; args: Record<string, unknown> }> = [];
   const executor = new StrategyExecutor({
-    atom: {} as never,
     getStrategy: () => undefined,
     getWorld: () => world(),
   });
-  const result = await executor.run(strategy, {}, undefined, {
+  const result = await executor.run(strategy, {}, {
     execute: async (action, args) => {
       calls.push({ action, args });
       return { ok: true, detail: 'coordinator accepted' };

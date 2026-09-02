@@ -8,56 +8,16 @@
  * 若掉落物仍在地面，只做短距拾取重试。库存没有真实增加时必须失败，不能让上层误入远距探索。
  */
 
-import type { AdaptiveBehaviorContext, IBehavior, BehaviorContext } from './types.js';
+import type { AdaptiveBehaviorContext, AdaptiveBehavior, BehaviorContext } from './types.js';
 import type { ActionRequest } from '../types.js';
 import type { Vec3 } from '../../adapter/types.js';
 import { bestToolForBlock } from '../knowledge/recipeResolver.js';
 
-export class GatherBehavior implements IBehavior {
+export class GatherBehavior implements AdaptiveBehavior {
+  readonly kind = 'adaptive' as const;
   readonly id = 'gather_block';
   private seq = 0;
 
-  constructor(private readonly pause: (ms: number) => Promise<void> = delay) {}
-
-  plan(ctx: BehaviorContext): ActionRequest[] {
-    const p = ctx.taskParams ?? {};
-    const pos = p.pos as Vec3 | undefined;
-    if (!pos || typeof pos.x !== 'number') return [];
-
-    const base = `gather_block-${Date.now()}-${++this.seq}`;
-    const mk = (suffix: string, type: ActionRequest['type'], target: ActionRequest['target'], timeout: number): ActionRequest => ({
-      id: `${base}-${suffix}`,
-      source: 'gather_block',
-      type,
-      priority: 30,
-      interrupt_level: 'soft',
-      resource: ['movement', 'inventory'],
-      target,
-      preconditions: [],
-      timeout_ms: timeout,
-    });
-
-    // FEAT-L3-10：挖前自动装备最佳工具（砍树拿斧/挖矿拿镐/挖土拿锹，挑最高档）。
-    //   关键：石头/矿必须持镐才掉落——没这步则持空手挖矿白挖、挡死木→石进阶链。
-    //   blockName 由 GatherStrategy 传入；优先用上层算好的 toolName(必需工具)，
-    //   否则按方块自选最佳可用工具；都没有则空手（不发 equip）。
-    const blockName = (p.blockName as string) || '';
-    const requiredTool = normalizeToolName(p.toolName);
-    const best = requiredTool || bestToolForBlock(blockName, ctx.world.inventory);
-    const self = ctx.world.self.position;
-    const distance = Math.hypot(pos.x - self.x, pos.y - self.y, pos.z - self.z);
-    // BUG-CROSS-28：8 格近目标维持 9s；32 格目标约 19s。固定 9s 会把正常远距离行走误判不可达。
-    const approachTimeoutMs = Math.max(9000, Math.min(20000, 6000 + Math.ceil(distance * 400)));
-
-    const steps: ActionRequest[] = [];
-    if (best) steps.push(mk('equip', 'equip', { itemName: best }, 3000));
-    steps.push(
-      mk('approach', 'move_to', { position: pos }, approachTimeoutMs),
-      mk('dig', 'dig', { position: pos }, 12000),
-      mk('pickup', 'move_to', { position: pos }, 6000),
-    );
-    return steps;
-  }
 
   async run(ctx: AdaptiveBehaviorContext) {
     const params = ctx.taskParams ?? {};
@@ -93,7 +53,7 @@ export class GatherBehavior implements IBehavior {
     if (!dug.ok) return { ok: false, error: dug.error ?? 'gather_dig_failed' };
 
     // Vanilla 掉落物有短暂 pickup delay。先留在原地等它可拾取，避免同毫秒离开现场。
-    await this.pause(650);
+    await ctx.wait(650);
     for (let attempt = 0; attempt < 3; attempt++) {
       const world = ctx.getWorld();
       const after = inventoryCount(world, acceptedItems);
@@ -118,7 +78,7 @@ export class GatherBehavior implements IBehavior {
           });
         }
       }
-      await this.pause(350);
+      await ctx.wait(350);
     }
 
     const after = inventoryCount(ctx.getWorld(), acceptedItems);
@@ -175,8 +135,4 @@ function action(
     id, source, type, priority: 30, interrupt_level: 'soft',
     resource: ['movement', 'inventory'], target, preconditions: [], timeout_ms: timeoutMs,
   };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }

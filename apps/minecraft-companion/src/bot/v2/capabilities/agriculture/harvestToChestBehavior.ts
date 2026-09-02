@@ -1,21 +1,19 @@
 import type { Vec3 } from '../../../adapter/types.js';
-import type { AdaptiveBehaviorContext, BehaviorContext, IBehavior } from '../../behavior/types.js';
+import type { AdaptiveBehaviorContext, AdaptiveBehavior } from '../../behavior/types.js';
 import type { ActionRequest, Resource } from '../../types.js';
 import type { HarvestWorldFactProvider } from './harvestWorldFactProvider.js';
 
 const SOURCE = 'agriculture.harvest';
 
 /** One idempotent capability action: harvest all mature crops, collect all drops, then deposit all harvest. */
-export class HarvestMatureCropsToChestBehavior implements IBehavior {
+export class HarvestMatureCropsToChestBehavior implements AdaptiveBehavior {
+  readonly kind = 'adaptive' as const;
   readonly id = 'harvest_mature_crops_to_chest';
   private sequence = 0;
 
   constructor(
     private readonly facts: HarvestWorldFactProvider,
-    private readonly pause: (ms: number) => Promise<void> = delay,
   ) {}
-
-  plan(_ctx: BehaviorContext): ActionRequest[] { return []; }
 
   async run(ctx: AdaptiveBehaviorContext) {
     const chestPos = finitePosition(ctx.taskParams?.chestPos);
@@ -55,7 +53,7 @@ export class HarvestMatureCropsToChestBehavior implements IBehavior {
         }, ['movement', 'inventory'], 8_000,
       ));
       if (!claimed.ok) return failed(claimed.error ?? 'harvest_drop_claim_failed', harvested + 1, pickups);
-      await this.pause(550);
+      await ctx.wait(550);
       const collected = await this.collectVisibleDrops(ctx, params, pickups, maxPickupActions);
       if (!collected.ok) return failed(collected.error, harvested + 1, collected.pickups, collected.details);
       pickups = collected.pickups;
@@ -70,7 +68,7 @@ export class HarvestMatureCropsToChestBehavior implements IBehavior {
     }
     if (harvested < 1) return failed('no_mature_crops_observed', harvested, pickups);
 
-    await this.pause(650);
+    await ctx.wait(650);
     const swept = await this.collectVisibleDrops(ctx, params, pickups, maxPickupActions);
     if (!swept.ok) return failed(swept.error, harvested, swept.pickups, swept.details);
     pickups = swept.pickups;
@@ -130,7 +128,7 @@ export class HarvestMatureCropsToChestBehavior implements IBehavior {
       ));
       pickups += 1;
       if (!moved.ok) return { ok: false, error: moved.error ?? 'harvest_pickup_failed', pickups };
-      await this.pause(250);
+      await ctx.wait(250);
     }
     const remaining = this.observe(ctx, params);
     if ('error' in remaining) return { ok: false, error: remaining.error, pickups };
@@ -199,8 +197,4 @@ function boundedCount(value: unknown, fallback: number, min: number, max: number
 
 function failed(error: string, harvested: number, pickups: number, details: Record<string, unknown> = {}) {
   return { ok: false, error, details: { harvested, pickups, ...details } };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }

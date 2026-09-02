@@ -1,13 +1,14 @@
 import type { Vec3 } from '../../adapter/types.js';
 import type { ActionRequest } from '../types.js';
-import type { BehaviorContext, IBehavior } from './types.js';
+import type { BehaviorContext, SequenceBehavior } from './types.js';
 
 /** Registered container deposit behavior: approach an interactable chest, then deposit an exact count. */
-export class DepositToChestBehavior implements IBehavior {
+export class DepositToChestBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'deposit_to_chest';
   private sequence = 0;
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const params = ctx.taskParams ?? {};
     const chestPos = params.chestPos as Vec3 | undefined;
     const item = typeof params.item === 'string' ? params.item : '';

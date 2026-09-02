@@ -217,7 +217,11 @@ function sharedStateProjection(state: Readonly<GoalAgentStateV1>): string {
   return [
     `Shared GoalAgent state for session ${state.sessionId}.`,
     `Request: ${state.request.requestText}`,
+    ...(state.rootGoal?.schema === 'mineclaw.goal/v2' ? [
+      `Immutable composed goal: ${JSON.stringify({ schema: state.rootGoal.schema, successCriteria: state.rootGoal.successCriteria, scope: state.rootGoal.scope })}`,
+    ] : []),
     `Runtime state: ${state.phase}.`,
+    ...(state.progress ? [`Progress governance: ${state.progress.mode}; stagnant rounds ${state.progress.noProgressRounds}; used recoveries ${state.progress.recoveryAttempts}.`] : []),
     `Plan revision/active task: ${state.plan.revision}/${activePlanNode?.goal.goalText ?? state.plan.activeNodeId ?? 'none'}.`,
     `Inventory: ${inventory}.`,
     `Last action: ${state.action.proposal?.action ?? 'none'}; result: ${state.action.result?.detail ?? 'none'}.`,
@@ -265,6 +269,7 @@ function compactionSummary(
     rootGoal: state.rootGoal?.goalText ?? null,
     constraints: state.rootGoal?.constraints ?? [],
     successCriteria: state.rootGoal?.successCriteria ?? [],
+    ...(state.rootGoal?.schema === 'mineclaw.goal/v2' ? { goalSchema: state.rootGoal.schema, scope: state.rootGoal.scope } : {}),
     planRevision: state.plan.revision,
     activeTask: activePlanNode?.goal.goalText ?? state.plan.activeNodeId,
     completedTasks: state.plan.graph?.nodes.filter(node => node.state === 'satisfied').map(node => node.id) ?? [],
@@ -280,6 +285,7 @@ function compactionSummary(
       ...(state.verdict?.evidenceRefs ?? []),
     ])],
     budget: state.budget,
+    ...(state.progress ? { progress: { mode: state.progress.mode, noProgressRounds: state.progress.noProgressRounds, recoveryAttempts: state.progress.recoveryAttempts, waiting: state.progress.waiting } } : {}),
     compacted: {
       messages: compactedMessageCount(previous) + omitted.length,
       previousCheckpoint: previousSummary

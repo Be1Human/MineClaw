@@ -9,7 +9,19 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createMockBot, MockNavigationAdapter } from './mocks/index.js';
+import { createMockBot } from './mocks/index.js';
+import { withinBody } from './mocks/withinBody.js';
+import type { NavigationActions } from '../../../../../apps/minecraft-companion/src/bot/adapter/NavigationExecution.js';
+
+async function withNavigation(work: (actions: NavigationActions) => Promise<void>, configure: (bot: ReturnType<typeof createMockBot>) => void = () => {}) {
+  const bot = createMockBot(); configure(bot);
+  await withinBody(async scope => {
+    const game = bot.game.bind(scope);
+    const navigation = bot.nav.bind({ scope, game, maintain: async () => {} });
+    try { await work(navigation.actions); }
+    finally { await navigation.stop('test_finished'); await game.stop('test_finished'); }
+  });
+}
 
 describe('L1 Adapter Contract', () => {
   // TC-L1-01: getInventoryItems() returns RawItem[]
@@ -41,15 +53,12 @@ describe('L1 Adapter Contract', () => {
     assert.equal(food, 16);
   });
 
-  // TC-L1-03: NavigationAdapter.goto() returns {ok: boolean}
-  test('TC-L1-03: NavigationAdapter.goto() returns NavResult with ok boolean', async () => {
-    const { nav } = createMockBot();
-    nav.gotoDelay = 10; // fast for test
-
-    const result = await nav.goto({ type: 'block', position: { x: 5, y: 64, z: 5 } });
-
-    assert.equal(typeof result.ok, 'boolean');
-    assert.equal(result.ok, true);
+  test('TC-L1-03: bound NavigationActions.goto returns NavResult with ok boolean', async () => {
+    await withNavigation(async actions => {
+      const result = await actions.goto({ type: 'block', position: { x: 5, y: 64, z: 5 } });
+      assert.equal(typeof result.ok, 'boolean');
+      assert.equal(result.ok, true);
+    }, ({ nav }) => { nav.gotoDelay = 1; });
   });
 
   // TC-L1-04: GameAdapter.sendChat() is called with correct string
@@ -62,22 +71,19 @@ describe('L1 Adapter Contract', () => {
     assert.equal(game.calls.chat[0][0], 'hello world');
   });
 
-  // TC-L1-05: NavigationAdapter.stopNavigation() cancels goto
-  test('TC-L1-05: NavigationAdapter.stopNavigation() cancels goto', async () => {
-    const nav = new MockNavigationAdapter();
-    nav.gotoDelay = 300; // enough to still be "in progress" when stop is called
-
-    const gotoPromise = nav.goto({ type: 'block', position: { x: 100, y: 64, z: 100 } });
-
-    // Stop after a short delay (before goto finishes naturally)
-    await new Promise<void>(resolve => setTimeout(resolve, 20));
-    nav.stop();
-
-    // Goto should resolve (not hang)
-    await gotoPromise;
-
-    assert.ok(nav.calls.stop >= 1, 'stop() should have been called at least once');
-    assert.equal(nav.isMoving(), false, 'isMoving() should be false after stop');
+  test('TC-L1-05: bound navigation stop waits for native movement to drain', async () => {
+    let complete!: () => void;
+    const movement = new Promise<void>(resolve => { complete = resolve; });
+    await withNavigation(async actions => {
+      const goto = actions.goto({ type: 'block', position: { x: 100, y: 64, z: 100 } });
+      let stopped = false;
+      const stop = actions.stop().then(() => { stopped = true; });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(stopped, false, '设置停止标记不能代替排空底层动作');
+      complete(); await goto; await stop;
+      assert.equal(stopped, true);
+      assert.equal(actions.isMoving(), false);
+    }, ({ nav }) => { nav.goto = async () => { await movement; return { ok: false, reason: 'cancelled' }; }; });
   });
 
   // TC-L1-06: RawItem.durability correctly propagated
@@ -107,17 +113,13 @@ describe('L1 Adapter Contract', () => {
     assert.equal(count, 1, 'handler should NOT fire after unsubscribe');
   });
 
-  // TC-L1-08: NavigationAdapter.goto() returns ok:false on failure
-  test('TC-L1-08: NavigationAdapter.goto() returns ok:false when shouldFail=true', async () => {
-    const nav = new MockNavigationAdapter();
-    nav.gotoDelay = 10;
-    nav.shouldFail = true;
-
-    const result = await nav.goto({ type: 'block', position: { x: 0, y: 64, z: 0 } });
-
-    assert.equal(result.ok, false);
-    assert.equal(typeof result.reason, 'string');
-    assert.ok((result.reason ?? '').length > 0, 'reason should be a non-empty string');
+  test('TC-L1-08: bound NavigationActions.goto returns ok:false on failure', async () => {
+    await withNavigation(async actions => {
+      const result = await actions.goto({ type: 'block', position: { x: 0, y: 64, z: 0 } });
+      assert.equal(result.ok, false);
+      assert.equal(typeof result.reason, 'string');
+      assert.ok((result.reason ?? '').length > 0, 'reason should be a non-empty string');
+    }, ({ nav }) => { nav.gotoDelay = 1; nav.shouldFail = true; });
   });
 
   // Bonus: items without durability return undefined (not 0)

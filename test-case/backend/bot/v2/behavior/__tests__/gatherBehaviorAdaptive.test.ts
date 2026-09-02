@@ -42,11 +42,12 @@ test('gather behavior waits for pickup settlement and requires a real inventory 
   let itemCount = 0;
   let pauses = 0;
   const actions: ActionRequest[] = [];
-  const behavior = new GatherBehavior(async () => {
+  const wait = async () => {
     pauses += 1;
     if (pauses === 1) itemCount = 1;
-  });
-  const result = await behavior.run!({
+  };
+  const behavior = new GatherBehavior();
+  const result = await behavior.run({signal:new AbortController().signal,wait,
     taskParams: {
       pos: { x: 57, y: -60, z: 37 }, blockName: 'oak_log',
       toolName: 'iron_axe', acceptedItems: ['oak_log'],
@@ -66,8 +67,8 @@ test('gather behavior waits for pickup settlement and requires a real inventory 
 test('gather behavior only performs bounded local pickup retries before succeeding', async () => {
   let itemCount = 0;
   const actions: ActionRequest[] = [];
-  const behavior = new GatherBehavior(async () => {});
-  const result = await behavior.run!({
+  const behavior = new GatherBehavior();
+  const result = await behavior.run({signal:new AbortController().signal,wait:async()=>{},
     taskParams: {
       pos: { x: 57, y: -60, z: 37 }, blockName: 'oak_log', acceptedItems: ['oak_log'],
     },
@@ -89,8 +90,8 @@ test('gather behavior only performs bounded local pickup retries before succeedi
 
 test('gather behavior fails closed when a removed block never reaches inventory', async () => {
   const events: string[] = [];
-  const behavior = new GatherBehavior(async () => {});
-  const result = await behavior.run!({
+  const behavior = new GatherBehavior();
+  const result = await behavior.run({signal:new AbortController().signal,wait:async()=>{},
     taskParams: {
       pos: { x: 57, y: -60, z: 37 }, blockName: 'oak_log', acceptedItems: ['oak_log'],
     },

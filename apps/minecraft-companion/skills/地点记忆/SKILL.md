@@ -1,56 +1,17 @@
 ---
 name: 地点记忆
-agent: both
-description: 记 / 查 / 列举 bot 走过的地点 + 历史路径。"这是家/记住这里/家在哪/我刚才去哪了" 时用。
+agent: goal
+description: 读取与游戏任务相关的地点和路径记忆，结合新鲜观察回答；当前不提供专用地点写入工具。
 category: memory
-triggers: [记, 这是, 家, 在哪, 路径, 刚才]
-uses: [remember_place, recall_places, where_am_i, recall_my_path, say]
+triggers: [家在哪, 地点, 路径, 刚才在哪]
+uses: [world_observe, memory_search, memory_get, owner_ask]
 ---
 
-# 地点记忆 · Skill
+# 地点记忆
 
-## 何时用我
+先区分当前观察与历史记忆，不能因为曾经记录过就宣称现在仍然存在。
 
-主人要 bot **存或查地点信息**：
-- 存：「这里是家」「记住这个矿洞」「这有个箱子」
-- 查（当前）：「我们在哪？」「离家多远？」
-- 查（已知）：「家在哪？」「箱子在哪？」
-- 查（历史）：「我刚才在哪？」「1 小时前我在哪？」「最近去过哪里？」
+用 world_observe 获取当前状态；用 memory_search 按具体地点或事件检索，memory_get 读取带来源的记录。
+回答保留时间、维度和未知状态，按用户需要描述相对位置；缺必要的参照对象才 owner_ask。
 
-## 执行步骤
-
-### A · 记地点（主人主动说"这里是 X"）
-
-```
-remember_place({
-  kind: "home" | "chest" | "resource" | "landmark",   // 默认 landmark
-  name: "<给个名字>"   // 可选
-})
-```
-
-例：「这里是家」→ `remember_place({kind: "home", name: "家"})`
-
-### B · 查当前位置
-
-`where_am_i({})` 返回 `{position, dimension, homeDistance, nearestKnownPlace}`。
-然后 say 报告。
-
-### C · 列举记过的地点
-
-`recall_places({kind: "home"|"chest"|...})`（不传 kind 列全部，按距离升序）
-
-### D · 查历史路径
-
-- "1 小时前我在哪" → `recall_my_path({minutesAgo: 60})`
-- "近半小时去过哪" → `recall_my_path({lastMinutes: 30})`
-- 都不传 → 默认 `lastMinutes: 60`
-
-## 答复要友好
-
-- 不要直接念坐标 → 说"在家东边大概 40 格"
-- 列地点要排序（最近的先说）
-
-## 不要
-
-- ❌ 把 remember_place 用在主人不在场的位置（只记 bot 当前位置）
-- ❌ 一次问一个地点查全部历史（用 recall_my_path 精确控制窗口）
+没有专用地点写入口时，不伪称完成“记住这里”操作。GoalAgent 的任务记忆检索不等于 MainBrain 的长期偏好写入。

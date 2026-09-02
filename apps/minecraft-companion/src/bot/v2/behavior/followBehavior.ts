@@ -3,19 +3,20 @@
  *
  * id: 'follow_owner'
  *
- * plan() 逻辑（按距离三段）：
+ * compile() 逻辑（按距离三段）：
  *   dist ≤ 3   → [] （已到位，无需移动）
  *   dist > 50  → move_to（pathfinder 单次规划，远距离开路）
  *   否则       → follow_entity（持续跟随）
  */
 
-import type { IBehavior, BehaviorContext } from './types.js';
+import type { SequenceBehavior, BehaviorContext } from './types.js';
 import type { ActionRequest } from '../types.js';
 
-export class FollowBehavior implements IBehavior {
+export class FollowBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'follow_owner';
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const owner = ctx.world.owner;
     if (!owner) return [];
 

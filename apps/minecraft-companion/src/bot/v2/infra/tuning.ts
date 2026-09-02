@@ -9,6 +9,83 @@
 import { readFileSync, existsSync } from 'node:fs';
 
 export interface TuningConfig {
+  navigationMaintenance: {
+    doorCooldownMs: number;
+    doorApproachRange: number;
+    doorLookaheadNodes: number;
+    doorObserveWaitMs: number;
+    doorObserveRetryMs: number;
+    stuckAfterMs: number;
+    stuckCooldownMs: number;
+    movedEpsilon: number;
+    jumpPulseMs: number;
+    escapePulseMs: number;
+    recoveryAttempts: number;
+    recoveryWaitMs: number;
+    recoveryPulseMs: number;
+    recoverySettleMs: number;
+    recoverySideGapMs: number;
+    recoveryResetMs: number;
+  };
+  navigationExecution: {
+    bridgeLineOfSight: boolean;
+    controlTickMs: number;
+    gotoTimeoutMs: number;
+    thinkTimeoutMs: number;
+    thinkSliceMs: number;
+    nodeTimeoutMs: number;
+    waypointRange: number;
+    verticalTolerance: number;
+    doorAlignTimeoutMs: number;
+    doorCrossTimeoutMs: number;
+    doorAlignRange: number;
+    bridgeEdgeRange: number;
+    bridgeApproachTimeoutMs: number;
+  };
+  deviceActions: {
+    equipObserveTimeoutMs: number;
+    equipObservePollMs: number;
+    smeltItemTimeoutMs: number;
+    smeltOverheadMs: number;
+    smeltPollMs: number;
+  };
+  controlledExecution: {
+    maxSubActions: number;
+    operationTimeoutMs: number;
+    stopConfirmTimeoutMs: number;
+  };
+  goalProgress: {
+    enabled: boolean;
+    noProgressRounds: number;
+    recoveryRounds: number;
+    maxRecoveryAttempts: number;
+    maxFingerprints: number;
+    waitPollMs: number;
+    maxWaitMs: number;
+    maxWaitChecks: number;
+    waitObservationTimeoutMs: number;
+  };
+  /** Read-only capability discovery; does not enable any new action. */
+  capabilityCatalog: {
+    searchLimit: number;
+  };
+  goalEvidence: {
+    maxWorldAgeMs: number;
+    maxFactAgeMs: number;
+    maxFutureSkewMs: number;
+    maxFactRequests: number;
+    maxFactPayloadBytes: number;
+  };
+  goalComposition: {
+    enabled: boolean;
+    maxPredicates: number;
+    maxTargets: number;
+    maxRegionVolume: number;
+    maxDraftBytes: number;
+    maxPlanNodes: number;
+    maxPlanDepth: number;
+    maxPlanBytes: number;
+  };
   l6: {
     /** 连败退避时长 ms · [第1次, 第2次, 第≥3次] */
     backoffMs: [number, number, number];
@@ -322,6 +399,26 @@ export interface TuningConfig {
 }
 
 const DEFAULTS: TuningConfig = {
+  navigationMaintenance: {
+    doorCooldownMs: 5000, doorApproachRange: 2.25, doorLookaheadNodes: 6,
+    doorObserveWaitMs: 400, doorObserveRetryMs: 300,
+    stuckAfterMs: 2000, stuckCooldownMs: 2500, movedEpsilon: 0.08, jumpPulseMs: 400, escapePulseMs: 800,
+    recoveryAttempts: 5, recoveryWaitMs: 2000, recoveryPulseMs: 200, recoverySettleMs: 300,
+    recoverySideGapMs: 100, recoveryResetMs: 500,
+  },
+  navigationExecution: {
+    bridgeLineOfSight: true,
+    controlTickMs: 50, gotoTimeoutMs: 30000, thinkTimeoutMs: 5000, thinkSliceMs: 40,
+    nodeTimeoutMs: 3500, waypointRange: 0.35, verticalTolerance: 1,
+    doorAlignTimeoutMs: 900, doorCrossTimeoutMs: 1800, doorAlignRange: 0.10,
+    bridgeEdgeRange: 0.4, bridgeApproachTimeoutMs: 6000,
+  },
+  deviceActions: { equipObserveTimeoutMs: 1500, equipObservePollMs: 100, smeltItemTimeoutMs: 11000, smeltOverheadMs: 6000, smeltPollMs: 1000 },
+  controlledExecution: { maxSubActions: 256, operationTimeoutMs: 120_000, stopConfirmTimeoutMs: 2000 },
+  goalProgress: { enabled: true, noProgressRounds: 12, recoveryRounds: 4, maxRecoveryAttempts: 2, maxFingerprints: 256, waitPollMs: 5000, maxWaitMs: 300_000, maxWaitChecks: 60, waitObservationTimeoutMs: 15_000 },
+  capabilityCatalog: { searchLimit: 12 },
+  goalEvidence: { maxWorldAgeMs: 5_000, maxFactAgeMs: 5_000, maxFutureSkewMs: 1_000, maxFactRequests: 8, maxFactPayloadBytes: 262_144 },
+  goalComposition: { enabled: false, maxPredicates: 16, maxTargets: 16, maxRegionVolume: 4096, maxDraftBytes: 65_536, maxPlanNodes: 24, maxPlanDepth: 12, maxPlanBytes: 131_072 },
   l6: {
     backoffMs: [60_000, 5 * 60_000, 30 * 60_000],
     escalateAtStrike: 3,

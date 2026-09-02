@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { after } from 'node:test';
+import { GoalAgentActionLedger } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/production/goalAgentActionLedger.js';
+const ledgers:GoalAgentActionLedger[]=[];
+const newLedger=()=>{const ledger=new GoalAgentActionLedger(':memory:');ledgers.push(ledger);return ledger;};
+after(()=>{for(const ledger of ledgers)ledger.close();});
+const unexpectedBody={executeGoal:async()=>{throw new Error('candidate tests must not execute body');},drainTask:async()=>{}};
 
 import type { GoalRequestV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
 import { GOAL_CONTRACT_SCHEMA_V1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/contracts/goalContract.js';
@@ -87,12 +92,12 @@ function state(criteria: GoalSuccessCriterion[], goalText = 'collect one oak log
 
 function executionPort(recipes: Array<{ result: { name: string; count: number }; ingredients: never[]; requiresTable: boolean }> = []) {
   return new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({
-      game: {
+    game: {
         getCraftRecipes: () => recipes,
         getItemSource: (item: string) => item === 'oak_log' ? { block: 'oak_log', requiredTool: null } : null,
       },
-    } as never),
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: {
       list: () => ['follow', 'farm', 'flee', 'gather_block', 'craft_one', 'combat'].map(id => ({ id })),
     } as never,
@@ -125,13 +130,14 @@ test('inventory gather goal exposes only bounded relevant gather candidates', as
     id: 'task:craft_item:oak_log', kind: 'task', source: 'registered_task', action: 'invoke_task',
     description: 'Run the registered recursive crafting task (item defaults to oak_log; the model may override item to craft a required tool or intermediate)',
     fixedArgs: { taskKind: 'craft_item', params: { item: 'oak_log', count: 1 } },
+    mutableArgumentPaths: ['/params/item', '/params/count'],
     argumentSchema: {
       type: 'object',
       properties: {
         taskKind: { type: 'string', enum: ['craft_item'] },
         params: {
           type: 'object',
-          properties: { item: { type: 'string' }, count: { type: 'number' } },
+          properties: { item: { type: 'string', minLength: 1 }, count: { type: 'integer', minimum: 1 } },
           additionalProperties: false,
         },
       },
@@ -147,12 +153,12 @@ test('inventory gather goal exposes only bounded relevant gather candidates', as
 
 test('BUG-CROSS-74 · gather task stays available when no resource block is currently visible', async () => {
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({
-      game: {
+    game: {
         getCraftRecipes: () => [],
         getItemSource: () => ({ block: 'oak_log', requiredTool: null }),
       },
-    } as never),
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'gather_block' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -209,7 +215,9 @@ test('BUG-CROSS-64 · chest as crafted output is not mistaken for a container so
 
 test('candidate cap is deterministic and applied after applicability filtering', async () => {
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'gather_block' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -231,10 +239,12 @@ test('candidate cap is deterministic and applied after applicability filtering',
 
 test('FEAT-CROSS-19 · capability provider binds one registered Behavior candidate without a core ID branch', async () => {
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [], getItemSource: () => null } } as never),
+    game: { getCraftRecipes: () => [], getItemSource: () => null },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: {
       list: () => [{ id: 'harvest_mature_crops' }],
-      get: (id: string) => id === 'harvest_mature_crops' ? { id, plan: () => [] } : undefined,
+      get: (id: string) => id === 'harvest_mature_crops' ? { id, kind: 'sequence', compile: () => [] } : undefined,
     } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -265,6 +275,46 @@ test('FEAT-CROSS-19 · capability provider binds one registered Behavior candida
   });
 });
 
+test('U04: package and legacy candidates merge with stable deduplication, independent of provider registration order', async () => {
+  const candidate = {
+    id: 'extension:move', kind: 'atomic' as const, source: 'slow_llm' as const, action: 'move_to',
+    description: 'extension move', fixedArgs: { position: { x: 1, y: 64, z: 2 } }, evidenceRefs: ['extension:1'],
+  };
+  const providers = [
+    { id: 'z-provider', list: () => [{ ...candidate, evidenceRefs: ['extension:2'] }] },
+    { id: 'a-provider', list: () => [candidate] },
+  ];
+  const list = (actionProviders: typeof providers) => new GoalAgentProductionExecutionPort({
+    game: { getCraftRecipes: () => [], getItemSource: () => null },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
+    behaviors: { list: () => [], get: () => undefined } as never,
+    tasks: {} as never, parentTaskId: () => null, actionProviders,
+  }).listCandidates({ state: state([{ type: 'inventory', item: 'stone_axe', count: 1 }]), signal: new AbortController().signal });
+  const forward = await list(providers), reverse = await list([...providers].reverse());
+  assert.deepEqual(forward, reverse);
+  assert.deepEqual(forward.map(value => value.id), ['extension:move', 'task:craft_item:stone_axe', 'atomic:craft']);
+  assert.deepEqual(forward[0]!.evidenceRefs, ['extension:1', 'extension:2']);
+});
+
+test('U12: conflicting candidate IDs are visible as blocked, never silently last-writer-wins', async () => {
+  const candidate = {
+    id: 'extension:move', kind: 'atomic' as const, source: 'slow_llm' as const, action: 'move_to',
+    description: 'extension move', fixedArgs: { position: { x: 1, y: 64, z: 2 } }, evidenceRefs: [],
+  };
+  const port = new GoalAgentProductionExecutionPort({
+    game: { getCraftRecipes: () => [], getItemSource: () => null },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
+    behaviors: { list: () => [], get: () => undefined } as never, tasks: {} as never, parentTaskId: () => null,
+    actionProviders: [{ id: 'collision', list: () => [candidate, { ...candidate, fixedArgs: { position: { x: 7, y: 64, z: 2 } } }] }],
+  });
+  const input = { state: state([{ type: 'inventory', item: 'stick', count: 1 }]), signal: new AbortController().signal };
+  assert.equal((await port.listCandidates(input)).some(value => value.id === candidate.id), false);
+  const blocked = (await port.listCandidates({ ...input, includeUnavailable: true })).find(value => value.id === candidate.id);
+  assert.deepEqual(blocked?.authorization, { status: 'blocked', reasons: ['candidate_identity_conflict'] });
+});
+
 test('FEAT-CROSS-19 · capability provider fails closed for missing facts, exceptions and unregistered actions', async () => {
   for (const list of [
     () => [],
@@ -275,7 +325,9 @@ test('FEAT-CROSS-19 · capability provider fails closed for missing facts, excep
     }],
   ]) {
     const port = new GoalAgentProductionExecutionPort({
-      atomicContext: () => ({ game: { getCraftRecipes: () => [], getItemSource: () => null } } as never),
+      game: { getCraftRecipes: () => [], getItemSource: () => null },
+      bus:new EventBusV2(),
+      getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
       behaviors: { list: () => [], get: () => undefined } as never,
       tasks: {} as never,
       parentTaskId: () => null,
@@ -296,7 +348,9 @@ test('BUG-CROSS-59 · chest retrieval exposes only grounded withdraw behavior ca
     lifecycle: { state: 'trusted', confidence: 1, trialRuns: 3, cleanSuccess: 3, deps: [], ownerVerdict: null },
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'withdraw_from_chest' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -324,7 +378,9 @@ test('BUG-CROSS-60 · delivery exposes only the grounded owner handoff behavior'
     inventory: { items: [{ name: 'iron_pickaxe', count: 1, slot: 0 }], held: null, freeSlots: 35 },
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'deliver_to_owner' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -354,7 +410,9 @@ test('BUG-CROSS-69 · inventory milestone prefers the nearest exact grounded ite
     ],
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [{ result: { name: 'iron_pickaxe', count: 1 } }] } } as never),
+    game: { getCraftRecipes: () => [{ result: { name: 'iron_pickaxe', count: 1 } }] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'pickup_ground_item' }, { id: 'craft_one' }, { id: 'gather_block' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -384,7 +442,9 @@ test('BUG-CROSS-69 · a different grounded item does not create a pickup candida
     entities: [{ id: 40, name: 'item', type: 'object', position: { x: 2, y: 64, z: 0 }, distance: 2, category: 'item', droppedItem: { name: 'stone_pickaxe', count: 1 } }],
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'pickup_ground_item' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -413,7 +473,9 @@ test('BUG-CROSS-61 · deposit exposes only the grounded target-chest behavior', 
   };
   let resolverText = '';
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'deposit_to_chest' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -445,7 +507,9 @@ test('BUG-CROSS-61 · deposit candidate stays unavailable when inventory is insu
     inventory: { items: [{ name: 'cobblestone', count: 15, slot: 0 }], held: null, freeSlots: 35 },
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'deposit_to_chest' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -471,7 +535,9 @@ test('BUG-CROSS-63 · block placement exposes only the grounded reference-relati
     inventory: { items: [{ name: 'crafting_table', count: 1, slot: 0 }], held: null, freeSlots: 35 },
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'place_relative' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -498,7 +564,9 @@ test('BUG-CROSS-74 · self-relative placement stays executable without a nearby 
     inventory: { items: [{ name: 'crafting_table', count: 1, slot: 0 }], held: null, freeSlots: 35 },
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'place_relative' }] } as never,
     tasks: {} as never, parentTaskId: () => null,
   });
@@ -527,7 +595,9 @@ test('BUG-CROSS-74 · satisfied craft milestone cannot hide an underfoot placeme
     inventory: { items: [{ name: 'crafting_table', count: 1, slot: 0 }], held: null, freeSlots: 35 },
   };
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({ game: { getCraftRecipes: () => [] } } as never),
+    game: { getCraftRecipes: () => [] },
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors: { list: () => [{ id: 'place_relative' }] } as never,
     tasks: {} as never,
     parentTaskId: () => null,
@@ -556,7 +626,9 @@ test('BUG-CROSS-66 · placement on a front block preserves top-surface semantics
     inventory:{items:[{name:'torch',count:1,slot:0}],held:null,freeSlots:35},
   };
   const port=new GoalAgentProductionExecutionPort({
-    atomicContext:()=>({game:{getCraftRecipes:()=>[]}} as never),
+    game:{getCraftRecipes:()=>[]},
+    bus:new EventBusV2(),
+    getWorld:world,body:unexpectedBody as never,actionLedger:newLedger(),
     behaviors:{list:()=>[{id:'place_relative'}]} as never,
     tasks:{} as never,parentTaskId:()=>null,
   });
@@ -752,7 +824,35 @@ test('BUG-CROSS-63 · production verifier requires a current owner-relative plac
   assert.equal(after.verifyRoot({ state: placementState }).ok, true);
 });
 
-function managedTaskHarness(): {
+test('managed task result waits for confirmed device drainage after a terminal event',async()=>{
+  let release!:()=>void,drainedTask='';
+  const drainage=new Promise<void>(resolve=>{release=resolve;});
+  const harness=managedTaskHarness({...unexpectedBody,drainTask:async(id:string)=>{drainedTask=id;await drainage;}});
+  try {
+    let settled=false;
+    const work=harness.port.execute({sessionId:'goal-candidates',epoch:1,idempotencyKey:'managed-drain',
+      proposal:{source:'registered_task',action:'invoke_task',args:{taskKind:'gather_material',params:{material:'oak_log',count:1}}},
+      state:state([{type:'inventory',item:'oak_log',count:1}]),signal:new AbortController().signal}).then(r=>{settled=true;return r;});
+    const child=harness.tasks.list().find(t=>t.parentId===harness.rootId)!;
+    harness.tasks.complete(child.id);await new Promise<void>(r=>setImmediate(r));
+    assert.equal(drainedTask,child.id);assert.equal(settled,false);
+    release();assert.equal((await work).ok,true);
+  } finally {release();harness.memory.close();}
+});
+
+test('managed task cannot report success when physical stop remains unconfirmed',async()=>{
+  const harness=managedTaskHarness({...unexpectedBody,drainTask:async()=>{throw new Error('body_stop_unconfirmed');}});
+  try {
+    const work=harness.port.execute({sessionId:'goal-candidates',epoch:1,idempotencyKey:'managed-quarantine',
+      proposal:{source:'registered_task',action:'invoke_task',args:{taskKind:'craft_item',params:{item:'stick',count:1}}},
+      state:state([{type:'inventory',item:'stick',count:1}]),signal:new AbortController().signal});
+    const child=harness.tasks.list().find(t=>t.parentId===harness.rootId)!;
+    harness.tasks.complete(child.id);const result=await work;
+    assert.equal(result.ok,false);assert.match(result.detail,/stop_unconfirmed/);
+  } finally {harness.memory.close();}
+});
+
+function managedTaskHarness(body:import('../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/bodyActionService.js').GoalBodyExecutionPort=unexpectedBody): {
   memory: MemoryV2;
   tasks: TaskRuntime;
   rootId: string;
@@ -764,13 +864,12 @@ function managedTaskHarness(): {
   const root = tasks.createTask('goal_exec', { goalAgentSessionId: 'goal-candidates' });
   tasks.startEmergency(root.id);
   const port = new GoalAgentProductionExecutionPort({
-    atomicContext: () => ({
-      bus,
-      game: {
+    bus,
+    game: {
         getCraftRecipes: () => [],
         getItemSource: () => ({ block: 'oak_log', requiredTool: null }),
       },
-    } as never),
+    getWorld:world,body,actionLedger:newLedger(),
     behaviors: { list: () => [] } as never,
     tasks,
     parentTaskId: () => root.id,

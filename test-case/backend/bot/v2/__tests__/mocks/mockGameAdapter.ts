@@ -1,4 +1,5 @@
 import type { GameAdapter } from '../../../../../../apps/minecraft-companion/src/bot/adapter/GameAdapter.js';
+import type { BoundGameActions, DeviceExecutionScope, GameActions } from '../../../../../../apps/minecraft-companion/src/bot/adapter/GameActions.js';
 import type {
   Vec3,
   RawBlock,
@@ -42,6 +43,32 @@ export class MockGameAdapter implements GameAdapter {
   private spawnHandlers: Array<() => void> = [];
 
   constructor(private readonly world: MockWorld) {}
+
+  bind(scope: DeviceExecutionScope): BoundGameActions {
+    let closed = false;
+    const pending = new Set<Promise<unknown>>();
+    const actions = {} as GameActions;
+    const methods = ['setControlState','clearControlStates','lookAt','look','attack','dig','equip','toss',
+      'activateItem','deactivateItem','interactBlock','placeBlock','consume','sleep','wake',
+      'depositToChest','withdrawFromChest','craft','smelt','mount','dismount'] as const;
+    for (const key of methods) {
+      Object.defineProperty(actions,key,{value:(...args: unknown[]) => {
+        scope.assertCurrent(`mock:${key}`);
+        if (closed) throw new Error('mock_device_session_closed');
+        return scope.effect(() => {
+          const work = Promise.resolve((this[key] as (...values:unknown[])=>unknown).apply(this,args));
+          pending.add(work);
+          work.then(()=>pending.delete(work),()=>pending.delete(work));
+          return work;
+        });
+      }});
+    }
+    return {view:this,actions,stop:async()=>{
+      closed=true;
+      await Promise.allSettled([...pending]);
+      this.clearControlStates();
+    }};
+  }
 
   // Trigger events (for test scripting)
   emitChat(sender: string, message: string): void {
@@ -301,6 +328,8 @@ export class MockGameAdapter implements GameAdapter {
   }
   async sleep(_pos: Vec3): Promise<void> {}
   async wake(): Promise<void> {}
+  async mount(_entityId: number): Promise<void> { throw new Error('mock_mount_unavailable'); }
+  async dismount(): Promise<void> { throw new Error('mock_dismount_unavailable'); }
   findNearbyBed(_maxDistance: number): Vec3 | null {
     return null;
   }

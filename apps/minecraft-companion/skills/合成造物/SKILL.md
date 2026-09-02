@@ -1,41 +1,22 @@
 ---
 name: 合成造物
 agent: goal
-description: 合成工具、武器、防具、家具等任意 minecraft 物品。主人说"做个/合成/造"某物时触发。会自动串联采料→工作台→合成全链。
+description: 用注册配方、必要材料里程碑和真实候选完成合成；不能把合成成功混同于交付完成。
 category: task
-triggers: [做, 合成, 造, 制作, 打造]
-uses: [get_inventory, resolve_resource, decide_with_policy, decompose_task, start_task, create_plan, submit_goals, say, ask_master]
+triggers: [做, 合成, 制作, 打造]
+uses: [world_observe, goal_search_targets, goal_get_target, goal_create, knowledge_search, knowledge_get, plan_read, plan_commit, action_list, action_execute, progress_verify, owner_ask]
 ---
 
-# 合成造物 · Skill
+# 合成造物
 
-## 何时用我
+最终物品、数量与交付对象来自用户，配方和中间材料来自真实知识与观察，不能自行替换材料。
 
-主人要 bot **造一个具体物品**：工具（镐/斧/剑）/ 防具 / 火把 / 工作台 / 床 / 箱子 / 熔炉等。
+## 流程
 
-典型说法：
-- "做把木镐" / "合成一把铁剑"
-- "造个工作台"
-- "打造一套皮甲"
+1. world_observe 查看库存，查规范目标并 goal_create；读配方知识和 plan_read 的必要里程碑。
+2. 用 plan_commit 保留可验证的采料、工具、工作台和合成节点，不把全部过程藏进一段自然语言。
+3. action_list 选择当前合法的合成任务或 Behavior，用 action_execute 执行。
+4. 中间物品参数只能用于有因果关系的前置步骤，不改变最终目标。
+5. progress_verify 验证最终结果；用户要求交付时，背包里合成完成还不算交付完成。
 
-跟「采集材料」的区别：采集是只拿原料；合成是产出最终成品。采料和中间产物必须成为 Planner 中可见、可验真的前置里程碑，不能只藏在一次 craft 动作里。
-
-## 执行步骤
-
-1. **读取当前库存与配方里程碑**：已有材料直接裁剪；缺少的原料、中间产物和设施写入共享 PlanGraph
-2. **逐个执行可验里程碑**：材料节点绑定 `gather_material`，可合成库存节点绑定 `craft_item`
-   - 物品 id 用最常见的：`wooden_pickaxe` / `stone_pickaxe` / `iron_sword` / `crafting_table` / `furnace` / `bed` / `chest` / `torch` / `shield`
-3. **受控启动**：Actor 从注册候选选择 `invoke_task`；TaskRuntime 负责跨 tick 探索、采集、递归合成、取消和结构化终态
-4. **逐节点验真**：库存或放置判据成立后才推进下一节点；失败交给 Recovery 决定 retry 或 replan
-5. **报告**：最终机器判据成立后再用友好语气告诉主人
-
-## 失败兜底
-
-- start_task 失败 `precondition_unmet` → say 解释卡哪了（如缺哪一项原料 + 现状）
-- 物品名不存在 → ask_master 让主人换个说法
-- 工具进阶链：木 → 石 → 铁 是自动的，主人说"铁镐"系统会先合成石镐再升铁
-
-## 跟其他 skill 的关系
-
-- Planner 必须显式保留「采集材料」的机器里程碑；具体探索和重复采集由 TaskRuntime 内部串联
-- 与「资源决策」联动：缺料时 ProvisionStrategy 走 resolve_resource → decide_with_policy
+缺料时先找合法补给路径；没有配方或底层能力则报告具体缺口。不保证任意物品或整套装备均已接入，也不默认任何材料都能互相替代。

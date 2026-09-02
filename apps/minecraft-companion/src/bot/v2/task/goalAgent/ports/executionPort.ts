@@ -9,6 +9,11 @@ export interface GoalAgentActionCandidate {
   description: string;
   fixedArgs: Record<string, unknown>;
   argumentSchema?: Record<string, unknown>;
+  /** JSON-pointer leaf paths that code explicitly allows the model to adjust. */
+  mutableArgumentPaths?: readonly string[];
+  /** Missing prerequisites stay discoverable, but are never execution permission. */
+  authorization?: { status: 'ready' | 'blocked' | 'unknown'; reasons: readonly string[] };
+  operationRef?: { id: string; version: number };
   evidenceRefs: string[];
 }
 
@@ -17,6 +22,7 @@ export interface GoalAgentExecutionPort {
     state: Readonly<GoalAgentStateV1>;
     /** Omit for a simple task executed directly against the root goal. */
     planNodeId?: string;
+    includeUnavailable?: boolean;
     signal: AbortSignal;
   }): Promise<GoalAgentActionCandidate[]> | GoalAgentActionCandidate[];
   isOwnerNeedActionable?(input: {
@@ -29,6 +35,8 @@ export interface GoalAgentExecutionPort {
     epoch: number;
     idempotencyKey: string;
     proposal: ActionProposal;
+    /** Code-issued candidate, revalidated before final dispatch. Legacy internal callers may omit it. */
+    candidate?: GoalAgentActionCandidate;
     state: Readonly<GoalAgentStateV1>;
     signal: AbortSignal;
   }): Promise<GoalAgentActionResult>;

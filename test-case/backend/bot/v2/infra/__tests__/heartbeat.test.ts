@@ -158,7 +158,7 @@ function makeDeps(
     supervisor: mockSupervisor as never,
     reflex: mockReflex as never,
     taskStrategies: [],
-    atomic: mockAtomic as never,
+    body:bodyStub() as never,isEmbodied:()=>true,
     ...overrides,
   };
 }
@@ -337,11 +337,7 @@ describe('Heartbeat 10 步 tick 顺序', () => {
         isRunning: (id: string) => id === 'task-live',
         sched: () => {},
       } as never,
-      atomic: {
-        nav: { goto: async () => ({ ok: true }), stop: () => {} },
-        game: { getPosition: () => ({ x: 0, y: 64, z: 0 }), clearControlStates: () => {} },
-        bus: { publish: (type: string, level: string, payload?: unknown) => events.push({ type, payload: { level, ...payload as object } }) },
-      } as never,
+      body:bodyStub() as never,
     }, (type, _level, payload) => events.push({ type, payload }));
     const hb = new Heartbeat({ ...cfg, blockingExecute: true }, deps);
 
@@ -748,142 +744,59 @@ describe('Heartbeat · Critic snapshot rolling (BUG-HB-01)', () => {
 // TC-HB-12 · Execute 锁
 // ──────────────────────────────────────────────────────────────────
 
-describe('Heartbeat · Execute locking', () => {
-
-  it('BUG-CROSS-28 · 重动作执行期跳过任务 Strategy，完成后恢复', async () => {
-    let taskTicks = 0;
-    let reflexTicks = 0;
-    const deps = makeDeps([], {
-      reflex: {
-        ingestCritical: () => {},
-        tick: () => { reflexTicks++; return []; },
-        isActive: () => true,
-      } as never,
-      taskStrategies: [{
-        id: 'heavy-scan', kind: 'fsm',
-        isActive: () => true,
-        tick: () => { taskTicks++; return []; },
-        inspect: () => ({ kind: 'fsm', view: {} }),
-      } as never],
+describe('Heartbeat · unified body ownership', () => {
+  it('busy comes from the body runtime while reflex continues',async()=>{
+    let busy=true, taskTicks=0,reflexTicks=0;
+    const body=bodyStub();body.busy=()=>busy;
+    const deps=makeDeps([],{
+      body:body as never,
+      reflex:{ingestCritical:()=>{},tick:()=>{reflexTicks++;return [];}} as never,
+      taskStrategies:[{isActive:()=>true,tick:()=>{taskTicks++;return [];}} as never],
     });
-    const hb = new Heartbeat({ tickMs: 200, blockingExecute: false }, deps);
-    (hb as any).executing = true;
-    await (hb as any).runTick();
-    assert.equal(reflexTicks, 1, 'Reflex 必须继续运行');
-    assert.equal(taskTicks, 0, '执行期不得重复做任务规划');
-
-    (hb as any).executing = false;
-    await (hb as any).runTick();
-    assert.equal(reflexTicks, 2);
-    assert.equal(taskTicks, 1, '动作完成后下一 tick 恢复任务规划');
+    const heartbeat=new Heartbeat(cfg,deps);
+    await (heartbeat as any).runTick();
+    assert.equal(taskTicks,0);assert.equal(reflexTicks,1);
+    busy=false;
+    await (heartbeat as any).runTick();
+    assert.equal(taskTicks,1);assert.equal(reflexTicks,2);
   });
 
-  it('BUG-CROSS-26 · cancelBodyActions 保留轻请求并取消在途 Motor', () => {
-    let cancelled = 0;
-    const deps = makeDeps([], {
-      atomic: {
-        nav: { stop: () => {} } as never,
-        motor: { cancel: () => { cancelled++; } } as never,
-        game: { chat: () => {}, clearControlStates: () => {} } as never,
-        bus: { publish: () => {}, drain: () => [], on: () => () => {} } as never,
-      },
-    });
-    const hb = new Heartbeat({ tickMs: 200, blockingExecute: false }, deps);
-    hb.submitRequest(makeReq({ id: 'say', type: 'say', resource: [] }));
-    hb.submitRequest(makeReq({ id: 'stop', type: 'stop', resource: [] }));
-    hb.submitRequest(makeReq({ id: 'move', type: 'move_to', resource: ['movement'] }));
-    (hb as any).executing = true;
-    (hb as any).currentReq = makeReq({ id: 'active', type: 'move_to', resource: ['movement'] });
-    (hb as any).executingSince = Date.now();
-
-    const dropped = hb.cancelBodyActions();
-
-    assert.equal(dropped, 1);
-    assert.deepEqual((hb as any).externalRequests.map((req: ActionRequest) => req.type), ['say', 'stop']);
-    assert.equal(cancelled, 1);
-    assert.equal((hb as any).executing, false);
-    assert.equal((hb as any).currentReq, null);
-    assert.equal((hb as any).executingSince, 0);
+  it('cancellation delegates once and cannot clear an unconfirmed body lease',()=>{
+    let cancelled=0;const body=bodyStub();body.busy=()=>true;body.cancelAll=()=>{cancelled++;};
+    const heartbeat=new Heartbeat(cfg,makeDeps([],{body:body as never}));
+    heartbeat.submitRequest(makeReq({type:'say'}));
+    heartbeat.submitRequest(makeReq({type:'stop'}));
+    heartbeat.submitRequest(makeReq({type:'move_to'}));
+    assert.equal(heartbeat.cancelBodyActions(),1);
+    assert.equal(cancelled,1);assert.equal(body.busy(),true);
+    assert.deepEqual((heartbeat as any).externalRequests.map((r:ActionRequest)=>r.type),['say','stop']);
+    assert.equal('executing' in heartbeat,false);
   });
 
-  it('FEAT-CROSS-15-001-006 · 执行锁已释放但 Motor 仍有 ticket 时也必须取消', () => {
-    let cancelled = 0;
-    const deps = makeDeps([], {
-      atomic: {
-        nav: { stop: () => {} } as never,
-        motor: {
-          current: () => ({ owner: 'atomic:survival_strategy.flee:move_to', priority: 96 }),
-          cancel: () => { cancelled++; },
-        } as never,
-        game: { chat: () => {}, clearControlStates: () => {} } as never,
-        bus: { publish: () => {}, drain: () => [], on: () => () => {} } as never,
-      },
-    });
-    const hb = new Heartbeat({ tickMs: 200, blockingExecute: false }, deps);
-
-    const dropped = hb.cancelBodyActions();
-
-    assert.equal(dropped, 0);
-    assert.equal(cancelled, 1, '异步 Coordinator 路径残留的 Motor 也必须释放');
+  it('cancellation includes goal-agent work outside heartbeat dispatch',()=>{
+    let cancelled=0;const body=bodyStub();body.cancelAll=()=>{cancelled++;};
+    const heartbeat=new Heartbeat(cfg,makeDeps([],{body:body as never}));
+    heartbeat.cancelBodyActions();assert.equal(cancelled,1);
   });
 
-  it('TC-HB-12 non-light action (move_to) 在 blockingExecute=false 时设置 executing=true', async () => {
-    // blockingExecute=false 才能测到 executing 锁（blocking 模式下同步等待不需要锁）
-    const asyncCfg: HeartbeatConfig = { tickMs: 200, blockingExecute: false };
-
-    // 追踪 nav.goto 调用（模拟需要一点时间的路径寻找）
-    let gotoResolve: (() => void) = () => {};
-    const navGotoPromise = new Promise<void>(res => { gotoResolve = res; });
-
-    const mockNav = {
-      goto: (_pos: unknown, _opts?: unknown): Promise<{ ok: boolean }> =>
-        navGotoPromise.then(() => ({ ok: true })),
-      stop: () => {},
-    };
-
-    const callOrder: string[] = [];
-    const deps = makeDeps(callOrder, {
-      atomic: {
-        nav: mockNav as never,
-        game: { chat: () => {}, clearControlStates: () => {} } as never,
-        bus: {
-          publish: () => {},
-          drain: () => [],
-          on: () => () => {},
-        } as never,
-      },
-    });
-
-    // 注入一个重动作（move_to · resource=['movement'] 会占 executing 锁）
-    const hb = new Heartbeat(asyncCfg, deps);
-    hb.submitRequest(makeReq({
-      id: 'move-req',
-      source: 'test.lock',
-      taskId: 'task-live',
-      type: 'move_to',
-      priority: 80,
-      interrupt_level: 'soft',
-      resource: ['movement'],
-      target: { position: { x: 10, y: 64, z: 10 } },
-    }));
-
-    // runTick：move_to 进入仲裁 → fire-and-forget → executing 变 true
-    const tickPromise = (hb as any).runTick();
-
-    // 给 setImmediate 一个机会让 fire-and-forget 的 Promise 开始但不完成
-    await new Promise<void>(res => setImmediate(res));
-
-    const executingAfterTick = (hb as any).executing;
-
-    // 让 nav.goto 完成，避免悬空 Promise
-    gotoResolve();
-    await tickPromise;
-    // 等 goto 完成后 executing 复位
-    await new Promise<void>(res => setImmediate(res));
-
-    assert.ok(
-      executingAfterTick === true,
-      `move_to 发起后 executing 应为 true（fire-and-forget 模式），实际: ${executingAfterTick}`,
-    );
+  it('async dispatch is tracked by the body, never by a heartbeat watchdog lock',async()=>{
+    let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
+    let busy=false;const body=bodyStub();
+    body.busy=()=>busy;
+    body.executeTask=async request=>{busy=true;await pending;busy=false;return {ok:true,request,durationMs:1};};
+    const heartbeat=new Heartbeat({tickMs:200,blockingExecute:false},makeDeps([],{body:body as never}));
+    heartbeat.submitRequest(makeReq({type:'move_to',taskId:'live',target:{position:{x:1,y:64,z:0}}}));
+    await (heartbeat as any).runTick();
+    assert.equal(body.busy(),true);assert.equal('executing' in heartbeat,false);
+    release();await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(body.busy(),false);
   });
 });
+
+function bodyStub() {
+  return {
+    busy:()=>false,currentRequest:():ActionRequest|null=>null,cancelAll:()=>{},
+    executeTask:async(request:ActionRequest)=>({ok:true,request,durationMs:0}),
+    executeSafety:async(request:ActionRequest)=>({ok:true,request,durationMs:0}),
+  };
+}

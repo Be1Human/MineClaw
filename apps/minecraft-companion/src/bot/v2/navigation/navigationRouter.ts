@@ -15,8 +15,8 @@
  */
 
 import type { Vec3, NavResult } from '../../adapter/types.js';
-import type { NavigationAdapter } from '../../adapter/NavigationAdapter.js';
-import type { GameAdapter } from '../../adapter/GameAdapter.js';
+import type { NavigationActions } from '../../adapter/NavigationExecution.js';
+import type { GameActions, DeviceExecutionScope } from '../../adapter/GameActions.js';
 import type { WorldMapStore } from '../infra/worldMapStore.js';
 import { DetourPlanner } from './detourPlanner.js';
 import { NavStuckSentinel } from './navStuckSentinel.js';
@@ -41,7 +41,7 @@ export interface NavRouterResult {
 
 export interface NavigationRouter {
   navigateTo(goal: Vec3, options?: NavigationRouterOptions): Promise<NavRouterResult>;
-  cancel(): void;
+  cancel(): Promise<void>;
 }
 
 function dist3(a: Vec3, b: Vec3): number {
@@ -58,21 +58,23 @@ export class NavigationRouterImpl implements NavigationRouter {
   private readonly stuckRecovery = new StuckRecovery();
 
   constructor(
-    private readonly nav: NavigationAdapter,
+    private readonly nav: NavigationActions,
     private readonly worldMap: WorldMapStore,
     private readonly getPosition: () => Vec3,
-    private readonly game?: GameAdapter,
+    private readonly actions: GameActions,
+    private readonly scope: DeviceExecutionScope,
   ) {
     this.detour = new DetourPlanner(worldMap);
   }
 
-  cancel(): void {
+  async cancel(): Promise<void> {
     this.cancelled = true;
-    this.nav.stop();
+    await this.nav.stop();
   }
 
   async navigateTo(goal: Vec3, _options?: NavigationRouterOptions): Promise<NavRouterResult> {
-    this.cancelled = false;
+    this.scope.assertCurrent('navigation-router');
+    if (this.cancelled) return {success:false,mode:'cancelled',distanceTraveled:0,frontierHops:0,reason:'cancelled'};
     const totalDist = dist3(this.getPosition(), goal);
 
     // ── L0 · 直冲 ─────────────────────────────────────────────────────────────
@@ -117,14 +119,8 @@ export class NavigationRouterImpl implements NavigationRouter {
     };
   }
 
-  /**
-   * L0/L1 的统一执行：game 可用时走 StuckRecovery 完整自救梯度（FEAT-L1-04），
-   * game 缺失（单测）时退化裸 goto。
-   */
   private async gotoWithRecovery(pos: Vec3, range: number): Promise<NavResult> {
-    if (this.game) {
-      return this.stuckRecovery.executeWithRecovery(pos, this.nav, this.game, { range });
-    }
-    return this.nav.goto({ type: 'block', position: pos, range });
+    this.scope.assertCurrent('navigation-router-step');
+    return this.stuckRecovery.executeWithRecovery(pos,this.nav,this.actions,this.scope,{range});
   }
 }

@@ -41,6 +41,7 @@ describe('FEAT-CROSS-15 · CombatBehavior adaptive loop', () => {
     });
     const actions: ActionRequest[] = [];
     const result = await new CombatBehavior().run({
+      signal:new AbortController().signal,wait:async()=>{},
       getWorld: () => current,
       execute: async request => {
         actions.push(request);
@@ -68,6 +69,7 @@ describe('FEAT-CROSS-15 · CombatBehavior adaptive loop', () => {
     });
     const actions: ActionRequest[] = [];
     const result = await new CombatBehavior().run({
+      signal:new AbortController().signal,wait:async()=>{},
       taskParams: { clearArea: true, targetEntityName: 'zombie' },
       getWorld: () => current,
       execute: async request => {
@@ -97,6 +99,7 @@ describe('FEAT-CROSS-15 · CombatBehavior adaptive loop', () => {
     });
     const actions: ActionRequest[] = [];
     const result = await new CombatBehavior().run({
+      signal:new AbortController().signal,wait:async()=>{},
       getWorld: () => current,
       execute: async request => {
         actions.push(request);
@@ -124,6 +127,7 @@ describe('FEAT-CROSS-15 · CombatBehavior adaptive loop', () => {
     const actions: ActionRequest[] = [];
     let snapshots = 0;
     const result = await new CombatBehavior().run({
+      signal:new AbortController().signal,wait:async()=>{},
       getWorld: () => {
         snapshots++;
         if (snapshots >= 2 && current.self.health < 12) {
@@ -148,6 +152,7 @@ describe('FEAT-CROSS-15 · CombatBehavior adaptive loop', () => {
     const current = world({ entities: [entity(1, 1.5)] });
     let actions = 0;
     const result = await new CombatBehavior().run({
+      signal:new AbortController().signal,wait:async()=>{},
       getWorld: () => current,
       execute: async request => { actions++; return ok(request); },
       publish: () => {},
@@ -168,6 +173,7 @@ describe('FEAT-CROSS-15 · CombatBehavior adaptive loop', () => {
     });
     let calls = 0;
     const result = await new CombatBehavior().run({
+      signal:new AbortController().signal,wait:async()=>{},
       taskParams: { clearArea: true, targetEntityName: 'zombie' },
       getWorld: () => current,
       execute: async request => {

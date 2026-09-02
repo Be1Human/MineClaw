@@ -11,7 +11,7 @@ import {
   validateBehaviorId,
 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalRunner/behaviorCatalog.js';
 
-const behavior = (id: string): IBehavior => ({ id, plan: () => [] });
+const behavior = (id: string): IBehavior => ({ id, kind: 'sequence', compile: () => [] });
 
 describe('BUG-CROSS-40 · 注册表驱动的 Behavior 目录', () => {
   it('目录去重、过滤空 ID 并稳定排序', () => {
@@ -20,7 +20,7 @@ describe('BUG-CROSS-40 · 注册表驱动的 Behavior 目录', () => {
     registry.register(behavior('combat'));
     registry.register(behavior('gather_block'));
     registry.register(behavior('farm_one_plot'));
-    registry.register(behavior('   '));
+    assert.throws(()=>registry.register(behavior('   ')),/invalid_behavior/);
 
     assert.deepEqual(listBehaviorIds(registry), ['combat', 'farm_one_plot', 'gather_block']);
     assert.equal(behaviorCatalogText(registry), 'combat, farm_one_plot, gather_block');

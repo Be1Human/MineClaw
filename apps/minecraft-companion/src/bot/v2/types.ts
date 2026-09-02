@@ -8,6 +8,7 @@
  */
 
 import type { Vec3 } from '../adapter/types.js';
+import type { WorldFact } from './task/contracts/worldFact.js';
 
 // ──────────────────────────────────────────────────────────────────
 // EventBus · 事件四级分类
@@ -45,6 +46,8 @@ export interface WorldStateView {
   inventory: InventoryView;
   /** 当前任务上下文（L6 写） */
   taskContext: TaskContextView | null;
+  /** Bounded, read-only capability observations, optionally attached by GoalAgent perception. */
+  capabilityFacts?: readonly WorldFact[];
 }
 
 export interface InventoryView {

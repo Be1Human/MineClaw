@@ -39,7 +39,8 @@ test('action ledger persists completed replay across process instances', () => {
 test('production execution never repeats an in-doubt physical action after restart', async () => {
   let physicalCalls=0;
   const port=new GoalAgentProductionExecutionPort({
-    atomicContext:()=>{physicalCalls+=1;throw new Error('must not execute');},
+    game:{} as never,bus:{} as never,getWorld:()=>{throw new Error('must not observe');},
+    body:{executeGoal:async()=>{physicalCalls+=1;throw new Error('must not execute');},drainTask:async()=>{throw new Error('must not drain');}},
     behaviors:{list:()=>[]} as never,
     tasks:{} as never,
     parentTaskId:()=>null,

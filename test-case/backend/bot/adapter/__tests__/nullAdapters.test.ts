@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NullGameAdapter } from '../../../../../apps/minecraft-companion/src/bot/adapter/NullGameAdapter.js';
 import { NullNavAdapter } from '../../../../../apps/minecraft-companion/src/bot/adapter/NullNavAdapter.js';
+import { withinBody } from '../../v2/__tests__/mocks/withinBody.js';
+import { createMockBot } from '../../v2/__tests__/mocks/index.js';
 
 describe('FEAT-CROSS-08 · Null adapters', () => {
   it('NullGameAdapter 返回空世界和安全自身状态', () => {
@@ -17,17 +19,24 @@ describe('FEAT-CROSS-08 · Null adapters', () => {
 
   it('NullGameAdapter 动作类能力显式失败', async () => {
     const game = new NullGameAdapter();
-    await assert.rejects(() => game.dig({ x: 0, y: 64, z: 0 }), /game_body_unavailable/);
-    const chest = await game.depositToChest({ x: 0, y: 64, z: 0 }, 'dirt', 1);
-    assert.deepEqual(chest, { ok: false, moved: 0, reason: 'game_body_unavailable' });
+    await withinBody(async scope => {
+      assert.throws(() => game.bind(scope), /game_body_unavailable/);
+      assert.equal('dig' in game, false);
+      assert.equal('depositToChest' in game, false);
+    });
   });
 
-  it('NullNavAdapter 不移动并返回 game_body_unavailable', async () => {
+  it('NullNavAdapter 拒绝绑定导航会话，不提供裸动作入口', async () => {
     const nav = new NullNavAdapter();
-    const r = await nav.goto({ type: 'block', position: { x: 1, y: 64, z: 1 } });
-    assert.deepEqual(r, { ok: false, reason: 'game_body_unavailable' });
+    await withinBody(async scope => {
+      const game = createMockBot().game.bind(scope);
+      try {
+        assert.throws(() => nav.bind({ scope, game, maintain: async () => {} }), /navigation_body_unavailable/);
+      } finally { await game.stop('test_finished'); }
+    });
     assert.equal(nav.isMoving(), false);
     assert.equal(nav.getCurrentGoal(), null);
-    assert.deepEqual(nav.startFollow(1, 3), { ok: false, reason: 'game_body_unavailable' });
+    assert.equal('goto' in nav, false);
+    assert.equal('startFollow' in nav, false);
   });
 });

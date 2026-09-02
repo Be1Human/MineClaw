@@ -6,6 +6,8 @@ import { SwitchableGameAdapter } from '../../../../../apps/minecraft-companion/s
 import { SwitchableNavAdapter } from '../../../../../apps/minecraft-companion/src/bot/adapter/SwitchableNavAdapter.js';
 import type { GameAdapter } from '../../../../../apps/minecraft-companion/src/bot/adapter/GameAdapter.js';
 import type { Vec3 } from '../../../../../apps/minecraft-companion/src/bot/adapter/types.js';
+import { withinBody } from '../../v2/__tests__/mocks/withinBody.js';
+import { createMockBot, MockNavigationAdapter } from '../../v2/__tests__/mocks/index.js';
 
 /**
  * 造一个可辨识的假 game 身体：覆盖测试关心的方法，其余从 Null 继承代理不了，
@@ -104,7 +106,10 @@ describe('FEAT-CROSS-08 v2 · SwitchableGameAdapter', () => {
     const nul = new NullGameAdapter('Companion');
     proxy.setTarget(nul);
     assert.equal(proxy.username, 'Companion');
-    await assert.rejects(() => proxy.dig({ x: 0, y: 64, z: 0 }), /game_body_unavailable/);
+    await withinBody(async scope => {
+      assert.throws(() => proxy.bind(scope), /game_body_unavailable/);
+      assert.equal('dig' in proxy, false);
+    });
   });
 });
 
@@ -112,14 +117,42 @@ describe('FEAT-CROSS-08 v2 · SwitchableNavAdapter', () => {
   it('方法委托 + 订阅重放', async () => {
     const nul = new NullNavAdapter();
     const proxy = new SwitchableNavAdapter(nul);
-    // 初始 Null：goto 返回 unavailable
-    const r = await proxy.goto({ type: 'block', position: { x: 1, y: 64, z: 1 } });
-    assert.equal(r.ok, false);
     assert.equal(proxy.isMoving(), false);
     assert.equal(proxy.getTarget(), nul);
-
-    const real = new NullNavAdapter(); // 用另一个实例验证 setTarget 切换
-    proxy.setTarget(real);
-    assert.equal(proxy.getTarget(), real);
+    class EventNavigation extends MockNavigationAdapter {
+      readonly reached = new Set<() => void>();
+      override onGoalReached(handler: () => void) {
+        this.reached.add(handler);
+        return () => { this.reached.delete(handler); };
+      }
+      fireReached() { for (const handler of this.reached) handler(); }
+    }
+    await withinBody(async scope => {
+      const game = createMockBot().game.bind(scope);
+      const input = { scope, game, maintain: async () => {} };
+      try {
+        assert.throws(() => proxy.bind(input), /navigation_body_unavailable/);
+        let fired = 0;
+        const off = proxy.onGoalReached(() => { fired++; });
+        const first = new EventNavigation(); first.gotoDelay = 1;
+        proxy.setTarget(first);
+        const session = proxy.bind(input);
+        assert.equal(proxy.getTarget(), first);
+        try {
+          assert.equal((await session.actions.goto({ type: 'block', position: { x: 1, y: 64, z: 1 } })).ok, true);
+          first.fireReached(); assert.equal(fired, 1);
+          const next = new EventNavigation();
+          proxy.setTarget(next);
+          assert.equal(first.reached.size, 0);
+          assert.equal(next.reached.size, 1);
+          first.fireReached(); assert.equal(fired, 1);
+          next.fireReached(); assert.equal(fired, 2);
+          await assert.rejects(() => session.actions.goto({ type: 'block', position: { x: 2, y: 64, z: 2 } }), /navigation_generation_changed/);
+          assert.equal(next.calls.goto.length, 0, '旧会话不能把动作转发给新身体');
+          off(); assert.equal(next.reached.size, 0);
+          proxy.setTarget(first); assert.equal(first.reached.size, 0);
+        } finally { await session.stop('test_finished'); }
+      } finally { await game.stop('test_finished'); }
+    });
   });
 });

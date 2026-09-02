@@ -3,7 +3,7 @@
  *
  * id: 'flee'
  *
- * plan() 序列：
+ * compile() 序列：
  *   1. move_to → 反向质心 × 20 格（全速跑远 hostile 群）
  *
  * sprint 由调用方（ReflexStrategy / Supervisor）在 ActionRequest 外
@@ -13,7 +13,7 @@
  *   fleeDistance?: number — 逃跑距离（默认 20 格）
  */
 
-import type { IBehavior, BehaviorContext } from './types.js';
+import type { SequenceBehavior, BehaviorContext } from './types.js';
 import type { ActionRequest, EntityView } from '../types.js';
 import type { Vec3 } from '../../adapter/types.js';
 
@@ -53,10 +53,11 @@ export function calcFleeTarget(
   };
 }
 
-export class FleeBehavior implements IBehavior {
+export class FleeBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'flee';
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const hostiles = ctx.world.entities.filter(
       e => e.category === 'hostile' && e.distance <= HOSTILE_RANGE,
     );

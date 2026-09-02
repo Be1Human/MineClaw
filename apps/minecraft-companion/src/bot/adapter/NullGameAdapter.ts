@@ -1,4 +1,5 @@
 import type { GameAdapter } from './GameAdapter.js';
+import type { BoundGameActions, DeviceExecutionScope } from './GameActions.js';
 import type {
   ChestOpResult,
   ControlKey,
@@ -29,6 +30,8 @@ export class NullGameAdapter implements GameAdapter {
     this.username = username;
   }
 
+  bind(_scope: DeviceExecutionScope): BoundGameActions { throw new Error('game_body_unavailable'); }
+
   getPosition(): Vec3 { return { x: 0, y: 64, z: 0 }; }
   getOrientation(): { yaw: number; pitch: number } { return { yaw: 0, pitch: 0 }; }
   getVelocity(): Vec3 { return { x: 0, y: 0, z: 0 }; }
@@ -58,41 +61,10 @@ export class NullGameAdapter implements GameAdapter {
   getOffhandItem(): RawItem | null { return null; }
   getEffects(): RawEffect[] { return []; }
   getOxygen(): number { return 20; }
-
-  setControlState(_key: ControlKey, _value: boolean): void {}
-  clearControlStates(): void {}
-  async lookAt(_target: Vec3, _force?: boolean): Promise<void> {}
-  async look(_yaw: number, _pitch: number, _force?: boolean): Promise<void> {}
   chat(_message: string): void {}
-
-  attack(_entityId: number): void {}
-  async dig(_pos: Vec3): Promise<void> { throw new Error('game_body_unavailable'); }
-  async equip(_itemName: string, _destination?: EquipDestination): Promise<void> { throw new Error('game_body_unavailable'); }
-  async toss(_itemName: string, _count?: number): Promise<number> { throw new Error('game_body_unavailable'); }
-  activateItem(_offHand?: boolean): void {}
-  deactivateItem(): void {}
   getBlockProperties(_pos: Vec3): Record<string, string> | null { return null; }
-  async interactBlock(_pos: Vec3): Promise<void> { throw new Error('game_body_unavailable'); }
-  async placeBlock(_block: RawBlock, _faceVector: Vec3): Promise<void> { throw new Error('game_body_unavailable'); }
-
-  async consume(): Promise<boolean> { return false; }
   findBestFood(): string | null { return null; }
-  async sleep(_pos: Vec3): Promise<void> { throw new Error('game_body_unavailable'); }
-  async wake(): Promise<void> {}
   findNearbyBed(_maxDistance: number): Vec3 | null { return null; }
-  async depositToChest(_chestPos: Vec3, _itemName: string, _count: number): Promise<ChestOpResult> {
-    return { ok: false, moved: 0, reason: 'game_body_unavailable' };
-  }
-  async withdrawFromChest(_chestPos: Vec3, _itemName: string, _count: number): Promise<ChestOpResult> {
-    return { ok: false, moved: 0, reason: 'game_body_unavailable' };
-  }
-
-  async craft(_itemName: string, _count: number, _tablePos: Vec3 | null): Promise<CraftResult> {
-    return { ok: false, reason: 'game_body_unavailable' };
-  }
-  async smelt(_furnacePos: Vec3, _input: string, _fuel: string, _count: number): Promise<SmeltResult> {
-    return { ok: false, produced: 0, reason: 'game_body_unavailable' };
-  }
   getCraftRecipes(_itemName: string, _withTable: boolean): RecipeInfo[] { return []; }
   getItemSource(_itemName: string): ItemSource | null { return null; }
 

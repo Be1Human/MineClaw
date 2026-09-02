@@ -1,40 +1,21 @@
 ---
 name: 守卫驻防
 agent: goal
-description: 让 bot 守在某地，主动攻击靠近的敌对生物。主人说"守这里/守门/保护我"时触发。持续性任务。
+description: 查询守卫持续能力的实际接入状态，区分任务定义、心跳策略和固化数据策略；未接通不能假称开始站岗。
 category: task
-triggers: [守, 看, 保护, 站岗]
-uses: [decompose_task, start_task, say]
+triggers: [守卫, 驻防, 站岗, 守门, 保护]
+uses: [capability_search, capability_get, world_observe, owner_ask]
 ---
 
-# 守卫驻防 · Skill
+# 守卫驻防
 
-## 何时用我
+守卫是持续任务。启动、巡逻、威胁切换与停止必须有真实运行时入口，不能只凭一份 YAML 判断支持。
 
-主人让 bot **站岗 / 主动御敌**：
-- "守这里" / "守门"
-- "保护我"
-- "看着这个矿洞口"
+## 接入检查
 
-## 执行步骤
+capability_search 搜守卫，capability_get 读取状态、范围参数和调用入口。
+GuardStrategy 类名不是固化数据策略 ID；未注册状态必须报告，不尝试把类名交给动作执行器。
+只有能力详情和当前工具 schema 明确提供了持续任务入口，才能按其合同发起；本说明不会新增那个入口。
 
-1. **创建任务**：
-   ```
-   decompose_task({
-     kind: "guard",
-     position: {x, y, z}   // 可选，默认当前位置
-     range: 16             // 可选，警戒半径
-   })
-   ```
-2. **启动**：`start_task({taskId})`
-3. **回应**：`say("好，我守在这里！")`
-
-## ⚠ 持续性任务
-
-- **不要主动 complete_task**。
-- 只有主人说"撤 / 不用守了" → 用「任务管理」cancel_task。
-
-## 不要
-
-- ❌ 把"守家"和"跟随"混在一起（互斥任务）
-- ❌ 没有任何敌人时反复 say"安全"
+范围缺少必要信息时 owner_ask；缺执行器时报告开发缺口，不让用户反复换说法。
+已激活的持续任务不因暂时没有敌人而宣称永久完成，停止必须等待实际取消确认。

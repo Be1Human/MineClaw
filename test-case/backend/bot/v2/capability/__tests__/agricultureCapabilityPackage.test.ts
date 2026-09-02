@@ -21,7 +21,7 @@ function agriculture(input: {
   game: GameAdapter;
   resolveChestTargets: Parameters<typeof createAgricultureCapabilityPackage>[0]['resolveChestTargets'];
 }) {
-  return createAgricultureCapabilityPackage({ ...input, manifest: resources.manifest, pause: async () => {} });
+  return createAgricultureCapabilityPackage({ ...input, manifest: resources.manifest });
 }
 
 function world(): WorldStateView {
@@ -147,6 +147,7 @@ test('BUG-CROSS-75 · agriculture Behaviors execute only registered movement/dig
   let ownerStolenWheat = 0;
   let ownerStolenSeeds = 0;
   const context = (taskParams: Record<string, unknown>) => ({
+    signal:new AbortController().signal,wait:async()=>{},
     taskParams,
     getWorld: world,
     publish: () => {},

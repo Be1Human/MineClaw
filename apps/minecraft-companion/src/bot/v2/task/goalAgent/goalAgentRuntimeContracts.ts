@@ -3,6 +3,9 @@ import type { GoalKnowledgePort } from '../../knowledge/goalTargetKnowledge.js';
 import type { GoalAgentNodeId, GoalAgentStateV1 } from './goalAgentState.js';
 import type { GoalAgentCompactionProposal } from './goalAgentContextCompiler.js';
 import type { MemoryRecord } from '../../memory/contracts.js';
+import type { GoalDraftCompilationPort } from './ports/goalDraftPort.js';
+import type { GoalPlanAuthorizationPort } from './ports/goalPlanPort.js';
+import type { GoalProgressPolicyPort } from './ports/goalProgressPort.js';
 import type {
   GoalAgentExecutionPort,
   GoalAgentExperiencePort,
@@ -59,6 +62,9 @@ export interface GoalAgentMemoryPort {
 }
 
 export interface GoalAgentTools {
+  readonly goals?: GoalDraftCompilationPort;
+  readonly plans?: GoalPlanAuthorizationPort;
+  readonly progress?: GoalProgressPolicyPort;
   readonly knowledge?: GoalKnowledgePort;
   readonly execution?: GoalAgentExecutionPort;
   readonly experience?: GoalAgentExperiencePort;

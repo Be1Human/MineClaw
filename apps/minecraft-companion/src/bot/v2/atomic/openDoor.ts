@@ -9,7 +9,9 @@
  * - 不决策：何时调用由 L5 SmartNavStrategy 控制
  */
 
-import type { GameAdapter } from '../../adapter/GameAdapter.js';
+import { tuning } from '../infra/tuning.js';
+import type { GameActions, DeviceExecutionScope } from '../../adapter/GameActions.js';
+import type { GameView } from '../../adapter/GameAdapter.js';
 import type { Vec3 } from '../../adapter/types.js';
 
 // ── 门名单 ──────────────────────────────────────────────
@@ -44,7 +46,8 @@ export interface OpenDoorResult {
  *
  * @returns ok=true 表示门现在是开的（无论是之前就开还是刚打开的）
  */
-export async function openDoor(game: GameAdapter, pos: Vec3): Promise<OpenDoorResult> {
+export async function openDoor(game: GameView, actions: GameActions, scope: DeviceExecutionScope, pos: Vec3): Promise<OpenDoorResult> {
+  scope.assertCurrent('door_start');
   // 1. 读方块
   const block = game.getBlockAt(pos);
   if (!block) return { ok: false, reason: 'no_block' };
@@ -62,10 +65,10 @@ export async function openDoor(game: GameAdapter, pos: Vec3): Promise<OpenDoorRe
   }
 
   // 3. 交互开门
-  await game.interactBlock(pos);
+  await actions.interactBlock(pos);
 
   // 4. 等待状态同步（MC 服务端 → 客户端需要一两个 tick）
-  await sleep(400);
+  await scope.wait(tuning().navigationMaintenance.doorObserveWaitMs);
 
   // 5. 验证
   const propsAfter = game.getBlockProperties(pos);
@@ -74,17 +77,11 @@ export async function openDoor(game: GameAdapter, pos: Vec3): Promise<OpenDoorRe
   }
 
   // 二次尝试：有些情况下延迟较大
-  await sleep(300);
+  await scope.wait(tuning().navigationMaintenance.doorObserveRetryMs);
   const propsRetry = game.getBlockProperties(pos);
   if (propsRetry?.open === 'true') {
     return { ok: true, reason: 'opened' };
   }
 
   return { ok: false, reason: 'failed_to_open' };
-}
-
-// ── 工具 ─────────────────────────────────────────────────
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

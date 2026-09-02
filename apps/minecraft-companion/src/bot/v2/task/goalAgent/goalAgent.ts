@@ -83,6 +83,7 @@ export class GoalAgent {
   private readonly sessionByInteraction = new Map<string, string>();
   private readonly reportRequestBySession = new Map<string, GoalRequestV2>();
   private readonly pumps = new Map<string, Promise<void>>();
+  private readonly wakeups = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly reflections = new Map<string, Promise<void>>();
   private readonly reportedStop = new Map<string, string>();
   private latestSessionId: string | null = null;
@@ -349,8 +350,8 @@ export class GoalAgent {
       sessionId: probe.sessionId,
       requestId: probe.requestId,
       state: status,
-      stage: `${state.phase}:${state.activeNode}:plan-r${state.plan.revision}`,
-      lastProgressAt: state.updatedAt,
+      stage: `${state.progress?.waiting ? 'waiting_world' : state.phase}:${state.activeNode}:plan-r${state.plan.revision}`,
+      lastProgressAt: state.progress?.lastProgressAt ? new Date(state.progress.lastProgressAt).toISOString() : state.updatedAt,
       ...(state.phase === 'paused_owner' && state.owner.question ? { blocker: state.owner.question } : {}),
       ...(status === 'failed' && state.terminal?.summary ? { blocker: state.terminal.summary } : {}),
       ...(activeTask ? { nextAction: activeTask.goal.goalText } : {}),
@@ -363,6 +364,8 @@ export class GoalAgent {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    for (const timer of this.wakeups.values()) clearTimeout(timer);
+    this.wakeups.clear();
     this.loop.dispose();
     const pending = [...this.pumps.values(), ...this.reflections.values()];
     if (pending.length === 0) {
@@ -386,8 +389,12 @@ export class GoalAgent {
     try {
       let state = this.store.get(sessionId);
       if (state?.mode === 'persistent_monitor') return;
-      while (state && !isGoalAgentTerminalPhase(state.phase) && state.phase !== 'paused_owner') {
+      while (!this.closed && state && !isGoalAgentTerminalPhase(state.phase) && state.phase !== 'paused_owner') {
         state = await this.loop.run(sessionId);
+        if (state.progress?.waiting && !state.terminal && state.phase !== 'paused_owner') {
+          this.scheduleWakeup(state);
+          return;
+        }
       }
       if (state) this.reportStop(state);
     } catch (error) {
@@ -408,10 +415,26 @@ export class GoalAgent {
     }
   }
 
+  private scheduleWakeup(state: GoalAgentStateV1): void {
+    const wait = state.progress?.waiting;
+    if (!wait || this.closed || this.wakeups.has(state.sessionId)) return;
+    const timer = setTimeout(() => {
+      this.wakeups.delete(state.sessionId);
+      if (!this.closed && this.store.getActive(state.sessionId)) void this.pump(state.sessionId);
+    }, Math.max(1, Math.min(wait.nextCheckAt, wait.deadlineAt) - Date.now()));
+    timer.unref?.();
+    this.wakeups.set(state.sessionId, timer);
+  }
+
   private onLoopEvent(event: GoalAgentLoopEvent): void {
     this.options.publishEvent?.(event);
     const state = this.store.get(event.sessionId);
     if (!state) return;
+    if (state.terminal || state.phase === 'paused_owner') {
+      const timer = this.wakeups.get(state.sessionId);
+      if (timer) clearTimeout(timer);
+      this.wakeups.delete(state.sessionId);
+    }
     if (event.type === 'goalagent.session.terminal') this.scheduleReflection(state);
     this.options.onState?.(state, event);
     // BUG-CROSS-80 · 空搜索/预算告警/缺料求助经 R20 通道投影为主人可见的进度事实

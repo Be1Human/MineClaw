@@ -3,11 +3,13 @@ import type { GoalTargetDefinition } from '../knowledge/goalTargetKnowledge.js';
 import type { GoalSuccessCriterion } from '../task/contracts/goalTypes.js';
 import type { GoalAgentStateV1 } from '../task/goalAgent/goalAgentState.js';
 import type { GoalAgentActionCandidate } from '../task/goalAgent/ports/executionPort.js';
-import type {
-  GoalCriteriaEvaluation,
-  GoalCriterionEvidence,
-} from '../task/goalRunner/goalCriteriaEvaluator.js';
+import type { GoalPredicateEvaluator } from '../task/goalRunner/goalCriteriaEvaluator.js';
+import type { WorldFact } from '../task/contracts/worldFact.js';
+import type { GoalScopeBinding } from '../task/contracts/goalDraft.js';
+import type { CapabilityOperationSemantics } from '../task/goalAgent/ports/goalPlanPort.js';
+import type { CapabilityProgressProvider } from '../task/goalAgent/ports/goalProgressPort.js';
 import type { WorldStateView } from '../types.js';
+import type { CapabilityOperationDefinition } from './capabilityOperation.js';
 import type {
   ProactiveTickCapabilityImplementation,
   ProactiveTickManifestEntry,
@@ -21,7 +23,7 @@ export interface CapabilityRequirementRefs {
 }
 
 export interface CapabilityManifestDefinition {
-  readonly schema: 'mineclaw/capability-manifest@1';
+  readonly schema: 'mineclaw/capability-manifest@1' | 'mineclaw/capability-manifest@2';
   readonly id: string;
   readonly version: number;
   readonly description: string;
@@ -30,6 +32,8 @@ export interface CapabilityManifestDefinition {
   readonly knowledge: readonly string[];
   readonly requires: CapabilityRequirementRefs;
   readonly proactiveTicks?: readonly ProactiveTickManifestEntry[];
+  /** @2 descriptions reference installed code; they never install executors. */
+  readonly operations?: readonly CapabilityOperationDefinition[];
 }
 
 export interface CapabilityActionCandidateProvider {
@@ -44,32 +48,24 @@ export interface CapabilityActionCandidateProvider {
   }): Promise<readonly GoalAgentActionCandidate[]> | readonly GoalAgentActionCandidate[];
 }
 
-export interface CapabilityPredicateEvaluator {
-  readonly id: string;
-  evaluate(input: {
-    readonly criterion: GoalSuccessCriterion;
-    readonly world: WorldStateView;
-    readonly evidence: GoalCriterionEvidence;
-  }): GoalCriteriaEvaluation;
-}
+export interface CapabilityPredicateEvaluator extends GoalPredicateEvaluator {}
 
-export interface CapabilityWorldFact<TValue = unknown> {
-  readonly providerId: string;
-  readonly observedAt: number;
-  readonly complete: boolean;
-  readonly truncated: boolean;
-  readonly bounds: Readonly<Record<string, unknown>>;
-  readonly value: TValue;
-  readonly evidenceRefs: readonly string[];
-}
+export interface CapabilityWorldFact<TValue = unknown> extends WorldFact<TValue> {}
 
 export interface CapabilityWorldFactProvider<TValue = unknown> {
   readonly id: string;
+  readonly version?: string;
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
   observe(input: {
     readonly world: WorldStateView;
     readonly params?: Readonly<Record<string, unknown>>;
     readonly signal?: AbortSignal;
   }): Promise<CapabilityWorldFact<TValue>> | CapabilityWorldFact<TValue>;
+}
+
+export interface CapabilityGoalBindingProvider {
+  readonly id: string;
+  list(state: Readonly<GoalAgentStateV1>): readonly GoalScopeBinding[];
 }
 
 /**
@@ -81,6 +77,9 @@ export interface CapabilityPackageDefinition {
   readonly behaviors?: readonly IBehavior[];
   readonly actionProviders: readonly CapabilityActionCandidateProvider[];
   readonly worldFactProviders?: readonly CapabilityWorldFactProvider[];
+  readonly goalBindingProviders?: readonly CapabilityGoalBindingProvider[];
+  readonly operationSemantics?: readonly CapabilityOperationSemantics[];
+  readonly progressProviders?: readonly CapabilityProgressProvider[];
   readonly predicateEvaluators: readonly CapabilityPredicateEvaluator[];
   readonly proactiveTicks?: readonly ProactiveTickCapabilityImplementation[];
 }
@@ -92,6 +91,7 @@ export interface CapabilityPackageEnvironment {
   readonly skillNames: readonly string[];
   readonly knowledgeIds: readonly string[];
   readonly goalTargetIds?: readonly string[];
+  readonly taskKinds?: readonly string[];
 }
 
 export interface CapabilityPackageSnapshot {
@@ -100,6 +100,14 @@ export interface CapabilityPackageSnapshot {
   readonly behaviors: readonly IBehavior[];
   readonly actionProviders: readonly CapabilityActionCandidateProvider[];
   readonly worldFactProviders: readonly CapabilityWorldFactProvider[];
+  readonly goalBindingProviders: readonly CapabilityGoalBindingProvider[];
+  readonly operationSemantics: readonly CapabilityOperationSemantics[];
+  readonly progressProviders: readonly CapabilityProgressProvider[];
   readonly predicateEvaluators: readonly CapabilityPredicateEvaluator[];
   readonly proactiveTicks: readonly RegisteredProactiveTickCapability[];
+  readonly operations: readonly {
+    readonly packageId: string;
+    readonly packageVersion: number;
+    readonly definition: CapabilityOperationDefinition;
+  }[];
 }

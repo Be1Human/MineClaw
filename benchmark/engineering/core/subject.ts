@@ -164,10 +164,9 @@ export class Subject {
     if (!this.v2) return;
     this.v2.cancelActiveTasks('eval_reset');
     this.moveTaskId = null;
-    try { this.conn.navAdapter.stop(); } catch { /* ignore */ }
-    // Motor.cancel() 会同步 resolve 在途 Promise；让 Atomic await 与 Heartbeat finally
-    // 在下一 repeat 开始前完成，避免旧动作跨 case 回写执行状态。
-    await new Promise<void>(resolve => setImmediate(resolve));
+    // Never start the next case until the shared body confirms native work has drained.
+    // Unconfirmed cleanup fails reset instead of silently overlapping benchmark cases.
+    await this.v2.body.drainAll('eval_reset');
     this.diedInRun = false;
   }
 

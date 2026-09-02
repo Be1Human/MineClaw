@@ -3,26 +3,27 @@
  *
  * id: 'farm_one_plot'
  *
- * plan() 序列：
+ * compile() 序列：
  *   1. equip hoe
  *   2. look_at targetPos (bot 前方 -1y 格)
  *   3. use_tool (till 耕地)
  *   4. look_at targetPos (再对准一次，准备撒种)
  *   5. place_block seeds (在已耕地上放种子)
  *
- * 注：plan() 只有 WorldStateView，无法调 GameAdapter.findBlocks；
+ * 注：compile() 只有 WorldStateView，无法调 GameAdapter.findBlocks；
  *     目标位置取 bot 当前位置正前方脚下一格（z+1, y-1）做近似。
  */
 
-import type { IBehavior, BehaviorContext } from './types.js';
+import type { SequenceBehavior, BehaviorContext } from './types.js';
 import type { ActionRequest } from '../types.js';
 
 const SOURCE = 'farm_one_plot';
 
-export class FarmBehavior implements IBehavior {
+export class FarmBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'farm_one_plot';
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const { world, taskParams } = ctx;
     const seedName = (taskParams?.seedName as string) ?? 'wheat_seeds';
     const hoeName = (taskParams?.hoeName as string) ?? 'wooden_hoe';

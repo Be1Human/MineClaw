@@ -1,4 +1,7 @@
 export { CapabilityPackageRegistry } from './capabilityPackageRegistry.js';
+export { CapabilityCatalog } from './capabilityCatalog.js';
+export type { CapabilityCatalogEntry, CapabilityResourceDescription, CapabilityExecutionSupport } from './capabilityCatalog.js';
+export type { CapabilityOperationDefinition, CapabilityPredicateTemplate } from './capabilityOperation.js';
 export {
   loadCapabilityManifest,
   loadCapabilityResourcePackage,

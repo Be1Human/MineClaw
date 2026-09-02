@@ -1,7 +1,8 @@
 import type { BusEvent } from '../../types.js';
 import type { EventBusV2 } from '../../infra/eventBus.js';
 import { ExecutionFactLog, type ExecutionFactContext } from './executionFactLog.js';
-import { failureFromLegacy, type FailureEnvelope } from './failureEnvelope.js';
+import { failureFromLegacy } from './failureEnvelope.js';
+import type { FailureEnvelope } from '../contracts/failureEnvelope.js';
 
 interface TaskFactView {
   id: string;

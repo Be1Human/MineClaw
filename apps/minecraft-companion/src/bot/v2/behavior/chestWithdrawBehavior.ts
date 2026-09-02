@@ -1,13 +1,14 @@
 import type { Vec3 } from '../../adapter/types.js';
 import type { ActionRequest } from '../types.js';
-import type { BehaviorContext, IBehavior } from './types.js';
+import type { BehaviorContext, SequenceBehavior } from './types.js';
 
 /** Registered container retrieval behavior: approach an interactable chest, then withdraw. */
-export class ChestWithdrawBehavior implements IBehavior {
+export class ChestWithdrawBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'withdraw_from_chest';
   private sequence = 0;
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const params = ctx.taskParams ?? {};
     const chestPos = params.chestPos as Vec3 | undefined;
     const item = typeof params.item === 'string' ? params.item : '';

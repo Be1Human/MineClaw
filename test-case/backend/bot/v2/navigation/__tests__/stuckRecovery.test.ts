@@ -6,7 +6,10 @@
  * 为了让测试在合理时间内跑完，maxAttempts 控小、wait 后立即成功。
  */
 
-import { describe, it } from 'node:test';
+import { describe, it as nodeIt } from 'node:test';
+import { withinBody } from '../../__tests__/mocks/withinBody.js';
+import type { ControlledExecutionContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/ports/controlledExecution.js';
+const it=(name:string,work:(scope:ControlledExecutionContext)=>unknown)=>nodeIt(name,()=>withinBody(async scope=>work(scope)));
 import assert from 'node:assert/strict';
 
 import { StuckRecovery } from '../../../../../../apps/minecraft-companion/src/bot/v2/navigation/stuckRecovery.js';
@@ -67,14 +70,14 @@ class MockGame implements Partial<GameAdapter> {
 describe('StuckRecovery · FEAT-L1-04', () => {
 
   // T1 · 首次成功无需自救
-  it('T1 · 首次 nav.goto 成功 → 不执行自救 · controlState 不动', async () => {
+  it('T1 · 首次 nav.goto 成功 → 不执行自救 · controlState 不动', async (scope) => {
     const nav = new MockNav();
     nav.queue = [{ ok: true }];
     const game = new MockGame();
     const recovery = new StuckRecovery();
 
     const r = await recovery.executeWithRecovery(
-      { x: 0, y: 64, z: 0 }, nav, game as unknown as GameAdapter,
+      { x: 0, y: 64, z: 0 }, nav as never, game as never,scope,
     );
 
     assert.equal(r.ok, true);
@@ -83,14 +86,14 @@ describe('StuckRecovery · FEAT-L1-04', () => {
   });
 
   // T5 · cancelled 立即停止自救
-  it('T5 · recovery 期间 nav.goto 返回 cancelled → 立即返回 · 不再继续', async () => {
+  it('T5 · recovery 期间 nav.goto 返回 cancelled → 立即返回 · 不再继续', async (scope) => {
     const nav = new MockNav();
     nav.default = { ok: false, reason: 'cancelled' };
     const game = new MockGame();
     const recovery = new StuckRecovery();
 
     const r = await recovery.executeWithRecovery(
-      { x: 0, y: 64, z: 0 }, nav, game as unknown as GameAdapter,
+      { x: 0, y: 64, z: 0 }, nav as never, game as never,scope,
       { maxAttempts: 5 },
     );
 
@@ -98,18 +101,18 @@ describe('StuckRecovery · FEAT-L1-04', () => {
     assert.equal(r.ok, false);
     assert.equal(r.reason, 'cancelled');
     // 应只调用 2 次 goto（first + 第一次 recovery），后续不再继续
-    assert.equal(nav.calls, 2);
+    assert.equal(nav.calls, 1);
   });
 
   // T4 · maxAttempts 全部失败 → stuck_max_retries
-  it('T4 · 全部失败 maxAttempts=2 → reason=stuck_max_retries', async () => {
+  it('T4 · 全部失败 maxAttempts=2 → reason=stuck_max_retries', async (scope) => {
     const nav = new MockNav();
     nav.default = { ok: false, reason: 'noPath' }; // 全部失败
     const game = new MockGame();
     const recovery = new StuckRecovery();
 
     const r = await recovery.executeWithRecovery(
-      { x: 0, y: 64, z: 0 }, nav, game as unknown as GameAdapter,
+      { x: 0, y: 64, z: 0 }, nav as never, game as never,scope,
       { maxAttempts: 2 },
     );
 
@@ -120,7 +123,7 @@ describe('StuckRecovery · FEAT-L1-04', () => {
   });
 
   // T3 · 梯度执行：retreat 后成功
-  it('T3 · 第 3 次 goto 成功 → 触发了 wait + retreat · controlState 含 back', async () => {
+  it('T3 · 第 3 次 goto 成功 → 触发了 wait + retreat · controlState 含 back', async (scope) => {
     const nav = new MockNav();
     nav.queue = [
       { ok: false, reason: 'noPath' }, // first
@@ -131,7 +134,7 @@ describe('StuckRecovery · FEAT-L1-04', () => {
     const recovery = new StuckRecovery();
 
     const r = await recovery.executeWithRecovery(
-      { x: 0, y: 64, z: 0 }, nav, game as unknown as GameAdapter,
+      { x: 0, y: 64, z: 0 }, nav as never, game as never,scope,
     );
 
     assert.equal(r.ok, true);

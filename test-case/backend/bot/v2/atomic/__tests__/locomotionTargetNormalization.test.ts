@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { executeAtomic, type AtomicContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
+import { runControlledAtomic as executeAtomic, type AtomicFixture as AtomicContext } from '../../__tests__/mocks/controlledAtomic.js';
 import type { ActionRequest } from '../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 
 function request(position: { x: number; y: number; z: number }): ActionRequest {
@@ -85,9 +85,8 @@ test('BUG-CROSS-03：Motor 导航失败原因原样传到原子结果与结束�
         getPosition: () => ({ x: 0, y: 64, z: 0 }),
         getBlockAt: () => null,
       } as never,
-      nav: {} as never,
-      motor: {
-        run: async () => ({ ok: false, reason }),
+      nav: {
+        goto: async () => ({ ok: false, reason }),
       } as never,
       bus: {
         publish: (type: string, _level: string, payload: unknown) => events.push({ type, payload }),

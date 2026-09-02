@@ -133,6 +133,7 @@ import defaultSkin from '../assets/skins/07-lanyi.png';
 import McIcon from './icons/McIcon.vue';
 import { PerceptionRendererRegistry } from '../lib/authentic/rendererRegistry.js';
 import { AuthenticWorldRenderer } from '../lib/authentic/AuthenticWorldRenderer.js';
+import { shouldRenderSimpleEntities } from '../lib/authentic/entityRenderOwnership.js';
 import { ResourcePackClient } from '../lib/authentic/resourcePackClient.js';
 import { isCompatibleMinecraftVersion, selectBuiltinResourcePack } from '../lib/authentic/resourcePackSelection.js';
 
@@ -191,6 +192,7 @@ const TARGET_FPS = 60;
 const _frameMinMs = 1000 / TARGET_FPS;
 
 let entityMeshes = new Map();
+let simpleEntityGroup = null;
 let botMesh = null;
 let botPlayer = null;
 let botSkinTexture = null;
@@ -418,6 +420,7 @@ async function activateWorldMode() {
   modeError.value = '';
   if (props.worldMode === 'simple') {
     await registry.activate('simple');
+    syncSimpleEntityLayer();
     return;
   }
   try {
@@ -426,6 +429,7 @@ async function activateWorldMode() {
       // the simple terrain interactive until an atomic authentic frame exists.
       if (props.visualWorldStatus?.state === 'error') throw new Error(props.visualWorldStatus.message || '真实世界数据加载失败');
       await registry.activate('simple');
+      syncSimpleEntityLayer();
       return;
     }
     if (!props.visualWorldConfig) throw new Error('真实渲染配置尚未就绪');
@@ -435,10 +439,18 @@ async function activateWorldMode() {
     authenticWorldRenderer?.setStore(props.visualWorldStore);
     authenticWorldRenderer?.setPack(pack);
     await registry.activate('authentic');
+    syncSimpleEntityLayer();
   } catch (error) {
     modeError.value = `${error.message}；已保留简略版`;
     await worldRendererRegistry.activate('simple');
+    syncSimpleEntityLayer();
   }
+}
+
+function syncSimpleEntityLayer() {
+  const showSimpleEntities = shouldRenderSimpleEntities(worldRendererRegistry?.activeId);
+  if (simpleEntityGroup) simpleEntityGroup.visible = showSimpleEntities;
+  if (showSimpleEntities && props.worldState?.entities) updateEntities(props.worldState.entities);
 }
 
 function initScene() {
@@ -475,6 +487,9 @@ function initScene() {
 
   blockMeshGroup = new THREE.Group();
   scene.add(blockMeshGroup);
+  simpleEntityGroup = new THREE.Group();
+  simpleEntityGroup.name = 'simpleEntities';
+  scene.add(simpleEntityGroup);
 
   worldRendererRegistry = new PerceptionRendererRegistry({ scene, camera });
   worldRendererRegistry.register('simple', () => ({
@@ -604,7 +619,8 @@ function updateScene(ws) {
   botDirectionMesh.rotateX(Math.PI / 2); // 锥尖朝前
 
   mergeBlocks(ws.blocks);
-  updateEntities(ws.entities);
+  if (shouldRenderSimpleEntities(worldRendererRegistry?.activeId)) updateEntities(ws.entities);
+  else if (simpleEntityGroup) simpleEntityGroup.visible = false;
   updateThreats(ws.threats, ws.entities);
   updateNavigation(ws.navigation);
 
@@ -1027,7 +1043,7 @@ function updateEntities(entities) {
         group.add(label);
       }
 
-      scene.add(group);
+      simpleEntityGroup?.add(group);
       entityMeshes.set(key, group);
     }
 
@@ -1043,7 +1059,7 @@ function updateEntities(entities) {
 
   for (const [key, group] of entityMeshes) {
     if (!currentIds.has(key)) {
-      scene.remove(group);
+      simpleEntityGroup?.remove(group);
       disposeEntityGroup(group);
       entityMeshes.delete(key);
     }
@@ -1471,10 +1487,14 @@ function cleanup() {
   materialCache.clear();
   worldBlockMap.clear();
   for (const [, group] of entityMeshes) {
-    scene?.remove(group);
+    simpleEntityGroup?.remove(group);
     disposeEntityGroup(group);
   }
   entityMeshes.clear();
+  if (simpleEntityGroup) {
+    scene?.remove(simpleEntityGroup);
+    simpleEntityGroup = null;
+  }
   for (const ring of threatRings) { scene?.remove(ring); ring.geometry.dispose(); ring.material.dispose(); }
   threatRings = [];
   if (navPathLine) { navPathLine.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); scene?.remove(navPathLine); }
@@ -1621,8 +1641,8 @@ onUnmounted(() => {
 .hud-bar-fill.health { background: linear-gradient(90deg, #d8503c, #b33b2a); }
 .hud-bar-fill.food { background: linear-gradient(90deg, #e0a52f, #e3b341); }
 
-.hud-top-left { top: 12px; left: 12px; min-width: 200px; }
-.hud-top-right { top: 12px; right: 12px; min-width: 140px; }
+.hud-top-left { top: var(--perception-hud-top-safe-area, 12px); left: 12px; min-width: 200px; }
+.hud-top-right { top: var(--perception-hud-top-safe-area, 12px); right: 12px; min-width: 140px; }
 .hud-bottom-left { bottom: 12px; left: 12px; max-width: 300px; }
 
 .threat-title { display: flex; align-items: center; gap: 5px; color: #d8503c !important; border-bottom-color: rgba(248, 81, 73, 0.3) !important; }

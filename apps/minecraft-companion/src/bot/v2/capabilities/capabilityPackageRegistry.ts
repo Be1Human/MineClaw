@@ -1,8 +1,13 @@
+import { assertBehaviorDefinition } from '../behavior/behaviorDefinition.js';
 import type {
   CapabilityPackageDefinition,
   CapabilityPackageEnvironment,
   CapabilityPackageSnapshot,
 } from './types.js';
+import { jsonSnapshot } from '../infra/jsonSnapshot.js';
+import { parseCapabilityOperation, type CapabilityOperationDefinition } from './capabilityOperation.js';
+import { assertSchemaSupported } from '../infra/closedJsonSchema.js';
+import { validatePredicateArguments } from '../task/goalRunner/goalPredicateEvaluation.js';
 import type {
   ProactiveConfigFieldDefinition,
   ProactiveTickManifestEntry,
@@ -21,10 +26,14 @@ export class CapabilityPackageRegistry {
   private readonly worldFactProviderIds = new Set<string>();
   private readonly evaluatorIds = new Set<string>();
   private readonly proactiveTickIds = new Set<string>();
+  private readonly operationIds = new Set<string>();
+  private readonly goalBindingProviderIds = new Set<string>();
+  private readonly progressProviderIds = new Set<string>();
   private readonly atomicIds: Set<string>;
   private readonly strategyIds: Set<string>;
   private readonly skillNames: Set<string>;
   private readonly knowledgeIds: Set<string>;
+  private readonly taskKinds: Set<string>;
 
   constructor(environment: CapabilityPackageEnvironment) {
     this.atomicIds = normalizedSet(environment.atomicIds);
@@ -33,35 +42,61 @@ export class CapabilityPackageRegistry {
     this.skillNames = normalizedSet(environment.skillNames);
     this.knowledgeIds = normalizedSet(environment.knowledgeIds);
     this.goalTargetIds = normalizedSet(environment.goalTargetIds ?? []);
+    this.taskKinds = normalizedSet(environment.taskKinds ?? []);
   }
 
   register(definition: CapabilityPackageDefinition): void {
     const packageId = requiredId(definition.manifest?.id, 'package');
     if (this.packages.has(packageId)) throw new Error(`duplicate capability package id: ${packageId}`);
-    if (definition.manifest?.schema !== 'mineclaw/capability-manifest@1') {
+    if (!['mineclaw/capability-manifest@1', 'mineclaw/capability-manifest@2'].includes(definition.manifest?.schema)) {
       throw new Error(`capability package ${packageId} has unsupported manifest schema`);
     }
     if (!Number.isInteger(definition.manifest.version) || definition.manifest.version < 1) {
       throw new Error(`capability package ${packageId} has invalid manifest version`);
     }
     requiredId(definition.manifest.description, 'manifest description');
+    const v2 = definition.manifest.schema === 'mineclaw/capability-manifest@2';
+    if (!v2 && definition.manifest.operations !== undefined) throw new Error('operations require manifest@2');
+    const operations = (definition.manifest.operations ?? []).map(parseCapabilityOperation);
+    rejectLocalDuplicates(operations.map(value => value.id), 'operation');
+    rejectExisting(operations.map(value => value.id), this.operationIds, 'operation');
+    const semantics = definition.operationSemantics ?? [];
+    rejectLocalDuplicates(semantics.map(value => requiredId(value.operationId, 'operation semantics')), 'operation semantics');
+    for (const resolver of semantics) {
+      if (!v2 || !operations.some(operation => operation.id === resolver.operationId)) throw new Error('operation semantics must belong to this @2 package');
+      requiredId(resolver.version, 'operation semantics version');
+      if (typeof resolver.resolve !== 'function') throw new Error('operation semantics requires code-owned resolve');
+    }
 
     const targets = definition.manifest?.goalTargets ?? [];
     const declaredSkills = definition.manifest?.skills ?? [];
     const declaredKnowledge = definition.manifest?.knowledge ?? [];
     const atomics = definition.manifest?.requires?.atomics ?? [];
     const proactiveManifests = definition.manifest.proactiveTicks ?? [];
-    const proactiveOnly = targets.length === 0 && proactiveManifests.length > 0;
-    if (!proactiveOnly && targets.length === 0) throw new Error(`capability package ${packageId} requires manifest goalTargets`);
-    if (!proactiveOnly && declaredSkills.length === 0) throw new Error(`capability package ${packageId} requires Skill references`);
-    if (!proactiveOnly && declaredKnowledge.length === 0) throw new Error(`capability package ${packageId} requires Knowledge references`);
-    if (!proactiveOnly && atomics.length === 0) throw new Error(`capability package ${packageId} requires Atomic references`);
-    if (!proactiveOnly && definition.actionProviders.length === 0) throw new Error(`capability package ${packageId} has no execution path`);
-    if (!proactiveOnly && definition.predicateEvaluators.length === 0) throw new Error(`capability package ${packageId} has no verification path`);
+    const declarativeOnly = targets.length === 0 && (proactiveManifests.length > 0 || (v2 && operations.length > 0));
+    if (!declarativeOnly && targets.length === 0) throw new Error(`capability package ${packageId} requires manifest goalTargets`);
+    if (!declarativeOnly && declaredSkills.length === 0) throw new Error(`capability package ${packageId} requires Skill references`);
+    if (!declarativeOnly && declaredKnowledge.length === 0) throw new Error(`capability package ${packageId} requires Knowledge references`);
+    if (!declarativeOnly && atomics.length === 0) throw new Error(`capability package ${packageId} requires Atomic references`);
+    if (!declarativeOnly && definition.actionProviders.length === 0) throw new Error(`capability package ${packageId} has no execution path`);
+    if (!declarativeOnly && definition.predicateEvaluators.length === 0) throw new Error(`capability package ${packageId} has no verification path`);
 
     const packageBehaviorIds = ids(definition.behaviors ?? [], 'behavior');
     const packageProviderIds = ids(definition.actionProviders, 'action provider');
     const packageWorldFactProviderIds = ids(definition.worldFactProviders ?? [], 'world fact provider');
+    const packageGoalBindingIds = ids(definition.goalBindingProviders ?? [], 'goal binding provider');
+    const packageProgressIds = ids(definition.progressProviders ?? [], 'progress provider');
+    rejectLocalDuplicates(packageProgressIds, 'progress provider');
+    rejectExisting(packageProgressIds, this.progressProviderIds, 'progress provider');
+    for (const provider of definition.progressProviders ?? []) {
+      if (!v2 || typeof provider.assess !== 'function' || typeof provider.project !== 'function') throw new Error('progress provider requires @2 code-owned assess/project');
+    }
+    rejectLocalDuplicates(packageGoalBindingIds, 'goal binding provider');
+    rejectExisting(packageGoalBindingIds, this.goalBindingProviderIds, 'goal binding provider');
+    if (packageGoalBindingIds.length && !v2) throw new Error('goal binding providers require manifest@2');
+    for (const provider of definition.goalBindingProviders ?? []) {
+      if (typeof provider.list !== 'function') throw new Error(`goal binding provider ${provider.id} has no list implementation`);
+    }
     const packageEvaluatorIds = ids(definition.predicateEvaluators, 'predicate evaluator');
     const packageTargetIds = targets.map(target => requiredId(target.registryId, 'goal target'));
     const proactiveImplementations = definition.proactiveTicks ?? [];
@@ -111,6 +146,60 @@ export class CapabilityPackageRegistry {
     for (const knowledgeId of declaredKnowledge) requireAvailable(knowledgeId, this.knowledgeIds, packageId, 'Knowledge');
 
     const evaluatorSet = new Set(packageEvaluatorIds);
+    const resources = {
+      atomic: this.atomicIds, behavior: availableBehaviors,
+      strategy: this.strategyIds, task: this.taskKinds,
+    };
+    for (const provider of definition.actionProviders) {
+      if (typeof provider.list !== 'function') throw new Error(`action provider ${provider.id} has no list implementation`);
+    }
+    for (const provider of definition.worldFactProviders ?? []) {
+      if (typeof provider.observe !== 'function') throw new Error(`world fact provider ${provider.id} has no observe implementation`);
+      if (provider.version !== undefined || provider.inputSchema !== undefined) {
+        requiredId(provider.version, 'world fact version');
+        if (provider.inputSchema?.type !== 'object' || provider.inputSchema.additionalProperties !== false) {
+          throw new Error(`world fact ${provider.id} requires a closed input schema`);
+        }
+        assertSchemaSupported(jsonSnapshot(provider.inputSchema));
+      }
+    }
+    for (const evaluator of definition.predicateEvaluators) {
+      if (typeof evaluator.evaluate !== 'function') throw new Error(`predicate evaluator ${evaluator.id} has no evaluate implementation`);
+      if (evaluator.version !== undefined || evaluator.argumentSchema !== undefined) {
+        requiredId(evaluator.version, 'predicate version');
+        if (evaluator.argumentSchema?.type !== 'object' || evaluator.argumentSchema.additionalProperties !== false) {
+          throw new Error(`predicate ${evaluator.id} requires a closed argument schema`);
+        }
+        assertSchemaSupported(jsonSnapshot(evaluator.argumentSchema));
+        if (evaluator.factRequirements !== undefined && typeof evaluator.factRequirements !== 'function') {
+          throw new Error(`predicate ${evaluator.id} factRequirements must be code-owned`);
+        }
+        if (evaluator.authorizeGoal !== undefined && typeof evaluator.authorizeGoal !== 'function') throw new Error(`predicate ${evaluator.id} authorizeGoal must be code-owned`);
+      }
+    }
+    for (const behavior of definition.behaviors ?? []) {
+      assertBehaviorDefinition(behavior);
+    }
+    for (const operation of operations) {
+      requireAvailable(operation.executorRef.id, resources[operation.kind], packageId, 'operation executor');
+      requireAvailable(operation.actionProviderId, new Set(packageProviderIds), packageId, 'operation action provider');
+      const evaluators = new Set([...this.evaluatorIds, ...packageEvaluatorIds]);
+      for (const ref of operation.verificationRefs) requireAvailable(ref, evaluators, packageId, 'operation verifier');
+      for (const effect of operation.effects) requireAvailable(effect.id, evaluators, packageId, 'operation effect verifier');
+      for (const condition of operation.preconditions) requireAvailable(condition.id, evaluators, packageId, 'operation precondition verifier');
+      for (const ref of operation.worldFactRefs) {
+        requireAvailable(ref, new Set([...this.worldFactProviderIds, ...packageWorldFactProviderIds]), packageId, 'operation world fact');
+      }
+      if (operation.kind === 'atomic' && !atomics.includes(operation.executorRef.id)) {
+        throw new Error(`operation ${operation.id} executor must be declared in requires.atomics`);
+      }
+      if (operation.kind === 'behavior' && !(definition.manifest.requires.behaviors ?? []).includes(operation.executorRef.id)) {
+        throw new Error(`operation ${operation.id} executor must be declared in requires.behaviors`);
+      }
+      if (operation.kind === 'strategy' && !(definition.manifest.requires.strategies ?? []).includes(operation.executorRef.id)) {
+        throw new Error(`operation ${operation.id} executor must be declared in requires.strategies`);
+      }
+    }
     for (const target of targets) {
       const predicates = (target.successCriteria ?? [])
         .filter(criterion => criterion.type === 'predicate')
@@ -123,16 +212,26 @@ export class CapabilityPackageRegistry {
           throw new Error(`capability target ${target.registryId} has no evaluator for ${predicate}`);
         }
       }
+      for (const criterion of target.successCriteria ?? []) {
+        if (criterion.type !== 'predicate') continue;
+        const evaluator = [...definition.predicateEvaluators, ...this.snapshot().predicateEvaluators].find(value => value.id === criterion.predicate);
+        if (evaluator?.version || criterion.predicateVersion !== undefined || criterion.args !== undefined) {
+          validatePredicateArguments(criterion, evaluator!);
+        }
+      }
     }
 
     // Commit only after the complete validation pass above.
-    this.packages.set(packageId, freezePackage(definition));
+    this.packages.set(packageId, freezePackage(definition, operations));
     packageBehaviorIds.forEach(id => this.behaviorIds.add(id));
     packageProviderIds.forEach(id => this.providerIds.add(id));
     packageWorldFactProviderIds.forEach(id => this.worldFactProviderIds.add(id));
     packageEvaluatorIds.forEach(id => this.evaluatorIds.add(id));
     packageTargetIds.forEach(id => this.goalTargetIds.add(id));
     proactiveManifestIds.forEach(id => this.proactiveTickIds.add(id));
+    operations.forEach(value => this.operationIds.add(value.id));
+    packageGoalBindingIds.forEach(id => this.goalBindingProviderIds.add(id));
+    packageProgressIds.forEach(id => this.progressProviderIds.add(id));
   }
 
   snapshot(): CapabilityPackageSnapshot {
@@ -143,18 +242,24 @@ export class CapabilityPackageRegistry {
       behaviors: Object.freeze(packages.flatMap(value => [...(value.behaviors ?? [])])),
       actionProviders: Object.freeze(packages.flatMap(value => [...value.actionProviders])),
       worldFactProviders: Object.freeze(packages.flatMap(value => [...(value.worldFactProviders ?? [])])),
+      goalBindingProviders: Object.freeze(packages.flatMap(value => [...(value.goalBindingProviders ?? [])])),
+      operationSemantics: Object.freeze(packages.flatMap(value => [...(value.operationSemantics ?? [])])),
+      progressProviders: Object.freeze(packages.flatMap(value => [...(value.progressProviders ?? [])])),
       predicateEvaluators: Object.freeze(packages.flatMap(value => [...value.predicateEvaluators])),
       proactiveTicks: Object.freeze(packages.flatMap(toRegisteredProactiveTicks)),
+      operations: Object.freeze(packages.flatMap(value => (value.manifest.operations ?? []).map(definition => Object.freeze({
+        packageId: value.manifest.id, packageVersion: value.manifest.version, definition,
+      })))),
     });
   }
 }
 
-function freezePackage(definition: CapabilityPackageDefinition): CapabilityPackageDefinition {
+function freezePackage(definition: CapabilityPackageDefinition, operations: readonly CapabilityOperationDefinition[]): CapabilityPackageDefinition {
   return Object.freeze({
     ...definition,
     manifest: Object.freeze({
       ...definition.manifest,
-      goalTargets: Object.freeze([...definition.manifest.goalTargets]),
+      goalTargets: jsonSnapshot([...definition.manifest.goalTargets]),
       skills: Object.freeze([...definition.manifest.skills]),
       knowledge: Object.freeze([...definition.manifest.knowledge]),
       requires: Object.freeze({
@@ -163,11 +268,27 @@ function freezePackage(definition: CapabilityPackageDefinition): CapabilityPacka
         ...(definition.manifest.requires.strategies ? { strategies: Object.freeze([...definition.manifest.requires.strategies]) } : {}),
       }),
       proactiveTicks: Object.freeze([...(definition.manifest.proactiveTicks ?? [])].map(freezeProactiveManifest)),
+      ...(definition.manifest.schema === 'mineclaw/capability-manifest@2' ? { operations: Object.freeze([...operations]) } : {}),
     }),
     behaviors: Object.freeze([...(definition.behaviors ?? [])]),
     actionProviders: Object.freeze([...definition.actionProviders]),
-    worldFactProviders: Object.freeze([...(definition.worldFactProviders ?? [])]),
-    predicateEvaluators: Object.freeze([...definition.predicateEvaluators]),
+    goalBindingProviders: Object.freeze((definition.goalBindingProviders ?? []).map(provider => Object.freeze({ id: provider.id, list: provider.list.bind(provider) }))),
+    operationSemantics: Object.freeze((definition.operationSemantics ?? []).map(resolver => Object.freeze({ operationId: resolver.operationId, version: resolver.version, resolve: resolver.resolve.bind(resolver) }))),
+    progressProviders: Object.freeze((definition.progressProviders ?? []).map(provider => Object.freeze({ id: provider.id, assess: provider.assess.bind(provider), project: provider.project.bind(provider) }))),
+    worldFactProviders: Object.freeze((definition.worldFactProviders ?? []).map(provider => Object.freeze({
+      id: provider.id,
+      ...(provider.version !== undefined ? { version: provider.version } : {}),
+      ...(provider.inputSchema ? { inputSchema: jsonSnapshot(provider.inputSchema) } : {}),
+      observe: provider.observe.bind(provider),
+    }))),
+    predicateEvaluators: Object.freeze(definition.predicateEvaluators.map(evaluator => Object.freeze({
+      id: evaluator.id,
+      ...(evaluator.version !== undefined ? { version: evaluator.version } : {}),
+      ...(evaluator.argumentSchema ? { argumentSchema: jsonSnapshot(evaluator.argumentSchema) } : {}),
+      ...(evaluator.factRequirements ? { factRequirements: evaluator.factRequirements.bind(evaluator) } : {}),
+      ...(evaluator.authorizeGoal ? { authorizeGoal: evaluator.authorizeGoal.bind(evaluator) } : {}),
+      evaluate: evaluator.evaluate.bind(evaluator),
+    }))),
     proactiveTicks: Object.freeze([...(definition.proactiveTicks ?? [])]),
   });
 }

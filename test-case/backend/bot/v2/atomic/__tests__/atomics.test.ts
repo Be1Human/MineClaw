@@ -29,7 +29,8 @@
 
 import { describe, it, beforeEach, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { executeAtomic, type AtomicContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
+import { runControlledAtomic as executeAtomic, type AtomicFixture as AtomicContext } from '../../__tests__/mocks/controlledAtomic.js';
+import { executeAtomic as unboundAtomic } from '../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
 import { __setTuningOverride } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { ActionRequest } from '../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 import type { IBehaviorRegistry, IBehavior } from '../../../../../../apps/minecraft-companion/src/bot/v2/behavior/types.js';
@@ -227,6 +228,8 @@ function makeMockGame(opts: {
     look: async () => { calls.look += 1; },
     chat: (message: string) => { calls.chat.push(message); },
     // atomic actions
+    mount: async () => { throw new Error('mount_not_available'); },
+    dismount: async () => { throw new Error('dismount_not_available'); },
     attack: (entityId: number) => { calls.attack.push(entityId); },
     dig: async (pos: { x: number; y: number; z: number }) => { calls.dig.push(pos); },
     equip: async (itemName: string, dest?: unknown) => {
@@ -282,7 +285,7 @@ function makeWorldState() {
 function makeSaySkill(id: string): IBehavior {
   return {
     id,
-    plan: (_ctx) => [makeReq({ id: 'sub-say', type: 'say', target: { text: 'hello from skill' } })],
+    kind: 'sequence', compile: (_ctx) => [makeReq({ id: 'sub-say', type: 'say', target: { text: 'hello from skill' } })],
   };
 }
 
@@ -367,7 +370,7 @@ describe('executeAtomic', () => {
   // ─── stop ──────────────────────────────────────────────
 
   describe('stop', () => {
-    it('③ 成功路径：调用 nav.stop + clearControlStates + 发布 atomic.stop', async () => {
+    it('③ stop 是活动控制，不再是裸原子写入入口', async () => {
       const bus = makeMockBus();
       const game = makeMockGame();
       const nav = makeMockNav();
@@ -377,10 +380,9 @@ describe('executeAtomic', () => {
         bus: bus as any,
       };
       const result = await executeAtomic(makeReq({ type: 'stop' }), ctx);
-      assert.equal(result.ok, true);
-      assert.equal(nav.calls.stop, 1);
-      assert.equal(game.calls.clearControlStates, 1);
-      assert.ok(bus.events.some(e => e.type === 'atomic.stop'));
+      assert.equal(result.ok, false);
+      assert.equal(nav.calls.stop, 0);
+      assert.equal(game.calls.clearControlStates, 0);
     });
   });
 
@@ -402,23 +404,14 @@ describe('executeAtomic', () => {
       assert.ok(bus.events.some(e => e.type === 'atomic.move_to.end'));
     });
 
-    it('④b 注入 MotorService 后，move_to 不再直写 nav.goto', async () => {
+    it('④b 缺少必需执行上下文时拒绝入口，不能通过裸 nav 或 Motor 调用', async () => {
       const nav = makeMockNav({ ok: true });
-      const calls: Array<{ owner: string; priority: number; program: unknown }> = [];
       const ctx = makeCtx({
         nav: nav as any,
-        motor: {
-          run: async (owner, priority, program) => { calls.push({ owner, priority, program }); return { ok: true }; },
-          current: () => null,
-          isBusy: () => false,
-          cancel: () => {},
-        },
       });
       const req = makeReq({ id: 'move-via-motor', priority: 47, type: 'move_to', target: { position: { x: 10, y: 64, z: 20 } } });
-      const result = await executeAtomic(req, ctx);
-      assert.equal(result.ok, true);
+      await assert.rejects(unboundAtomic(req,ctx as never),/assertCurrent/);
       assert.equal(nav.calls.goto, 0);
-      assert.deepEqual(calls, [{ owner: 'atomic:test:move_to', priority: 47, program: { kind: 'goto', goal: { type: 'block', position: { x: 10, y: 64, z: 20 }, range: 1 }, budgetMs: req.timeout_ms, thinkTimeoutMs: 5000 } }]);
     });
 
     it('⑤ 缺 target.position → ok=false', async () => {
@@ -882,7 +875,7 @@ describe('executeAtomic', () => {
       const req = makeReq({ type: 'invoke_behavior', target: { behavior: 'some_skill' } });
       const result = await executeAtomic(req, ctx);
       assert.equal(result.ok, false);
-      assert.ok(result.error?.includes('no_registry'));
+      assert.ok(result.error?.includes('behavior_not_found'));
     });
 
     it('㉑ skill not found in registry → ok=false + behavior_not_found', async () => {
@@ -915,7 +908,7 @@ describe('executeAtomic', () => {
       assert.equal(result.ok, true);
       assert.equal(game.calls.chat.length, 0);
       assert.ok(bus.events.some(e => e.type === 'brain.notice' && (e.payload as { detail?: string })?.detail === 'hello from skill'));
-      assert.ok(bus.events.some(e => e.type === 'atomic.invoke_behavior.success'));
+      assert.ok(bus.events.some(e => e.type === 'behavior.success'));
     });
 
     it('自适应 skill 可在动作间读取最新世界并执行短原子', async () => {
@@ -925,7 +918,7 @@ describe('executeAtomic', () => {
       const world = makeWorldState() as any;
       const skill: IBehavior = {
         id: 'adaptive_skill',
-        plan: () => { throw new Error('adaptive skill must not call plan'); },
+        kind: 'adaptive',
         run: async runtime => {
           runtime.getWorld();
           reads++;
@@ -945,14 +938,14 @@ describe('executeAtomic', () => {
       const result = await executeAtomic(makeReq({ type: 'invoke_behavior', target: { behavior: skill.id } }), ctx);
       assert.equal(result.ok, true);
       assert.equal(reads, 2);
-      assert.ok(bus.events.some(e => e.type === 'atomic.invoke_behavior.start' && (e.payload as { adaptive?: boolean }).adaptive));
-      assert.ok(bus.events.some(e => e.type === 'atomic.invoke_behavior.success' && (e.payload as { reads?: number }).reads === 2));
+      assert.ok(bus.events.some(e => e.type === 'behavior.start'));
+      assert.ok(bus.events.some(e => e.type === 'behavior.success' && (e.payload as { reads?: number }).reads === 2));
     });
 
     it('自适应 skill 仍禁止嵌套 invoke_behavior', async () => {
       const skill: IBehavior = {
         id: 'nested_skill',
-        plan: () => [],
+        kind: 'adaptive',
         run: async runtime => {
           const nested = await runtime.execute(makeReq({ type: 'invoke_behavior', target: { behavior: 'other' } }));
           return { ok: nested.ok, error: nested.error };
@@ -967,7 +960,7 @@ describe('executeAtomic', () => {
       };
       const result = await executeAtomic(makeReq({ type: 'invoke_behavior', target: { behavior: skill.id } }), ctx);
       assert.equal(result.ok, false);
-      assert.match(result.error ?? '', /nested invoke_behavior forbidden/);
+      assert.match(result.error ?? '', /behavior_child_must_be_atomic/);
     });
   });
 
@@ -1635,9 +1628,9 @@ describe('executeAtomic', () => {
       };
       const r = await executeAtomic(makeReq({ type: 'mount', target: { entityId: 42 } }), ctx);
       assert.equal(r.ok, false);
-      assert.ok(r.error?.includes('adapter_unsupported'));
+      assert.ok(r.error?.includes('mount_not_available'));
       const f = bus.events.find(e => e.type === 'atomic.mount.fail');
-      assert.equal((f!.payload as { reason: string }).reason, 'adapter_unsupported');
+      assert.equal((f!.payload as { error: string }).error, 'mount_not_available');
     });
 
     it('M3 mock adapter 有 mount → 成功', async () => {
@@ -1666,7 +1659,7 @@ describe('executeAtomic', () => {
       };
       const r = await executeAtomic(makeReq({ type: 'dismount' }), ctx);
       assert.equal(r.ok, false);
-      assert.ok(r.error?.includes('adapter_unsupported'));
+      assert.ok(r.error?.includes('dismount_not_available'));
     });
 
     it('M5 mock adapter 有 dismount → 成功', async () => {

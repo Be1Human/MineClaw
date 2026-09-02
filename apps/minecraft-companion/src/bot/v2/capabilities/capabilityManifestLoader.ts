@@ -5,6 +5,8 @@ import type { DomainKnowledgeDocument } from '../knowledge/domainKnowledge.js';
 import { loadDomainKnowledge } from '../knowledge/domainKnowledge.js';
 import type { GoalTargetCriterionTemplate, GoalTargetDefinition } from '../knowledge/goalTargetKnowledge.js';
 import type { CapabilityManifestDefinition } from './types.js';
+import { jsonSnapshot } from '../infra/jsonSnapshot.js';
+import { parseCapabilityOperation } from './capabilityOperation.js';
 import type {
   ProactiveConfigFieldDefinition,
   ProactiveConfigSchema,
@@ -21,7 +23,9 @@ export function loadCapabilityResourcePackage(packageDir: string): CapabilityRes
   const root = fs.realpathSync(packageDir);
   const manifest = loadCapabilityManifest(root);
   const knowledgeDir = path.join(root, 'knowledge');
-  const knowledgeDocuments = loadDomainKnowledge(knowledgeDir);
+  const knowledgeDocuments = manifest.schema === 'mineclaw/capability-manifest@2'
+    && manifest.knowledge.length === 0 && !fs.existsSync(knowledgeDir)
+    ? [] : loadDomainKnowledge(knowledgeDir);
   const documentIds = new Set(knowledgeDocuments.map(document => document.id));
   for (const knowledgeId of manifest.knowledge) {
     if (!documentIds.has(knowledgeId)) {
@@ -48,26 +52,31 @@ export function loadCapabilityManifest(packageDir: string): CapabilityManifestDe
   if (!isWithin(root, actual)) throw new Error(`capability manifest escapes package root: ${actual}`);
   const raw = parse(fs.readFileSync(actual, 'utf8')) as unknown;
   if (!isRecord(raw)) throw new Error(`invalid capability manifest: ${actual}`);
-  if (raw.schema !== 'mineclaw/capability-manifest@1') throw new Error(`unsupported capability manifest schema: ${String(raw.schema)}`);
+  if (raw.schema !== 'mineclaw/capability-manifest@1' && raw.schema !== 'mineclaw/capability-manifest@2') throw new Error(`unsupported capability manifest schema: ${String(raw.schema)}`);
+  const v2 = raw.schema === 'mineclaw/capability-manifest@2';
   const id = requiredText(raw.id, 'id');
   const version = positiveInteger(raw.version, 'version');
   const description = requiredText(raw.description, 'description');
-  const goalTargets = objectArray(raw.goalTargets, 'goalTargets').map(parseGoalTarget);
-  const skills = stringArray(raw.skills, 'skills');
-  const knowledge = stringArray(raw.knowledge, 'knowledge').map(value => value.toLowerCase());
-  const requires = parseRequires(raw.requires);
+  const goalTargets = objectArray(raw.goalTargets ?? (v2 ? [] : undefined), 'goalTargets').map(parseGoalTarget);
+  const skills = stringArray(raw.skills ?? (v2 ? [] : undefined), 'skills');
+  const knowledge = stringArray(raw.knowledge ?? (v2 ? [] : undefined), 'knowledge').map(value => value.toLowerCase());
+  const requires = parseRequires(raw.requires, v2);
+  if (!v2 && raw.operations !== undefined) throw new Error('operations require manifest@2');
+  const operations = objectArray(raw.operations ?? [], 'operations').map(parseCapabilityOperation);
   const proactiveTicks = raw.proactiveTicks === undefined
     ? []
     : objectArray(raw.proactiveTicks, 'proactiveTicks').map(parseProactiveTick);
-  if (goalTargets.length === 0) throw new Error(`capability manifest ${id} requires goalTargets`);
-  if (skills.length === 0) throw new Error(`capability manifest ${id} requires Skill references`);
-  if (knowledge.length === 0) throw new Error(`capability manifest ${id} requires Knowledge references`);
+  const operationsOnly = v2 && operations.length > 0;
+  if (!operationsOnly && goalTargets.length === 0) throw new Error(`capability manifest ${id} requires goalTargets`);
+  if (!operationsOnly && skills.length === 0) throw new Error(`capability manifest ${id} requires Skill references`);
+  if (!operationsOnly && knowledge.length === 0) throw new Error(`capability manifest ${id} requires Knowledge references`);
   rejectDuplicates(skills, 'Skill');
   rejectDuplicates(knowledge, 'Knowledge');
   rejectDuplicates(goalTargets.map(target => target.registryId), 'goal target');
   rejectDuplicates(proactiveTicks.map(tick => tick.id), 'proactive Tick');
+  rejectDuplicates(operations.map(operation => operation.id), 'operation');
   return Object.freeze({
-    schema: 'mineclaw/capability-manifest@1',
+    schema: raw.schema,
     id,
     version,
     description,
@@ -76,6 +85,7 @@ export function loadCapabilityManifest(packageDir: string): CapabilityManifestDe
     knowledge: Object.freeze(knowledge),
     requires,
     proactiveTicks: Object.freeze(proactiveTicks),
+    ...(v2 ? { operations: Object.freeze(operations) } : {}),
   });
 }
 
@@ -198,7 +208,14 @@ function parseGoalTarget(value: Record<string, unknown>): GoalTargetDefinition {
 
 function parseCriterion(value: Record<string, unknown>): GoalTargetCriterionTemplate {
   const type = requiredText(value.type, 'successCriteria.type');
-  if (type === 'predicate') return { type, predicate: requiredText(value.predicate, 'successCriteria.predicate') };
+  if (type === 'predicate') {
+    if (value.args !== undefined && !isRecord(value.args)) throw new Error('successCriteria.args must be an object');
+    return {
+      type, predicate: requiredText(value.predicate, 'successCriteria.predicate'),
+      ...(value.predicateVersion !== undefined ? { predicateVersion: requiredText(value.predicateVersion, 'successCriteria.predicateVersion') } : {}),
+      ...(isRecord(value.args) ? { args: jsonSnapshot(value.args) } : {}),
+    };
+  }
   if (type === 'entity_dead') return { type, entityName: requiredText(value.entityName, 'successCriteria.entityName') };
   if (type === 'reached') {
     if (value.relativeTo !== 'owner') throw new Error('reached criterion relativeTo must be owner');
@@ -211,10 +228,10 @@ function parseCriterion(value: Record<string, unknown>): GoalTargetCriterionTemp
   throw new Error(`unsupported capability goal criterion: ${type}`);
 }
 
-function parseRequires(value: unknown): CapabilityManifestDefinition['requires'] {
+function parseRequires(value: unknown, allowEmpty = false): CapabilityManifestDefinition['requires'] {
   if (!isRecord(value)) throw new Error('capability manifest requires must be an object');
   const atomics = stringArray(value.atomics, 'requires.atomics');
-  if (atomics.length === 0) throw new Error('capability manifest requires.atomics must not be empty');
+  if (!allowEmpty && atomics.length === 0) throw new Error('capability manifest requires.atomics must not be empty');
   const behaviors = value.behaviors === undefined ? undefined : stringArray(value.behaviors, 'requires.behaviors');
   const strategies = value.strategies === undefined ? undefined : stringArray(value.strategies, 'requires.strategies');
   rejectDuplicates(atomics, 'Atomic');

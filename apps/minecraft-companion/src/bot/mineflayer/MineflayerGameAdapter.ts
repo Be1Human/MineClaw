@@ -4,8 +4,7 @@
  * 设计要点：
  * - BotGetter 返回 Bot | null（重连过渡期间为 null）
  * - 所有读方法：bot=null 时返回安全默认值（0 / [] / null）
- * - 所有写方法：bot=null 时 silently no-op，不抛错
- *   原因：ReflexLayer / BT tick 等异步循环可能在断连瞬间触发；如果抛错会拖死进程
+ * - 身体写操作只通过固定 Bot 的 ActionSession；断连显式失败，不转发到新 Bot
  * - 本文件是 mineflayer 在项目中唯一允许直接成员访问 Bot 的地方之一
  */
 
@@ -18,6 +17,8 @@ const Vec3Ctor = (vec3pkg as unknown as { Vec3: new (x: number, y: number, z: nu
   ?? (vec3pkg as unknown as new (x: number, y: number, z: number) => MFVec3);
 
 import type { GameAdapter } from '../adapter/GameAdapter.js';
+import type { BoundGameActions, DeviceExecutionScope } from '../adapter/GameActions.js';
+import { MineflayerActionSession } from './MineflayerActionSession.js';
 import { toMinecraftChatLine } from './minecraftChat.js';
 import { BotSubscriptionRegistry } from './botSubscriptionRegistry.js';
 import type {
@@ -48,6 +49,12 @@ export class MineflayerGameAdapter implements GameAdapter {
   private readonly subscriptions = new BotSubscriptionRegistry<Bot>();
 
   constructor(private readonly getBot: BotGetter) {}
+
+  bind(scope: DeviceExecutionScope): BoundGameActions {
+    const bot = this.getBot();
+    if (!bot) throw new Error('game_body_unavailable');
+    return new MineflayerActionSession(bot, new MineflayerGameAdapter(() => bot), scope, () => this.getBot() === bot);
+  }
 
   /** Called by MineflayerConnection whenever the concrete Bot generation changes. */
   rebindSubscriptions(bot: Bot | null): void {
@@ -222,75 +229,10 @@ export class MineflayerGameAdapter implements GameAdapter {
     const o = (this.getBot() as unknown as { oxygenLevel?: number } | undefined)?.oxygenLevel;
     return typeof o === 'number' ? o : 20;
   }
-
-  // ── 写方法（断连时 silently no-op） ───────────────
-  setControlState(key: ControlKey, value: boolean): void {
-    try { this.getBot()?.setControlState(key, value); } catch { /* silenced */ }
-  }
-  clearControlStates(): void {
-    try { this.getBot()?.clearControlStates(); } catch { /* silenced */ }
-  }
-  async lookAt(target: Vec3, force?: boolean): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    try { await bot.lookAt(toMFVec3(target), force); } catch { /* silenced */ }
-  }
-  async look(yaw: number, pitch: number, force?: boolean): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    try { await bot.look(yaw, pitch, force); } catch { /* silenced */ }
-  }
   chat(message: string): void {
     const line = toMinecraftChatLine(message);
     if (!line) return;
     try { this.getBot()?.chat(line); } catch { /* silenced */ }
-  }
-
-  attack(entityId: number): void {
-    try {
-      const bot = this.getBot();
-      const e = bot?.entities[entityId];
-      if (bot && e) bot.attack(e);
-    } catch { /* silenced */ }
-  }
-  async dig(pos: Vec3): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    try {
-      const block = bot.blockAt(toMFVec3(pos));
-      if (block) await bot.dig(block);
-    } catch { /* silenced */ }
-  }
-  async equip(itemName: string, destination: EquipDestination = 'hand'): Promise<void> {
-    const bot = this.getBot();
-    // BUG-CROSS-80 · 不再静默吞错：equip 前置条件失败必须抛错，
-    // 否则原子层误报成功、后置验真才暴露 equip_unverified。
-    if (!bot) throw new Error('equip_failed: bot 未连接');
-    const item = bot.inventory.items().find((it) => it.name === itemName);
-    if (!item) throw new Error(`equip_failed: 背包中没有 ${itemName}`);
-    await bot.equip(item, destination);
-  }
-  // FEAT-L3-13 · 扔出指定物品（交给玩家）。count 缺省=该物品全部；返回实际扔出数量。
-  async toss(itemName: string, count?: number): Promise<number> {
-    const bot = this.getBot();
-    if (!bot) return 0;
-    const stacks = bot.inventory.items().filter((it) => it.name === itemName);
-    if (stacks.length === 0) return 0;
-    const have = stacks.reduce((s, it) => s + it.count, 0);
-    const want = count == null ? have : Math.max(0, Math.min(count, have));
-    let tossed = 0;
-    for (const it of stacks) {
-      if (tossed >= want) break;
-      const n = Math.min(it.count, want - tossed);
-      try { await bot.toss(it.type, null, n); tossed += n; } catch { /* silenced */ }
-    }
-    return tossed;
-  }
-  activateItem(offHand?: boolean): void {
-    try { this.getBot()?.activateItem(offHand); } catch { /* silenced */ }
-  }
-  deactivateItem(): void {
-    try { this.getBot()?.deactivateItem(); } catch { /* silenced */ }
   }
   getBlockProperties(pos: Vec3): Record<string, string> | null {
     const bot = this.getBot();
@@ -305,40 +247,6 @@ export class MineflayerGameAdapter implements GameAdapter {
       for (const [k, v] of Object.entries(props)) out[k] = String(v);
       return out;
     } catch { return null; }
-  }
-  async interactBlock(pos: Vec3): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    const block = bot.blockAt(toMFVec3(pos));
-    if (!block) return;
-    // 关键修复：activateBlock 有服务端视线校验，bot 必须先「看向」方块中心才能交互成功，
-    // 否则（尤其贴门/站门格内时）raycast 点不中门面 → 静默失败、门永远开不了。
-    try {
-      await bot.lookAt(toMFVec3({ x: pos.x + 0.5, y: pos.y + 0.5, z: pos.z + 0.5 }), true);
-    } catch { /* lookAt 失败不致命，继续尝试交互 */ }
-    // 交互失败不再静默吞：openDoor 会读回 open 属性做事后校验并发 door.open_failed，
-    // 故这里只防 reject 冒泡崩 tick，真实成败由上层属性校验判定。
-    try {
-      await bot.activateBlock(block);
-    } catch { /* 失败由上层 openDoor 的属性校验感知 */ }
-  }
-  async placeBlock(refBlock: RawBlock, faceVector: Vec3): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    try {
-      const block = bot.blockAt(toMFVec3(refBlock.position));
-      if (block) await bot.placeBlock(block, toMFVec3(faceVector));
-    } catch { /* silenced */ }
-  }
-
-  // ── 生存 / 容器（FEAT-L3-02 / FEAT-L3-03） ──────────────
-  async consume(): Promise<boolean> {
-    const bot = this.getBot();
-    if (!bot) return false;
-    try {
-      await (bot as unknown as { consume: () => Promise<void> }).consume();
-      return true;
-    } catch { return false; }
   }
 
   findBestFood(): string | null {
@@ -363,20 +271,6 @@ export class MineflayerGameAdapter implements GameAdapter {
     } catch { return null; }
   }
 
-  async sleep(pos: Vec3): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    const block = bot.blockAt(toMFVec3(pos));
-    if (!block) throw new Error('no_bed_block');
-    await (bot as unknown as { sleep: (b: Block) => Promise<void> }).sleep(block);
-  }
-
-  async wake(): Promise<void> {
-    const bot = this.getBot();
-    if (!bot) return;
-    try { await (bot as unknown as { wake: () => Promise<void> }).wake(); } catch { /* silenced */ }
-  }
-
   findNearbyBed(maxDistance: number): Vec3 | null {
     const bot = this.getBot();
     if (!bot) return null;
@@ -388,139 +282,6 @@ export class MineflayerGameAdapter implements GameAdapter {
       if (!block) return null;
       return { x: block.position.x, y: block.position.y, z: block.position.z };
     } catch { return null; }
-  }
-
-  async depositToChest(chestPos: Vec3, itemName: string, count: number): Promise<ChestOpResult> {
-    const bot = this.getBot();
-    if (!bot) return { ok: false, moved: 0, reason: 'disconnected' };
-    let chest: {
-      deposit: (id: number, meta: number | null, n: number) => Promise<void>;
-      close: () => void;
-      containerItems?: () => { name: string; count: number }[];
-    } | null = null;
-    try {
-      const block = bot.blockAt(toMFVec3(chestPos));
-      if (!block) return { ok: false, moved: 0, reason: 'no_block' };
-      const reg = bot.registry as unknown as McRegistry;
-      const def = reg.itemsByName[itemName];
-      if (!def) return { ok: false, moved: 0, reason: `unknown_item:${itemName}` };
-      const have = bot.inventory.items().filter((i) => i.name === itemName).reduce((s, i) => s + i.count, 0);
-      const toMove = Math.min(count, have);
-      if (toMove <= 0) return { ok: false, moved: 0, reason: 'no_such_item_in_inventory' };
-      chest = await (bot as unknown as { openContainer: (b: Block) => Promise<typeof chest> }).openContainer(block);
-      await chest!.deposit(def.id, null, toMove);
-      // FEAT-MEM-06 · 关闭前抓箱子内容（含刚存入的）
-      const contents = readChestContents(chest);
-      chest!.close();
-      return { ok: true, moved: toMove, contents };
-    } catch (e) {
-      try { chest?.close(); } catch { /* ignore */ }
-      return { ok: false, moved: 0, reason: (e as Error).message };
-    }
-  }
-
-  async withdrawFromChest(chestPos: Vec3, itemName: string, count: number): Promise<ChestOpResult> {
-    const bot = this.getBot();
-    if (!bot) return { ok: false, moved: 0, reason: 'disconnected' };
-    let chest: {
-      withdraw: (id: number, meta: number | null, n: number) => Promise<void>;
-      close: () => void;
-      containerItems: () => { name: string; count: number }[];
-    } | null = null;
-    try {
-      const block = bot.blockAt(toMFVec3(chestPos));
-      if (!block) return { ok: false, moved: 0, reason: 'no_block' };
-      const reg = bot.registry as unknown as McRegistry;
-      const def = reg.itemsByName[itemName];
-      if (!def) return { ok: false, moved: 0, reason: `unknown_item:${itemName}` };
-      chest = await (bot as unknown as { openContainer: (b: Block) => Promise<typeof chest> }).openContainer(block);
-      const inChest = chest!.containerItems().filter((i) => i.name === itemName).reduce((s, i) => s + i.count, 0);
-      const toMove = Math.min(count, inChest);
-      if (toMove <= 0) {
-        // FEAT-MEM-06 · 即使没货也抓一次内容（让"空箱子"也被记录，避免反复来取）
-        const contentsNone = readChestContents(chest);
-        chest!.close();
-        return { ok: false, moved: 0, reason: 'no_such_item_in_chest', contents: contentsNone };
-      }
-      await chest!.withdraw(def.id, null, toMove);
-      // FEAT-MEM-06 · 关闭前抓内容（取后剩下的）
-      const contents = readChestContents(chest);
-      chest!.close();
-      return { ok: true, moved: toMove, contents };
-    } catch (e) {
-      try { chest?.close(); } catch { /* ignore */ }
-      return { ok: false, moved: 0, reason: (e as Error).message };
-    }
-  }
-
-  // ── 合成 / 配方数据 ───────────────────────────────
-  async craft(itemName: string, count: number, tablePos: Vec3 | null): Promise<CraftResult> {
-    const bot = this.getBot();
-    if (!bot) return { ok: false, reason: 'disconnected' };
-    try {
-      const reg = bot.registry as unknown as McRegistry;
-      const item = reg.itemsByName[itemName];
-      if (!item) return { ok: false, reason: `unknown_item:${itemName}` };
-      const tableBlock = tablePos ? bot.blockAt(toMFVec3(tablePos)) : null;
-      // recipesFor 会按当前库存过滤 → 只返回"现在能做"的配方
-      const recipes = bot.recipesFor(item.id, null, 1, tableBlock as unknown as null);
-      if (!recipes || recipes.length === 0) {
-        return { ok: false, reason: 'no_craftable_recipe' };
-      }
-      await bot.craft(recipes[0], count, tableBlock ?? undefined);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, reason: (e as Error).message };
-    }
-  }
-
-  async smelt(furnacePos: Vec3, input: string, fuel: string, count: number): Promise<SmeltResult> {
-    const bot = this.getBot();
-    if (!bot) return { ok: false, produced: 0, reason: 'disconnected' };
-    let furnace: { putFuel: (id: number, m: number | null, c: number) => Promise<void>; putInput: (id: number, m: number | null, c: number) => Promise<void>; takeOutput: () => Promise<unknown>; outputItem: () => { count: number } | null; inputItem: () => { count: number } | null; fuelItem: () => { count: number } | null; close: () => void } | null = null;
-    try {
-      const reg = bot.registry as unknown as McRegistry;
-      const inItem = reg.itemsByName[input];
-      const fuelItem = reg.itemsByName[fuel];
-      if (!inItem) return { ok: false, produced: 0, reason: `unknown_input:${input}` };
-      if (!fuelItem) return { ok: false, produced: 0, reason: `unknown_fuel:${fuel}` };
-      const block = bot.blockAt(toMFVec3(furnacePos));
-      if (!block) return { ok: false, produced: 0, reason: 'no_furnace_block' };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      furnace = await (bot as any).openFurnace(block);
-      if (!furnace) return { ok: false, produced: 0, reason: 'open_furnace_failed' };
-
-      // 燃料用量：煤/木炭 1 个烧 8 个；木板/原木约 1.5 个；保守向上取整 + 至少 1
-      const fuelPer = /coal|charcoal|lava|coal_block/.test(fuel) ? (fuel === 'coal_block' ? 80 : 8) : 1.5;
-      const fuelNeed = Math.max(1, Math.ceil(count / fuelPer));
-      // 放燃料/料——容忍熔炉已预装（炉残留/上次未取完）：已有则跳过，put 报错也不致命，
-      //   继续进入 wait+take。否则反复"destination full"快速失败、永远烧不出来（真服实证）。
-      try {
-        const curFuel = furnace.fuelItem();
-        if (!curFuel || curFuel.count < 1) await furnace.putFuel(fuelItem.id, null, fuelNeed);
-      } catch { /* 燃料格已占用 → 继续 */ }
-      try {
-        const curIn = furnace.inputItem();
-        if (!curIn || curIn.count < 1) await furnace.putInput(inItem.id, null, count);
-      } catch { /* 料格已占用 → 继续 */ }
-
-      // 轮询产出格：每件约 10s，留足超时
-      let produced = 0;
-      const deadline = Date.now() + count * 11000 + 6000;
-      while (produced < count && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const out = furnace.outputItem();
-        if (out && out.count > 0) {
-          try { await furnace.takeOutput(); produced += out.count; } catch { /* 取空会抛，忽略 */ }
-        }
-      }
-      try { furnace.close(); } catch { /* ignore */ }
-      return { ok: produced > 0, produced, reason: produced > 0 ? undefined : 'smelt_timeout' };
-    } catch (e) {
-      try { furnace?.close(); } catch { /* ignore */ }
-      return { ok: false, produced: 0, reason: (e as Error).message };
-    }
   }
 
   getCraftRecipes(itemName: string, withTable: boolean): RecipeInfo[] {

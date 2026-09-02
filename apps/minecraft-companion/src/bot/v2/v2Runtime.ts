@@ -1,3 +1,4 @@
+import { BodyActionService } from './task/execution/bodyActionService.js';
 /**
  * v2 Runtime 装配器 · "跟着我" 场景所需模块全部组装
  *
@@ -46,6 +47,11 @@ import { tuning } from './infra/tuning.js';
 import { gamePresenceFromWorld } from './gamePresenceContext.js';
 import type { FailureCode } from './task/failureReason.js';
 import { TaskRegistry } from './knowledge/taskRegistry.js';
+import { createRuntimeCapabilityKnowledge } from './capabilities/capabilityRuntimeProjection.js';
+import { GoalAgentRoundToolRuntime } from './task/goalAgent/goalAgentRoundTools.js';
+import { GoalDraftCompiler } from './task/goalAgent/goalDraftCompiler.js';
+import { GoalPlanAuthority } from './task/goalAgent/goalPlanAuthority.js';
+import { CapabilityProgressPolicy } from './capabilities/capabilityProgressPolicy.js';
 import {
   DEFAULT_GOAL_TARGETS,
   InMemoryGoalKnowledgePort,
@@ -76,7 +82,6 @@ import { FarmStrategy } from './strategy/farmStrategy.js';
 import { GatherStrategy } from './strategy/gatherStrategy.js';
 import { GotoStrategy } from './strategy/gotoStrategy.js';
 import { ProvisionStrategy } from './strategy/provisionStrategy.js';
-import { StuckMonitor } from './strategy/stuckMonitor.js';
 import { SurvivalStrategy } from './strategy/survivalStrategy.js';
 import { EscapeStrategy } from './strategy/pitEscapeStrategy.js';
 import { ResourceResolver } from './task/resourceResolver.js';
@@ -86,7 +91,6 @@ import {
   ChestMemoryProvider,
 } from './task/resourceProvider.js';
 import { DecisionPolicy } from './task/decisionPolicy.js';
-import { executeAtomic, type AtomicContext } from './atomic/atomics.js';
 import { createDefaultAtomicContractRegistry } from './atomic/contracts/defaultContracts.js';
 import type { BusEvent, WorldStateView } from './types.js';
 import { LLMClient } from './cognitive/llm/LLMClient.js';
@@ -128,11 +132,8 @@ import { WorldMapStoreImpl, type WorldMapStore } from './infra/worldMapStore.js'
 import { WorldMapCollectorImpl, type WorldMapCollector } from './infra/worldMapCollector.js';
 import { rankChestTargets } from './task/goalAgent/production/containerTargetResolver.js';
 import { installPatchedBlockAt, type PatchStats, type BotBlockAtTarget } from './infra/patchedBlockAt.js';
-import { NavigationRouterImpl, type NavigationRouter } from './navigation/navigationRouter.js';
 import { NavFailureFeedback } from './strategy/navFailureFeedback.js';
-import { DoorMonitor } from './strategy/doorMonitor.js';
 import { CompanionCore } from './companion/companionCore.js';
-import { MotorService } from './motor/motorService.js';
 import { RunRecorder, type RunSummary, type RunVerdict, type RunTraceEvent } from './bench/runRecorder.js';
 import { BenchRunner } from './bench/benchRunner.js';
 import { getTestCard, TEST_CARDS, type TestCard } from './bench/cards.js';
@@ -314,12 +315,12 @@ export class V2Runtime {
   readonly gather: GatherStrategy;
   readonly goto: GotoStrategy;
   readonly provision: ProvisionStrategy;
-  readonly stuckMonitor: StuckMonitor;
   readonly survival: SurvivalStrategy;
   readonly escape: EscapeStrategy;
   readonly resolver: ResourceResolver;
   readonly policy: DecisionPolicy;
   readonly heart: Heartbeat;
+  readonly body: BodyActionService;
   readonly behaviorRegistry: BehaviorRegistry;
   readonly asyncQueue: AsyncTaskQueue;
   readonly tickRegistry: TickRegistry;
@@ -338,11 +339,8 @@ export class V2Runtime {
   readonly taskRegistry: TaskRegistry;
   readonly worldMap: WorldMapStore;
   readonly worldMapCollector: WorldMapCollector;
-  readonly navRouter: NavigationRouter;
   /** FEAT-CROSS-02 · 唯一运动仲裁与执行通道。 */
-  readonly motor: MotorService;
   readonly navFeedback: NavFailureFeedback;
-  readonly doorMonitor: DoorMonitor;
   private worldMapPatchStats: PatchStats | null = null;
   private worldMapUninstallPatch: (() => void) | null = null;
   /** FEAT-MEM-05 · 位置轨迹采集 timer（30s 间隔） */
@@ -504,21 +502,6 @@ export class V2Runtime {
     }
     log(`WorldMapStore initialized (db=${worldMapDbPath})`);
 
-    // FEAT-L1-02: NavigationRouter（全局粗规划 + Frontier Walk）
-    // FEAT-L1-04: 传入 game 以支持 StuckRecovery 控制键操作
-    this.navRouter = new NavigationRouterImpl(
-      cfg.nav,
-      this.worldMap,
-      () => cfg.game.getPosition(),
-      cfg.game,
-    );
-    this.motor = new MotorService({
-      game: cfg.game,
-      nav: cfg.nav,
-      navRouter: this.navRouter,
-      onLog: log,
-    });
-
     // FEAT-L5-01: 寻路失败感知反馈
     this.navFeedback = new NavFailureFeedback(this.bus, cfg.game, undefined, (i) => this.narration.narrate(i));
 
@@ -655,10 +638,11 @@ export class V2Runtime {
     this.gather = new GatherStrategy(cfg.game, this.bus, this.tasks);
     this.goto = new GotoStrategy(this.bus, this.tasks);
     this.provision = new ProvisionStrategy(cfg.game, this.bus, this.tasks);
-    this.stuckMonitor = new StuckMonitor(cfg.nav, cfg.game, this.bus, this.tasks);
     this.survival = new SurvivalStrategy(this.tasks);
     this.escape = new EscapeStrategy(cfg.game, this.tasks);
-    this.doorMonitor = new DoorMonitor(cfg.nav, cfg.game, this.bus, this.tasks);
+    // One assembly list feeds heartbeat and discovery; a YAML class name cannot register a strategy.
+    const taskStrategies = [this.escape, this.follow, this.farm, this.gather, this.goto, this.provision];
+    const autoDefenseStrategies = [this.survival];
     this.resolver = new ResourceResolver();
     this.resolver.register(new InventoryProvider());
     this.resolver.register(new CraftProvider());
@@ -817,22 +801,12 @@ export class V2Runtime {
     if (goalSystemOn && tuning().strategy.enabled) {
       this.strategyStore = new StrategyStore(cfg.strategyDir ?? join(runtimeDataDir, 'strategies'), () => Date.now(), (m) => log(m));
     }
-    const _perception = this.perception;
-    const _navRouter = this.navRouter;
-    const atomicCtx: AtomicContext = {
-      game: cfg.game,
-      nav: cfg.nav,
-      bus: this.bus,
-      get embodied() {
-        return cfg.isEmbodied ? cfg.isEmbodied() : cfg.embodied !== false;
-      },
-      behaviorRegistry: this.behaviorRegistry,
-      navRouter: _navRouter,
-      motor: this.motor,
-      get worldState() {
-        return _perception.getWorldState();
-      },
-    };
+    this.body = new BodyActionService({
+      game:cfg.game,nav:cfg.nav,registry:this.behaviorRegistry,bus:this.bus,tasks:this.tasks,
+      getWorld:()=>this.perception.getWorldState() ?? this.perception.perceive(),
+      isEmbodied:()=>this.isEmbodied(),
+      getGoalState:sessionId=>this.goalAgent?.snapshot(sessionId) ?? null,
+    });
 
     if (goalSystemOn && llmClient) {
       const profileId = cfg.plannerExecutionConfigRevision ?? cfg.botName ?? 'default';
@@ -841,6 +815,13 @@ export class V2Runtime {
       this.goalAgentTaskProjection = new GoalAgentTaskProjection(this.tasks);
       const agentSkillRegistry = new AgentSkillRegistry(message => log(message));
       agentSkillRegistry.loadLocalDir(cfg.agentSkillsDir ?? join(__dirname, '../../../skills'));
+      const goalToolNames = new GoalAgentRoundToolRuntime({ profileId, tools: {} }).names();
+      const skillKnowledge = new GoalAgentSkillKnowledgeAdapter(agentSkillRegistry, () => goalToolNames);
+      for (const skill of skillKnowledge.catalog({ limit: 64 })) {
+        if (skill.toolCompatibility?.state === 'unsupported_tools') {
+          log(`[v2][capabilities] Skill ${skill.name} references unsupported tools: ${skill.toolCompatibility.missingTools.join(', ')}`);
+        }
+      }
       const agricultureResources = loadCapabilityResourcePackage(
         join(__dirname, '../../../capability-packages/agriculture'),
       );
@@ -877,9 +858,12 @@ export class V2Runtime {
         atomicIds: createDefaultAtomicContractRegistry().list().map(value => value.action),
         behaviorIds: this.behaviorRegistry.list().map(value => value.id),
         strategyIds: this.strategyStore?.usable().map(value => value.id) ?? [],
-        skillNames: agentSkillRegistry.list().map(value => value.meta.name),
+        skillNames: agentSkillRegistry.list()
+          .filter(value => value.meta.agent !== 'main' && (value.meta.uses ?? []).every(name => goalToolNames.includes(name)))
+          .map(value => value.meta.name),
         knowledgeIds: domainKnowledge.ids(),
         goalTargetIds: DEFAULT_GOAL_TARGETS.map(value => value.registryId),
+        taskKinds: this.taskRegistry.listAll().map(value => value.kind),
       });
       capabilityPackages.register(createAgricultureCapabilityPackage({
         game: cfg.game,
@@ -891,6 +875,11 @@ export class V2Runtime {
       }));
       capabilityPackages.register(createAmbientProactiveCapabilityPackage());
       const capabilitySnapshot = capabilityPackages.snapshot();
+      const goalDraftCompiler = new GoalDraftCompiler({
+        predicates: () => capabilitySnapshot.predicateEvaluators,
+        bindings: state => capabilitySnapshot.goalBindingProviders.flatMap(provider => [...provider.list(state)]),
+      });
+      const goalPlanAuthority = new GoalPlanAuthority({ snapshot: () => capabilitySnapshot, bindings: state => goalDraftCompiler.bindings(state) });
       this.proactiveCapabilities = capabilitySnapshot.proactiveTicks;
       for (const behavior of capabilitySnapshot.behaviors) this.behaviorRegistry.register(behavior);
       const goalKnowledge = new InMemoryGoalKnowledgePort([
@@ -898,7 +887,8 @@ export class V2Runtime {
         ...capabilitySnapshot.goalTargets,
       ]);
       const executionPort = new GoalAgentProductionExecutionPort({
-        atomicContext: () => atomicCtx,
+        game:cfg.game,bus:this.bus,body:this.body,
+        getWorld:()=>this.perception.getWorldState() ?? this.perception.perceive(),
         behaviors: this.behaviorRegistry,
         tasks: this.tasks,
         parentTaskId: sessionId => this.goalAgentTaskProjection?.rootTaskId(sessionId) ?? null,
@@ -927,6 +917,8 @@ export class V2Runtime {
         categorizeTarget: (bind, world) => this.categorizeTarget(bind, world),
         actionLedger,
         actionProviders: capabilitySnapshot.actionProviders,
+        operations: capabilitySnapshot.operations,
+        plans: goalPlanAuthority,
         log,
       });
       const experiencePort = new GoalAgentProductionExperiencePort(
@@ -957,9 +949,29 @@ export class V2Runtime {
         profileId,
         stateDbPath: join(runtimeDataDir, `goal-agent-${profileFile}.db`),
         modelClient: llmClient,
-        skillKnowledge: new GoalAgentSkillKnowledgeAdapter(agentSkillRegistry),
+        skillKnowledge,
         domainKnowledge,
-        capabilityKnowledge: capabilityRouter,
+        capabilityKnowledge: createRuntimeCapabilityKnowledge(() => ({
+          snapshot: capabilitySnapshot, routes: capabilityRouter.list(),
+          atomics: createDefaultAtomicContractRegistry().list(), behaviors: this.behaviorRegistry.list(),
+          executionSupport: [
+            ...createDefaultAtomicContractRegistry().list().map(value=>({kind:'atomic' as const,id:value.action})),
+            ...this.behaviorRegistry.list().map(value=>({kind:'behavior' as const,id:value.id})),
+          ].map(value=>({...value,controlledCancellation:this.body.supports({ref:{id:`${value.kind}:${value.id}`,version:'1'},args:{}})})),
+          tasks: this.taskRegistry.listAll(),
+          strategies: [...taskStrategies, this.reflex, ...autoDefenseStrategies].map(value => ({
+            id: value.id, name: value.constructor.name, kind: value.kind,
+          })),
+          services: [
+            { id: this.worldScan.id, name: 'WorldScanCapability', summary: '周期扫描世界、地形与容器；写入空间记忆，不是直接模型工具。' },
+            { id: this.mineralProbe.id, name: 'MineralProbeCapability', summary: '周期探测矿物并写入空间记忆；不是 find_mineral 工具。' },
+          ],
+          adapters: [
+            { id: 'GameAdapter', summary: 'Injected game interface; actual body binding is checked at execution, never a direct model tool.' },
+            { id: 'NavigationAdapter', summary: 'Injected navigation interface used by movement execution; never a direct model tool.' },
+          ],
+          dataStrategies: this.strategyStore?.usable().map(value => ({ id: value.id, description: value.description })) ?? [],
+        })),
         planMilestones: new RecipeMilestonePlanner({
           getCraftRecipes: (item, withTable) => cfg.game.getCraftRecipes(item, withTable),
           getItemSource: item => cfg.game.getItemSource(item),
@@ -967,8 +979,11 @@ export class V2Runtime {
         tools: {
           knowledge: goalKnowledge,
           execution: executionPort,
+          goals: goalDraftCompiler,
+          plans: goalPlanAuthority,
+          progress: new CapabilityProgressPolicy(() => capabilitySnapshot),
           experience: experiencePort,
-          perception: new GoalAgentProductionPerceptionPort(() => this.perception.perceive()),
+          perception: new GoalAgentProductionPerceptionPort(() => this.perception.perceive(), () => capabilitySnapshot.worldFactProviders),
           verification: new GoalAgentProductionVerificationPort(
             () => this.deliveryReceipts,
             () => this.depositReceipts,
@@ -1389,10 +1404,10 @@ export class V2Runtime {
       tasks: this.tasks,
       supervisor: this.supervisor,
       reflex: this.reflex,
-      taskStrategies: [this.escape, this.follow, this.farm, this.gather, this.goto, this.provision],
-      autoDefenseStrategies: [this.survival],
+      taskStrategies,
+      autoDefenseStrategies,
       isAutomaticDefenseEnabled: () => tuning().defense.automaticEnabled,
-      atomic: atomicCtx,
+      body: this.body,
       asyncQueue: this.asyncQueue,
       tickRegistry: this.tickRegistry,
       critic: criticRegistry,
@@ -1478,19 +1493,6 @@ export class V2Runtime {
           log(`[futility] ${t.kind}(${t.id}) ${view.state} 态 ${Math.round(stalled / 1000)}s 零位移 → 标记徒劳 · 唤醒慢脑`);
         }
       },
-    });
-
-    // FEAT-CROSS-01 v2: DoorMonitor · FAST 节拍 · 检测前方路径上的关闭门并开门
-    this.tickRegistry.register({
-      id: 'door_monitor',
-      rate: TickRate.FAST,
-      onTick: () => { this.doorMonitor.tick(); },
-    });
-    // 通用卡死恢复（楼梯/水/窄道）· FAST 节拍
-    this.tickRegistry.register({
-      id: 'stuck_monitor',
-      rate: TickRate.FAST,
-      onTick: () => { this.stuckMonitor.tick(); },
     });
 
     // WorldScan · SLOW 节拍 · 周期扫描方块/实体 → 写入 Memory.spatial / objects
@@ -1929,8 +1931,7 @@ export class V2Runtime {
   ): number {
     this.mainBrain.cancelTaskContext(reason);
     this.heart.cancelBodyActions();
-    // GoalAgent 等少数执行器可绕过 Heartbeat 直接持有 Motor；保持无条件兜底取消。
-    this.motor.cancel();
+    // Heartbeat and GoalAgent share the same body runtime; cancellation does not release its lease.
     this.follow.reset();
     const cancelledGoalSessions = options.preservePlanRuns
       ? 0
@@ -1959,6 +1960,7 @@ export class V2Runtime {
     this.goalAgent?.close();
     this.asyncQueue.close({ dropPending: true });
     this.heart.stop();
+    this.body.close();
     // FEAT-L1-01: 停止采集 + 卸载 patch + 关闭 DB
     this.worldMapCollector.stop();
     // FEAT-L5-01: 停止寻路失败感知反馈

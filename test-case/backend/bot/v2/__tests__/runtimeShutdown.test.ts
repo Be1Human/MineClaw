@@ -33,7 +33,8 @@ describe('BUG-CROSS-32 · V2Runtime stop', () => {
     assert.equal(runtime.tasks.getById(task.id)?.state, 'cancelled');
     assert.equal(runtime.asyncQueue.isClosed, true);
     assert.equal((runtime.mainBrain as unknown as { closed: boolean }).closed, true);
-    assert.ok(bot.nav.calls.stop >= 1, 'stop 必须兜底停止导航');
+    assert.equal(runtime.body.busy(),false,'无身体的会话不应残留执行租约');
+    assert.equal(bot.nav.calls.stop,0,'没有受控动作时，不再裸写导航停止接口');
 
     const chatsBefore = bot.game.calls.chat.length;
     runtime.injectOwnerChat('停止后的迟到消息');

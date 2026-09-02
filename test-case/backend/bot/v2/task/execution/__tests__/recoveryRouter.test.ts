@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RecoveryRouter } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/recoveryRouter.js';
-import type { FailureEnvelope } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/failureEnvelope.js';
+import type { FailureEnvelope } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/contracts/failureEnvelope.js';
 
 const failure = (overrides: Partial<FailureEnvelope>): FailureEnvelope => ({
   code: 'atomic.failed',

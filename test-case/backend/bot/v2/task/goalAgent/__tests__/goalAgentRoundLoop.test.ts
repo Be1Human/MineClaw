@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { LLMToolCallResult } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/types.js';
+import type { LLMToolCallResult, LLMChatMessage } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/types.js';
 import type { GoalRequestV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
 import {
   defaultGoalKnowledge,
@@ -49,6 +49,25 @@ function world(cobblestone: number): WorldStateView {
     },
     taskContext: null,
   };
+}
+
+// Simulate the model copying the opaque grant from the real action_list receipt.
+function copyCandidateHandle(result: LLMToolCallResult | null, messages: LLMChatMessage[]): LLMToolCallResult | null {
+  if (!result) return null;
+  for (const call of result.toolCalls) {
+    if (call.name !== 'action_execute') continue;
+    const id = call.arguments.candidateId;
+    let handle: string | undefined;
+    for (const message of [...messages].reverse()) {
+      if (message.role !== 'tool') continue;
+      const receipt = JSON.parse(message.content);
+      handle = receipt.candidates?.find((candidate: { id: string }) => candidate.id === id)?.candidateHandle;
+      if (handle) break;
+    }
+    assert.ok(handle, `action_list must issue a handle for ${id}`);
+    call.arguments = { candidateHandle: handle };
+  }
+  return result;
 }
 
 test('BUG-CROSS-77 · round slice yields and resumes the same non-terminal session', async () => {
@@ -169,10 +188,10 @@ test('continuous round loop keeps model, direct tools and receipts in one sessio
     { content: '', toolCalls: [{ id: 'execute-1', name: 'action_execute', arguments: { candidateId: 'test:obtain-stone' } }] },
   ];
   const model = new GoalAgentModelRuntime({
-    async callWithTools() {
+    async callWithTools(input) {
       const response = responses.shift();
       if (!response) throw new Error('unexpected extra model round');
-      return response;
+      return copyCandidateHandle(response, input.messages);
     },
   }, { eventLog: store });
   const loop = new GoalAgentRoundLoop({
@@ -260,7 +279,7 @@ test('simple root goal executes directly without a mandatory planner Step', asyn
   const loop = new GoalAgentRoundLoop({
     store,
     profileId: 'direct-root-test',
-    model: new GoalAgentModelRuntime({ async callWithTools() { return responses.shift() ?? null; } }, { eventLog: store }),
+    model: new GoalAgentModelRuntime({ async callWithTools(input) { return copyCandidateHandle(responses.shift() ?? null, input.messages); } }, { eventLog: store }),
     tools: {
       knowledge: defaultGoalKnowledge,
       perception: { async observe() { return world(inventoryCount); } },
@@ -507,7 +526,7 @@ test('failed physical actions consume recovery budget and fail closed', async ()
   ];
   const loop = new GoalAgentRoundLoop({
     store, profileId: 'recovery-budget-test',
-    model: new GoalAgentModelRuntime({ async callWithTools() { return responses.shift() ?? null; } }, { eventLog: store }),
+    model: new GoalAgentModelRuntime({ async callWithTools(input) { return copyCandidateHandle(responses.shift() ?? null, input.messages); } }, { eventLog: store }),
     tools: {
       knowledge: defaultGoalKnowledge,
       perception: { async observe() { return world(0); } },

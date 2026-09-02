@@ -1,8 +1,17 @@
 import type { WorldStateView } from '../../types.js';
 import type { Goal, GoalSuccessCriterion } from '../contracts/goalTypes.js';
+import type { WorldFact, WorldFactRequirement } from '../contracts/worldFact.js';
+import type { GoalScopeBinding } from '../contracts/goalDraft.js';
+import { evaluateRegisteredPredicate } from './goalPredicateEvaluation.js';
 
 export interface GoalCriteriaEvaluation {
   ok: boolean;
+  detail: string;
+  evidenceRefs?: string[];
+}
+
+export interface GoalPredicateVerdict {
+  status: 'satisfied' | 'unsatisfied' | 'unknown';
   detail: string;
   evidenceRefs?: string[];
 }
@@ -23,15 +32,24 @@ export interface GoalCriterionEvidence {
     ref?:string;
   }>;
   predicateEvaluators?: readonly GoalPredicateEvaluator[];
+  worldFacts?: readonly WorldFact[];
+  /** Injected by tests/clock-owning callers, never taken from model arguments. */
+  now?: number;
 }
 
 export interface GoalPredicateEvaluator {
   readonly id: string;
+  readonly version?: string;
+  readonly argumentSchema?: Readonly<Record<string, unknown>>;
+  readonly factRequirements?: (args: Readonly<Record<string, unknown>>) => readonly WorldFactRequirement[];
+  /** Optional code-owned authorization for predicates beyond exact required binding predicates. */
+  readonly authorizeGoal?: (input: { criterion: GoalSuccessCriterion; bindings: readonly GoalScopeBinding[] }) => boolean;
   evaluate(input: {
     readonly criterion: GoalSuccessCriterion;
     readonly world: WorldStateView;
     readonly evidence: GoalCriterionEvidence;
-  }): GoalCriteriaEvaluation;
+    readonly facts?: readonly WorldFact[];
+  }): GoalCriteriaEvaluation | GoalPredicateVerdict;
 }
 
 /**
@@ -43,18 +61,40 @@ export function evaluateGoalCriteria(
   world: WorldStateView | null,
   evidence: GoalCriterionEvidence = {},
 ): GoalCriteriaEvaluation {
+  const result = evaluateGoalCriteriaState(goal, world, evidence);
+  // Legacy bool consumers can only succeed on a positive three-state verdict.
+  return result.status === 'satisfied'
+    ? { ok: true, detail: result.detail, evidenceRefs: result.evidenceRefs }
+    : failed(result.detail);
+}
+
+export function evaluateGoalCriteriaState(
+  goal: Goal, world: WorldStateView | null, evidence: GoalCriterionEvidence = {},
+): GoalPredicateVerdict {
   const criteria = goal.successCriteria ?? [];
-  if (criteria.length === 0) return failed('缺少机器成功判据');
-  if (!world) return failed('无世界快照，无法验证成功判据');
+  if (criteria.length === 0) return { status: 'unknown', detail: '缺少机器成功判据', evidenceRefs: [] };
+  if (!world) return { status: 'unknown', detail: '无世界快照，无法验证成功判据', evidenceRefs: [] };
 
   const evidenceRefs: string[] = [];
+  const failures: GoalPredicateVerdict[] = [];
   for (const [index, criterion] of criteria.entries()) {
-    const result = evaluateCriterion(criterion, world, evidence);
-    if (!result.ok) return failed(`判据 ${index + 1}：${result.detail}`);
-    evidenceRefs.push(...(result.evidenceRefs?.length ? result.evidenceRefs : [criterionEvidenceRef(criterion)]));
+    let result: GoalPredicateVerdict;
+    try {
+      if (criterion.type === 'predicate') result = evaluateRegisteredPredicate(criterion, world, evidence);
+      else {
+        const legacy = evaluateCriterion(criterion, world, evidence);
+        result = { status: legacy.ok ? 'satisfied' : 'unsatisfied', detail: legacy.detail, evidenceRefs: legacy.evidenceRefs };
+      }
+    } catch (error) {
+      result = { status: 'unknown', detail: error instanceof Error ? error.message : String(error), evidenceRefs: [] };
+    }
+    if (result.status !== 'satisfied') failures.push({ ...result, detail: `判据 ${index + 1}：${result.detail}` });
+    else evidenceRefs.push(...(result.evidenceRefs?.length ? result.evidenceRefs : [criterionEvidenceRef(criterion)]));
   }
+  const failedResult = failures.find(value => value.status === 'unsatisfied') ?? failures[0];
+  if (failedResult) return failedResult;
   return {
-    ok: true,
+    status: 'satisfied',
     detail: `verified ${evidenceRefs.join(', ')}`,
     evidenceRefs,
   };
@@ -130,16 +170,8 @@ function evaluateCriterion(
       return distance <= radius ? passed() : failed(`距目标点 ${distance.toFixed(1)} > ${radius}`);
     }
     case 'predicate': {
-      const predicate = criterion.predicate?.trim();
-      if (!predicate) return failed('predicate 字段非法，无法验证');
-      const evaluator = evidence.predicateEvaluators?.find(value => value.id === predicate);
-      if (!evaluator) return failed(`predicate「${predicate}」没有已注册机器验证器`);
-      try {
-        return evaluator.evaluate({ criterion, world, evidence });
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        return failed(`predicate「${predicate}」验证异常：${detail}`);
-      }
+      const verdict = evaluateRegisteredPredicate(criterion, world, evidence);
+      return { ok: verdict.status === 'satisfied', detail: verdict.detail, evidenceRefs: verdict.evidenceRefs };
     }
     default:
       return failed(`不支持的判据类型：${String((criterion as { type?: unknown }).type)}`);

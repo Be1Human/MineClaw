@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { executeAtomic, type AtomicContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
+import { runControlledAtomic as executeAtomic, type AtomicFixture as AtomicContext } from '../../__tests__/mocks/controlledAtomic.js';
 import { __setTuningOverride } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { ActionRequest } from '../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 

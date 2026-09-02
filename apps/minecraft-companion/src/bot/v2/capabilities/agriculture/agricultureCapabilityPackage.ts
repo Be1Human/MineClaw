@@ -40,11 +40,10 @@ export function createAgricultureCapabilityPackage(input: {
   game: GameAdapter;
   manifest: CapabilityManifestDefinition;
   resolveChestTargets: (requestText: string, world: WorldStateView) => ChestTarget[];
-  pause?: (ms: number) => Promise<void>;
 }): CapabilityPackageDefinition {
   const facts = new HarvestWorldFactProvider(input.game);
   const ledger = new HarvestRunLedger();
-  const behaviors = [new HarvestMatureCropsToChestBehavior(facts, input.pause)];
+  const behaviors = [new HarvestMatureCropsToChestBehavior(facts)];
   return {
     manifest: input.manifest,
     behaviors,

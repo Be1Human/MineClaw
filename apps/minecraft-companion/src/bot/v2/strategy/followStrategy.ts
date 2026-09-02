@@ -268,7 +268,7 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
       target: { entityId: entityId ?? undefined, forceRepath },
       preconditions: [],
       expected_effect: ['closer_to_owner'],
-      timeout_ms: 2000,
+      timeout_ms: tuning().controlledExecution.operationTimeoutMs,
     };
   }
 

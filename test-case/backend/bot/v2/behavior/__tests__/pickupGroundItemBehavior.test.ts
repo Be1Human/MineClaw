@@ -5,7 +5,7 @@ import type { WorldStateView } from '../../../../../../apps/minecraft-companion/
 import { PickupGroundItemBehavior } from '../../../../../../apps/minecraft-companion/src/bot/v2/behavior/pickupGroundItemBehavior.js';
 
 test('BUG-CROSS-69 · ground pickup approaches the grounded entity position', () => {
-  const actions = new PickupGroundItemBehavior().plan({
+  const actions = new PickupGroundItemBehavior().compile({
     world: world(),
     taskParams: {
       item: 'iron_pickaxe', count: 1, itemEntityId: 41,
@@ -21,8 +21,8 @@ test('BUG-CROSS-69 · ground pickup approaches the grounded entity position', ()
 
 test('BUG-CROSS-69 · malformed ground pickup parameters fail closed', () => {
   const behavior = new PickupGroundItemBehavior();
-  assert.deepEqual(behavior.plan({ world: world(), taskParams: { item: 'iron_pickaxe' } }), []);
-  assert.deepEqual(behavior.plan({
+  assert.deepEqual(behavior.compile({ world: world(), taskParams: { item: 'iron_pickaxe' } }), []);
+  assert.deepEqual(behavior.compile({
     world: world(),
     taskParams: { item: 'iron_pickaxe', itemEntityId: 41, position: { x: Number.NaN, y: 64, z: 0 } },
   }), []);

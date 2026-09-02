@@ -114,8 +114,8 @@ describe('US-H5 · 种田 e2e · 直接注入 farm 任务', () => {
     );
 
     // ── 断言 2：invoke_behavior 被启动（FarmStrategy → Arbitrator → executeAtomic） ──
-    const invokeSkillStart = events.find(e => e.type === 'atomic.invoke_behavior.start');
-    assert.ok(invokeSkillStart, '应有 atomic.invoke_behavior.start 事件（FarmStrategy 触发了 invoke_behavior）');
+    const invokeSkillStart = events.find(e => e.type === 'behavior.start');
+    assert.ok(invokeSkillStart, '应有 BehaviorRunner 的启动事件（FarmStrategy 进入受控组合执行）');
 
     // ── 断言 3：equip 被调用（FarmBehavior 第 1 步：装备锄头） ──
     assert.ok(

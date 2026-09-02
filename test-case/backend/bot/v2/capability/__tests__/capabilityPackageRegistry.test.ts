@@ -35,7 +35,7 @@ function packageDefinition(id = 'agriculture.harvest') {
       knowledge: ['agriculture:wheat-maturity'],
       requires: { atomics: ['move_to', 'dig', 'deposit'], behaviors: ['harvest_mature_crops'] },
     },
-    behaviors: [{ id: 'harvest_mature_crops', plan: () => [] }],
+    behaviors: [{ id: 'harvest_mature_crops', kind: 'sequence', compile: () => [] }],
     actionProviders: [{ id: 'agriculture.harvest', list: () => [] }],
     worldFactProviders: [{
       id: 'agriculture.mature_crops',

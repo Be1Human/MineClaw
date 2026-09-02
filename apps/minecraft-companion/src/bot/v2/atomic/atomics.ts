@@ -12,33 +12,25 @@
  * 输出：Promise<ExecutionResult>（成功/失败）
  */
 
-import type { GameAdapter } from '../../adapter/GameAdapter.js';
+import type { GameActions } from '../../adapter/GameActions.js';
+import type { NavigationActions } from '../../adapter/NavigationExecution.js';
+import type { ControlledExecutionContext } from '../task/execution/ports/controlledExecution.js';
+import type { GameView } from '../../adapter/GameAdapter.js';
 import type { Vec3 } from '../../adapter/types.js';
-import type { NavigationAdapter } from '../../adapter/NavigationAdapter.js';
 import type { EventBusV2 } from '../infra/eventBus.js';
 import type { ActionRequest, ExecutionResult, WorldStateView, InventoryView } from '../types.js';
-import type { IBehaviorRegistry } from '../behavior/types.js';
-import type { NavigationRouter } from '../navigation/navigationRouter.js';
-import type { IMotorService } from '../motor/types.js';
 import { findPitExit, isTrappedInPit } from '../navigation/pitGeometry.js';
 import { tuning } from '../infra/tuning.js';
 import { RecipeResolver, pickFuel } from '../knowledge/recipeResolver.js';
 import { ATOM_VERIFIERS, resolvePlacement, type AtomVerifier, type VerifyVerdict } from './verifiers.js';
 
 export interface AtomicContext {
-  game: GameAdapter;
-  nav: NavigationAdapter;
+  game: GameView;
+  actions: GameActions;
+  nav: NavigationActions;
   bus: EventBusV2;
-  /** 保留兼容字段；原子层没有角色发言权。 */
-  embodied?: boolean;
-  /** L4 Behavior 注册表（可选）· invoke_behavior 用 */
-  behaviorRegistry?: IBehaviorRegistry;
-  /** 当前世界快照（可选）· invoke_behavior plan() 所需 */
-  worldState?: WorldStateView | null;
-  /** FEAT-L1-02：全局路由器（远距离 / Frontier Walk） */
-  navRouter?: NavigationRouter;
-  /** FEAT-CROSS-02：需要位移的原子必须经 MotorService 串行执行。 */
-  motor?: IMotorService;
+  execution: ControlledExecutionContext;
+  getWorld(): WorldStateView;
 }
 
 /**
@@ -49,6 +41,7 @@ export async function executeAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
 ): Promise<ExecutionResult> {
+  ctx.execution.assertCurrent('atomic_start');
   const start = Date.now();
   const cfg = tuning().atomic;
   const verifier = cfg.verifyEnabled ? ATOM_VERIFIERS[req.type] : undefined;
@@ -57,6 +50,7 @@ export async function executeAtomic(
   const before = mode !== 'off' ? verifier!.snapshot?.(req, ctx.game) : undefined;
   // ② 派发执行
   const result = await dispatch(req, ctx, start);
+  ctx.execution.assertCurrent('atomic_result');
   // ③ 动作后验真（仅对成功的动作 · fail 的本就失败无需验）
   if (result.ok && mode !== 'off' && verifier) {
     const v = await runVerify(verifier, req, ctx, before);
@@ -85,7 +79,7 @@ async function runVerify(
   if (v.status !== 'fail') return v;
   const deadline = Date.now() + cfg.verifyTimeoutMs;
   while (Date.now() < deadline) {
-    await wait(cfg.verifyPollMs);
+    await ctx.execution.wait(cfg.verifyPollMs);
     v = verifier.verify(req, ctx.game, before);
     if (v.status !== 'fail') return v;
   }
@@ -105,14 +99,10 @@ async function dispatch(
         return await moveTo(req, ctx, start);
       case 'follow_entity':
         return followEntity(req, ctx, start);
-      case 'stop_follow':
-        return stopFollow(req, ctx, start);
       case 'attack':
         return await attackOnce(req, ctx, start);
       case 'say':
         return say(req, ctx, start);
-      case 'stop':
-        return stop(req, ctx, start);
       case 'use_tool':
         return await useTool(req, ctx, start);
       case 'equip':
@@ -135,8 +125,6 @@ async function dispatch(
         return await lookAt(req, ctx, start);
       case 'toss_item':
         return await tossItem(req, ctx, start);
-      case 'invoke_behavior':
-        return await invokeBehavior(req, ctx, start);
       case 'eat':
         return await eat(req, ctx, start);
       case 'sleep':
@@ -196,9 +184,7 @@ async function moveTo(
     const eid = req.target.entityId;
     const budgetE = req.timeout_ms && req.timeout_ms > 0 ? req.timeout_ms : 8000;
     ctx.bus.publish('atomic.move_to.start', 'info', { entityId: eid });
-    const rr = ctx.motor
-      ? await ctx.motor.run(motorOwner(req), req.priority, { kind: 'goto', goal: { type: 'entity', entityId: eid, range: 2 }, budgetMs: budgetE, thinkTimeoutMs: 3000 })
-      : await ctx.nav.goto({ type: 'entity', entityId: eid, range: 2 }, { thinkTimeout: 3000, totalTimeout: budgetE });
+    const rr = await ctx.nav.goto({ type: 'entity', entityId: eid, range: 2 }, { thinkTimeout: 3000, totalTimeout: budgetE });
     ctx.bus.publish('atomic.move_to.end', 'info', { ok: rr.ok, reason: rr.reason, entityId: eid });
     return { ok: rr.ok, request: req, durationMs: Date.now() - start, error: rr.ok ? undefined : (rr.reason || 'nav_failed') };
   }
@@ -222,26 +208,8 @@ async function moveTo(
     && requestedRange >= 0 && requestedRange <= 8
     ? requestedRange
     : 1;
-  // 某些离线/契约测试适配器只提供导航能力；此时跳过距离优化，仍可执行统一导航。
-  const here = (ctx.game as Partial<GameAdapter>).getPosition?.() ?? pos;
-  const dx = pos.x - here.x, dy = pos.y - here.y, dz = pos.z - here.z;
-  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-  if (!ctx.motor && ctx.navRouter && dist > 120) {
-    const rr = await ctx.navRouter.navigateTo(pos);
-    ctx.bus.publish('atomic.move_to.end', 'info', { ok: rr.success, reason: rr.reason, mode: rr.mode, far: true });
-    return {
-      ok: rr.success,
-      request: req,
-      durationMs: Date.now() - start,
-      error: rr.success ? undefined : (rr.reason || 'nav_failed'),
-    };
-  }
-
   // 短中距：pathfinder 直连，硬上限 = budget
-  const result = ctx.motor
-    ? await ctx.motor.run(motorOwner(req), req.priority, { kind: 'goto', goal: { type: 'block', position: pos, range }, budgetMs: budget, thinkTimeoutMs: 5000 })
-    : await ctx.nav.goto(
+  const result = await ctx.nav.goto(
       { type: 'block', position: pos, range },
       { thinkTimeout: 5000, totalTimeout: budget },
     );
@@ -266,8 +234,8 @@ async function moveTo(
  * FollowStrategy 每 tick 重新提交本 atomic 即幂等维持跟随；离开跟随态发 stop_follow。
  */
 /** Interactable blocks are not standable destinations. */
-function resolveNavigationTarget(target: Vec3, game: GameAdapter, allowLowerApproach = false): Vec3 {
-  const getBlockAt = (game as Partial<GameAdapter>).getBlockAt;
+function resolveNavigationTarget(target: Vec3, game: GameView, allowLowerApproach = false): Vec3 {
+  const getBlockAt = (game as Partial<GameView>).getBlockAt;
   if (typeof getBlockAt !== 'function') return target;
   const block = getBlockAt.call(game, target);
   if ((!block || block.boundingBox !== 'block') && !allowLowerApproach) return target;
@@ -294,42 +262,9 @@ async function followEntity(
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'follow_entity requires target.entityId');
   const range = tuning().follow.followRange;
-  const force = req.target?.forceRepath === true;
-  if (ctx.motor) {
-    const result = await ctx.motor.run(motorOwner(req), req.priority, { kind: 'follow', entityId: id, range, force });
-    ctx.bus.publish('atomic.follow.end', 'info', { ok: result.ok, reason: result.reason, via: 'motor', entityId: id, force });
-    return { ok: result.ok, request: req, durationMs: Date.now() - start, error: result.ok ? undefined : result.reason };
-  }
-  // 幂等：已在跟同一实体 → no-op 立即成功（pathfinder 后台还在跟）。
-  // BUG-L5-02：force 时跳过幂等，强制重设 GoalFollow 朝主人新位置立即重算（治懒重算迟钝）。
-  if (!force && ctx.nav.isFollowing(id)) {
-    return { ok: true, request: req, durationMs: Date.now() - start };
-  }
-  ctx.bus.publish('atomic.follow.start', 'info', { entityId: id, force });
-  const r = ctx.nav.startFollow(id, range, force);
-  ctx.bus.publish('atomic.follow.end', 'info', { ok: r.ok, reason: r.reason });
-  return {
-    ok: r.ok,
-    request: req,
-    durationMs: Date.now() - start,
-    error: r.ok ? undefined : r.reason || 'follow_failed',
-  };
-}
-
-/** BUG-L5-01 · 撤销持续跟随动态目标（离开 following 态 / 任务结束）。 */
-function stopFollow(req: ActionRequest, ctx: AtomicContext, start: number): ExecutionResult {
-  if (ctx.motor) ctx.motor.cancel();
-  else ctx.nav.stopFollow();
-  ctx.bus.publish('atomic.follow.stop', 'info', { source: req.source });
-  return { ok: true, request: req, durationMs: Date.now() - start };
-}
-
-/**
- * Motor 的 owner 表示一条持续的运动意图，不能使用每个 tick 都变化的 ActionRequest.id。
- * 同一 Strategy 的持续 follow 因此保持同一所有权；不同策略（或不同原子类型）仍可抢占。
- */
-function motorOwner(req: ActionRequest): string {
-  return `atomic:${req.source}:${req.type}`;
+  ctx.bus.publish('atomic.follow.start', 'info', { entityId: id });
+  const result = await ctx.nav.follow(id, range);
+  return { ok: result.ok, request: req, durationMs: Date.now() - start, error: result.reason };
 }
 
 // ───────────────────────── attack ─────────────────────────
@@ -345,8 +280,8 @@ async function attackOnce(
   if (!ent) return fail(req, start, 'attack target not found');
 
   // 先 lookAt，再 attack（最简单可靠）
-  await ctx.game.lookAt(ent.position, true);
-  ctx.game.attack(id);
+  await ctx.actions.lookAt(ent.position, true);
+  await ctx.actions.attack(id);
   ctx.bus.publish('atomic.attack', 'info', { entityId: id, target: ent.name });
   return { ok: true, request: req, durationMs: Date.now() - start };
 }
@@ -370,20 +305,6 @@ function say(req: ActionRequest, ctx: AtomicContext, start: number): ExecutionRe
   return { ok: true, request: req, durationMs: Date.now() - start };
 }
 
-// ───────────────────────── stop ─────────────────────────
-
-function stop(req: ActionRequest, ctx: AtomicContext, start: number): ExecutionResult {
-  // FEAT-L1-02: 先取消融合导航的多段旅程，再停 pathfinder，避免下一段续走
-  if (ctx.motor) ctx.motor.cancel();
-  else {
-    ctx.navRouter?.cancel();
-    ctx.nav.stop();
-    ctx.game.clearControlStates();
-  }
-  ctx.bus.publish('atomic.stop', 'info', {});
-  return { ok: true, request: req, durationMs: Date.now() - start };
-}
-
 // ───────────────────────── eat / sleep / wake（FEAT-L3-02） ─────────────────────────
 
 async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
@@ -392,8 +313,8 @@ async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promi
   if (!itemName) return fail(req, start, 'eat: no food in inventory');
   ctx.bus.publish('atomic.eat.start', 'info', { source: req.source, item: itemName });
   try {
-    await ctx.game.equip(itemName, 'hand');
-    const ok = await ctx.game.consume();
+    await ctx.actions.equip(itemName, 'hand');
+    const ok = await ctx.actions.consume();
     if (!ok) {
       ctx.bus.publish('atomic.eat.fail', 'recoverable', { source: req.source, item: itemName });
       return fail(req, start, 'eat_failed');
@@ -451,7 +372,7 @@ async function sleepAtomic(req: ActionRequest, ctx: AtomicContext, start: number
 
   ctx.bus.publish('atomic.sleep.start', 'info', { source: req.source, pos });
   try {
-    await ctx.game.sleep(pos);
+    await ctx.actions.sleep(pos);
   } catch (e) {
     const err = (e as Error).message;
     // 把 mineflayer 的常见错误映射成稳定 reason，便于上层 switch
@@ -575,7 +496,7 @@ async function equipBestArmor(
     }
 
     try {
-      await ctx.game.equip(best.name, slot.dest);
+      await ctx.actions.equip(best.name, slot.dest);
       equipped++;
       details.push({ dest: slot.dest, item: best.name, tier: best.tier });
     } catch (e) {
@@ -611,7 +532,7 @@ function mapSleepError(err: string): string {
 }
 
 async function wakeAtomic(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
-  await ctx.game.wake();
+  await ctx.actions.wake();
   ctx.bus.publish('atomic.wake', 'info', { source: req.source });
   return { ok: true, request: req, durationMs: Date.now() - start };
 }
@@ -626,7 +547,7 @@ async function deposit(req: ActionRequest, ctx: AtomicContext, start: number): P
   if (!itemName) return fail(req, start, 'deposit requires target.itemName');
   const count = req.target?.count ?? 64;
   ctx.bus.publish('atomic.deposit.start', 'info', { source: req.source, item: itemName, count, pos });
-  const r = await ctx.game.depositToChest(pos, itemName, count);
+  const r = await ctx.actions.depositToChest(pos, itemName, count);
   if (!r.ok) {
     ctx.bus.publish('atomic.deposit.fail', 'recoverable', { source: req.source, item: itemName, error: r.reason });
     return fail(req, start, `deposit_failed:${r.reason}`);
@@ -645,7 +566,7 @@ async function withdraw(req: ActionRequest, ctx: AtomicContext, start: number): 
   if (!itemName) return fail(req, start, 'withdraw requires target.itemName');
   const count = req.target?.count ?? 64;
   ctx.bus.publish('atomic.withdraw.start', 'info', { source: req.source, item: itemName, count, pos });
-  const r = await ctx.game.withdrawFromChest(pos, itemName, count);
+  const r = await ctx.actions.withdrawFromChest(pos, itemName, count);
   if (!r.ok) {
     ctx.bus.publish('atomic.withdraw.fail', 'recoverable', { source: req.source, item: itemName, error: r.reason });
     return fail(req, start, `withdraw_failed:${r.reason}`);
@@ -670,20 +591,20 @@ async function useTool(
   const held = ctx.game.getHeldItem();
   if (held?.name !== itemName) {
     try {
-      await ctx.game.equip(itemName, 'hand');
+      await ctx.actions.equip(itemName, 'hand');
     } catch (e) {
       return fail(req, start, `equip_failed:${(e as Error).message}`);
     }
   }
   // 2. 看向目标块（如有）
   if (req.target?.position) {
-    await ctx.game.lookAt(req.target.position, true);
+    await ctx.actions.lookAt(req.target.position, true);
   }
   // 3. 激活物品（右键使用）
-  ctx.game.activateItem();
+  await ctx.actions.activateItem();
   // 给 mineflayer 一点反应时间
-  await wait(150);
-  ctx.game.deactivateItem();
+  await ctx.execution.wait(150);
+  await ctx.actions.deactivateItem();
 
   ctx.bus.publish('atomic.use_tool.success', 'info', {
     source: req.source,
@@ -700,12 +621,13 @@ async function equipItem(
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'equip requires target.itemName');
   try {
-    await ctx.game.equip(itemName, 'hand');
+    await ctx.actions.equip(itemName, 'hand');
     // BUG-CROSS-80 · equip 后主动等待服务器同步手持（约 1.5s），失败即结构化失败，
     // 不再把"手持未变"留给后置验真消耗恢复预算。
-    for (let i = 0; i < 15; i += 1) {
+    const observeStarted=Date.now();
+    while (Date.now()-observeStarted < tuning().deviceActions.equipObserveTimeoutMs) {
       if (ctx.game.getHeldItem()?.name === itemName) break;
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await ctx.execution.wait(tuning().deviceActions.equipObservePollMs);
     }
     if (ctx.game.getHeldItem()?.name !== itemName) {
       return fail(req, start, `equip_unverified: 手持为 ${ctx.game.getHeldItem()?.name ?? '空'}，期望 ${itemName}`);
@@ -759,15 +681,15 @@ async function placeBlock(
   });
   try {
     // equip the item first
-    await ctx.game.equip(itemName, 'hand');
+    await ctx.actions.equip(itemName, 'hand');
     // look at placement position
-    await ctx.game.lookAt(req.target?.position ?? placementPos, true);
+    await ctx.actions.lookAt(req.target?.position ?? placementPos, true);
     // get the reference block object and place against it
     const refBlock = ctx.game.getBlockAt(refPos);
     if (!refBlock) {
       return fail(req, start, 'place_block: reference block not found at referencePosition');
     }
-    await ctx.game.placeBlock(refBlock, faceVector);
+    await ctx.actions.placeBlock(refBlock, faceVector);
   } catch (e) {
     const err = (e as Error).message;
     // ④ emit fail event
@@ -815,7 +737,7 @@ async function waitForPlacedBlock(
   blockBefore:string|null,
 ):Promise<boolean>{
   for(let attempt=0;attempt<6;attempt+=1){
-    if(attempt>0)await wait(100);
+    if(attempt>0)await ctx.execution.wait(100);
     const inventoryAfter=inventoryCount(ctx,itemName);
     const blockAfter=ctx.game.getBlockAt(placementPos)?.name??null;
     if(inventoryAfter<=inventoryBefore-1&&blockAfter!==null&&blockAfter!==blockBefore)return true;
@@ -842,7 +764,7 @@ async function digBlock(
   // ③ call game adapter
   ctx.bus.publish('atomic.dig.start', 'info', { source: req.source, pos });
   try {
-    await ctx.game.dig(pos);
+    await ctx.actions.dig(pos);
   } catch (e) {
     const err = (e as Error).message;
     // ④ emit fail event
@@ -904,7 +826,7 @@ async function ensureBlock(ctx: AtomicContext, blockName: string, searchDist: nu
   const hasItem = ctx.game.getInventoryItems().some((i) => i.name === blockName && i.count > 0);
   if (!hasItem) {
     try {
-      const cr = await ctx.game.craft(blockName, 1, null);
+      const cr = await ctx.actions.craft(blockName, 1, null);
       if (!cr.ok) return null; // 通常是材料不足
     } catch {
       return null;
@@ -914,11 +836,11 @@ async function ensureBlock(ctx: AtomicContext, blockName: string, searchDist: nu
   const place = findTablePlacement(ctx);
   if (!place) return null;
   try {
-    await ctx.game.equip(blockName, 'hand');
-    await ctx.game.lookAt(place.placePos, true);
+    await ctx.actions.equip(blockName, 'hand');
+    await ctx.actions.lookAt(place.placePos, true);
     const refBlock = ctx.game.getBlockAt(place.refPos);
     if (!refBlock) return null;
-    await ctx.game.placeBlock(refBlock, place.faceVector);
+    await ctx.actions.placeBlock(refBlock, place.faceVector);
   } catch {
     return null;
   }
@@ -968,13 +890,13 @@ async function gatherMaterialInline(
     if (found.length === 0) return { ok: false, reason: `no_block_nearby:${src.block}` };
     let minedOne = false;
     for (const pos of found) {
-      if (src.requiredTool) { try { await ctx.game.equip(src.requiredTool, 'hand'); } catch { /* 无工具则空手试 */ } }
+      if (src.requiredTool) { try { await ctx.actions.equip(src.requiredTool, 'hand'); } catch { /* 无工具则空手试 */ } }
       await ctx.nav.goto(
         { type: 'block', position: pos, range: 1 },
         { thinkTimeout: cfg.tableApproachThinkMs, totalTimeout: cfg.tableApproachTimeoutMs },
       ).catch(() => { /* 走不到换下一块 */ });
       const before = invHave(ctx, material);
-      try { await ctx.game.dig(pos); } catch { continue; }
+      try { await ctx.actions.dig(pos); } catch { continue; }
       // 踩到方块位置触发 mineflayer 自动拾取
       await ctx.nav.goto({ type: 'block', position: pos, range: 0 }, { thinkTimeout: 1500, totalTimeout: 4000 }).catch(() => {});
       if (invHave(ctx, material) > before) { minedOne = true; break; }
@@ -1053,7 +975,7 @@ async function craftItem(
       });
       let sr;
       try {
-        sr = await ctx.game.smelt(furnacePos, step.input, step.fuel, step.count);
+        sr = await ctx.actions.smelt(furnacePos, step.input, step.fuel, step.count);
       } catch (e) {
         const err = (e as Error).message;
         ctx.bus.publish('atomic.smelt.fail', 'recoverable', { source: req.source, input: step.input, error: err });
@@ -1095,7 +1017,7 @@ async function craftItem(
     });
     let result;
     try {
-      result = await ctx.game.craft(step.item, step.count, tablePos);
+      result = await ctx.actions.craft(step.item, step.count, tablePos);
     } catch (e) {
       const err = (e as Error).message;
       ctx.bus.publish('atomic.craft.fail', 'recoverable', { source: req.source, item: step.item, error: err });
@@ -1172,7 +1094,7 @@ async function smeltItem(
   // ③ call adapter
   let result;
   try {
-    result = await ctx.game.smelt(furnacePos, input, fuel, count);
+    result = await ctx.actions.smelt(furnacePos, input, fuel, count);
   } catch (e) {
     const err = (e as Error).message;
     ctx.bus.publish('atomic.smelt.fail', 'recoverable', { source: req.source, input, error: err });
@@ -1206,9 +1128,9 @@ async function walkToward(
   const before = ctx.game.getPosition();
   ctx.bus.publish('atomic.walk.start', 'info', { to: pos, ms });
   // 关键：先停 pathfinder + 清控制键，释放它对移动的占用，否则残留 goal 会和手动 forward 打架
-  try { ctx.navRouter?.cancel(); } catch { /* ignore */ }
-  try { ctx.nav.stop(); } catch { /* ignore */ }
-  ctx.game.clearControlStates();
+
+  try { await ctx.nav.stop(); } catch { /* ignore */ }
+  await ctx.actions.clearControlStates();
 
   // ① 先用 pathfinder GoalXZ 真实穿越地形到目标列（翻坎/下坡/绕崖/必要时挖穿）——
   //   手动走在山地崖谷会卡死；GoalXZ 强制走到该 X/Z，不会对空中点秒成功。临时开 canDig。
@@ -1228,9 +1150,9 @@ async function walkToward(
 
   // ② pathfinder 没挪动（卡崖/超时）→ 手动走 + 挖穿兜底
   try {
-    await ctx.game.lookAt({ x: pos.x, y: before.y, z: pos.z }, true); // 水平面向目标
-    ctx.game.setControlState('forward', true);
-    ctx.game.setControlState('sprint', true);
+    await ctx.actions.lookAt({ x: pos.x, y: before.y, z: pos.z }, true); // 水平面向目标
+    await ctx.actions.setControlState('forward', true);
+    await ctx.actions.setControlState('sprint', true);
     // 周期性脉冲跳跃翻小坎（连续按住 jump 反而原地弹跳不前进）
     const jumpEnd = Date.now() + ms;
     let lastPos = ctx.game.getPosition();
@@ -1238,20 +1160,20 @@ async function walkToward(
     while (Date.now() < jumpEnd) {
       // ★ 岩浆/火安全：正前方/脚下是岩浆火 → 立刻停走、后退（真服实证：bot 走进岩浆 2 秒烧死丢全装）
       if (lavaAhead(ctx, ctx.game.getPosition(), pos)) {
-        ctx.game.setControlState('forward', false);
-        ctx.game.setControlState('sprint', false);
+        await ctx.actions.setControlState('forward', false);
+        await ctx.actions.setControlState('sprint', false);
         ctx.bus.publish('atomic.walk.hazard', 'recoverable', { hazard: 'lava' });
         // 朝来路后退一下，离开岩浆边缘
-        await ctx.game.lookAt({ x: before.x, y: before.y, z: before.z }, true);
-        ctx.game.setControlState('back', true);
-        await wait(600);
-        ctx.game.setControlState('back', false);
+        await ctx.actions.lookAt({ x: before.x, y: before.y, z: before.z }, true);
+        await ctx.actions.setControlState('back', true);
+        await ctx.execution.wait(600);
+        await ctx.actions.setControlState('back', false);
         break;
       }
-      ctx.game.setControlState('jump', true);
-      await wait(150);
-      ctx.game.setControlState('jump', false);
-      await wait(450);
+      await ctx.actions.setControlState('jump', true);
+      await ctx.execution.wait(150);
+      await ctx.actions.setControlState('jump', false);
+      await ctx.execution.wait(450);
       // 每 ~1.2s 查一次：卡住没前进 → 挖穿正前方挡路的地形块（破"原地冻住挪不动"根因）
       if (Date.now() - lastCheck > 1150) {
         const now = ctx.game.getPosition();
@@ -1263,9 +1185,9 @@ async function walkToward(
       }
     }
   } finally {
-    ctx.game.setControlState('forward', false);
-    ctx.game.setControlState('sprint', false);
-    ctx.game.setControlState('jump', false);
+    await ctx.actions.setControlState('forward', false);
+    await ctx.actions.setControlState('sprint', false);
+    await ctx.actions.setControlState('jump', false);
   }
   const after = ctx.game.getPosition();
   const moved = Math.hypot(after.x - before.x, after.z - before.z);
@@ -1317,7 +1239,7 @@ async function digForward(
     const t = { x: nx, y: fy + dy, z: nz };
     const b = ctx.game.getBlockAt(t);
     if (b && b.boundingBox === 'block' && WALK_DIGGABLE.test(b.name) && !/lava|water/.test(b.name)) {
-      try { await ctx.game.dig(t); } catch { /* ignore */ }
+      try { await ctx.actions.dig(t); } catch { /* ignore */ }
     }
   }
 }
@@ -1347,9 +1269,9 @@ async function escapePit(
 ): Promise<ExecutionResult> {
   const startPos = ctx.game.getPosition();
   ctx.bus.publish('atomic.escape_pit.start', 'info', { from: roundPos(startPos) });
-  try { ctx.navRouter?.cancel(); } catch { /* ignore */ }
-  try { ctx.nav.stop(); } catch { /* ignore */ }
-  ctx.game.clearControlStates();
+
+  try { await ctx.nav.stop(); } catch { /* ignore */ }
+  await ctx.actions.clearControlStates();
 
   let climbed = 0;
   let dug = 0;
@@ -1372,20 +1294,20 @@ async function escapePit(
 
       if (blk) {
         // —— 策略①：垫脚爬升一格 ——
-        try { await ctx.game.equip(blk.name, 'hand'); } catch { /* ignore */ }
+        try { await ctx.actions.equip(blk.name, 'hand'); } catch { /* ignore */ }
         // 看向脚下（pitch ≈ +90°）才能把方块放在脚位
-        await ctx.game.look(ctx.game.getOrientation().yaw, Math.PI / 2 - 0.03, true);
-        ctx.game.setControlState('jump', true);
+        await ctx.actions.look(ctx.game.getOrientation().yaw, Math.PI / 2 - 0.03, true);
+        await ctx.actions.setControlState('jump', true);
         // 等身体跳离当前格再放（脚位空出来才放得下）
         const apex = Date.now() + 500;
-        while (Date.now() < apex && ctx.game.getPosition().y < fy + 0.5) await wait(25);
+        while (Date.now() < apex && ctx.game.getPosition().y < fy + 0.5) await ctx.execution.wait(25);
         const ref = ctx.game.getBlockAt({ x: fx, y: fy - 1, z: fz });
         if (ref && ref.boundingBox === 'block') {
-          try { await ctx.game.placeBlock(ref, { x: 0, y: 1, z: 0 }); } catch { /* ignore */ }
+          try { await ctx.actions.placeBlock(ref, { x: 0, y: 1, z: 0 }); } catch { /* ignore */ }
         }
-        await wait(120);
-        ctx.game.setControlState('jump', false);
-        await wait(360); // 落到新垫块上
+        await ctx.execution.wait(120);
+        await ctx.actions.setControlState('jump', false);
+        await ctx.execution.wait(360); // 落到新垫块上
         if (Math.floor(ctx.game.getPosition().y) > fy) climbed++;
       } else {
         // —— 策略②：开凿上坡（保留相邻同层方块作踏脚，挖 y+1/y+2 净空）——
@@ -1396,17 +1318,17 @@ async function escapePit(
           const t = { x: fx + dir[0], y: fy + dy, z: fz + dir[1] };
           const b = ctx.game.getBlockAt(t);
           if (b && b.boundingBox === 'block' && !/lava|water|bedrock/i.test(b.name)) {
-            try { await ctx.game.dig(t); dug++; } catch { /* ignore */ }
+            try { await ctx.actions.dig(t); dug++; } catch { /* ignore */ }
           }
         }
-        await ctx.game.lookAt({ x: fx + dir[0], y: before.y + 1, z: fz + dir[1] }, true);
-        ctx.game.setControlState('jump', true);
-        ctx.game.setControlState('forward', true);
-        ctx.game.setControlState('sprint', true);
-        await wait(900);
-        ctx.game.setControlState('sprint', false);
-        ctx.game.setControlState('forward', false);
-        ctx.game.setControlState('jump', false);
+        await ctx.actions.lookAt({ x: fx + dir[0], y: before.y + 1, z: fz + dir[1] }, true);
+        await ctx.actions.setControlState('jump', true);
+        await ctx.actions.setControlState('forward', true);
+        await ctx.actions.setControlState('sprint', true);
+        await ctx.execution.wait(900);
+        await ctx.actions.setControlState('sprint', false);
+        await ctx.actions.setControlState('forward', false);
+        await ctx.actions.setControlState('jump', false);
       }
 
       const afterAttempt = ctx.game.getPosition();
@@ -1423,7 +1345,7 @@ async function escapePit(
     // 爬到坑沿后，朝开阔方向冲两步彻底离开坑口
     await stepToOpen(req, ctx);
   } finally {
-    ctx.game.clearControlStates();
+    await ctx.actions.clearControlStates();
   }
 
   const end = ctx.game.getPosition();
@@ -1469,20 +1391,10 @@ async function stepToOpen(req: ActionRequest, ctx: AtomicContext): Promise<void>
     ? (['jump', 'forward', 'sprint'] as const)
     : (['forward', 'sprint'] as const);
 
-  if (ctx.motor) {
-    await ctx.motor.run(motorOwner(req), req.priority, {
-      kind: 'pulse',
-      keys: [...keys],
-      durationMs: exit.mode === 'step_up' ? 900 : 700,
-      lookAt: target,
-    });
-    return;
-  }
-
-  await ctx.game.lookAt(target, true);
-  for (const key of keys) ctx.game.setControlState(key, true);
-  await wait(exit.mode === 'step_up' ? 900 : 700);
-  for (const key of keys) ctx.game.setControlState(key, false);
+  await ctx.actions.lookAt(target, true);
+  for (const key of keys) await ctx.actions.setControlState(key, true);
+  await ctx.execution.wait(exit.mode === 'step_up' ? 900 : 700);
+  for (const key of keys) await ctx.actions.setControlState(key, false);
 }
 
 function roundPos(p: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
@@ -1503,8 +1415,8 @@ async function mineTo(
   if (!target) return fail(req, start, 'mine_to requires target.position');
   const toolName = req.target?.itemName;
   ctx.bus.publish('atomic.mine_to.start', 'info', { source: req.source, target, tool: toolName });
-  try { ctx.navRouter?.cancel(); } catch { /* ignore */ }
-  if (toolName) { try { await ctx.game.equip(toolName, 'hand'); } catch { /* 空手也挖 */ } }
+
+  if (toolName) { try { await ctx.actions.equip(toolName, 'hand'); } catch { /* 空手也挖 */ } }
 
   const isMineTarget = (block: ReturnType<typeof ctx.game.getBlockAt>): boolean =>
     Boolean(block && block.boundingBox === 'block' && /ore|debris/.test(block.name));
@@ -1520,15 +1432,15 @@ async function mineTo(
     return fail(req, start, `mine_to_target_missing: ${initialBlock?.name ?? 'air'}`);
   }
 
-  // 是否成功只能以世界里的目标矿块已经消失为准。GameAdapter 的 dig 某些实现会吞掉底层异常，
+  // 是否成功只能以世界里的目标矿块已经消失为准。GameView 的 dig 某些实现会吞掉底层异常，
   // 因此绝不能把“调用过 dig”当成成功。
   const tryRemoveTarget = async (): Promise<boolean> => {
     if (!isMineTarget(readTarget())) return true;
-    await ctx.game.lookAt(
+    await ctx.actions.lookAt(
       { x: target.x + 0.5, y: target.y + 0.5, z: target.z + 0.5 },
       true,
     );
-    try { await ctx.game.dig(target); } catch { /* 下面用新鲜世界状态判定 */ }
+    try { await ctx.actions.dig(target); } catch { /* 下面用新鲜世界状态判定 */ }
     return !isMineTarget(readTarget());
   };
 
@@ -1576,7 +1488,7 @@ async function mineTo(
     }
   } finally {
     try { ctx.nav.setMovementOptions({ canDig: false }); } catch { /* ignore */ } // 恢复：日常寻路不乱挖（护门）
-    try { ctx.nav.stop(); } catch { /* ignore */ }
+    try { await ctx.nav.stop(); } catch { /* ignore */ }
   }
 
   if (!removed) {
@@ -1614,7 +1526,7 @@ async function lookAt(
   // ③ call game adapter (force=true)
   ctx.bus.publish('atomic.look_at.start', 'info', { pos });
   try {
-    await ctx.game.lookAt(pos, true);
+    await ctx.actions.lookAt(pos, true);
   } catch (e) {
     const err = (e as Error).message;
     // ④ emit fail event
@@ -1650,10 +1562,10 @@ async function tossItem(
   let pos = resolveTossTarget(req, ctx);
   if (pos) {
     try {
-      await ctx.game.lookAt(pos, true);
-      await wait(100);
+      await ctx.actions.lookAt(pos, true);
+      await ctx.execution.wait(100);
       pos = resolveTossTarget(req, ctx) ?? pos;
-      await ctx.game.lookAt(pos, true);
+      await ctx.actions.lookAt(pos, true);
     } catch { /* 后续地面差量门会拒绝未送达，不在这里假成功 */ }
   }
   const droppedBefore = hasDeliveryTarget ? droppedItemCounts(ctx.game, itemName) : null;
@@ -1662,14 +1574,14 @@ async function tossItem(
   ctx.bus.publish('atomic.toss_item.start', 'info', { item: itemName, count: count ?? 'all', toward: pos });
   let tossed = 0;
   try {
-    tossed = await ctx.game.toss(itemName, count);
+    tossed = await ctx.actions.toss(itemName, count);
   } catch (e) {
     return fail(req, start, `toss_failed: ${(e as Error).message}`);
   }
   if (tossed <= 0) return fail(req, start, `toss_nothing: ${itemName} 一个都没扔出`);
   const settleMs = Math.max(0, tuning().atomic.tossSettleMs);
   if (settleMs > 0) {
-    await wait(settleMs);
+    await ctx.execution.wait(settleMs);
     const remaining = ctx.game.getInventoryItems()
       .filter(i => i.name === itemName)
       .reduce((sum, i) => sum + i.count, 0);
@@ -1703,145 +1615,13 @@ function resolveTossTarget(req: ActionRequest, ctx: AtomicContext): Vec3 | undef
     const live = ctx.game.getEntityById(req.target.entityId)?.position;
     if (live) return live;
   }
-  return req.target?.position ?? ctx.worldState?.owner?.position ?? undefined;
+  return req.target?.position ?? ctx.getWorld().owner?.position ?? undefined;
 }
 
-function droppedItemCounts(game: GameAdapter, itemName: string): Map<number, number> {
+function droppedItemCounts(game: GameView, itemName: string): Map<number, number> {
   return new Map(game.getEntities()
     .filter(entity => entity.droppedItem?.name === itemName)
     .map(entity => [entity.id, entity.droppedItem?.count ?? 0]));
-}
-
-// ───────────────────────── invoke_behavior ─────────────────────────
-
-async function invokeBehavior(
-  req: ActionRequest,
-  ctx: AtomicContext,
-  start: number,
-): Promise<ExecutionResult> {
-  const behaviorId = req.target?.behavior;
-  if (!behaviorId) return fail(req, start, 'invoke_behavior requires target.behavior');
-
-  const registry = ctx.behaviorRegistry;
-  if (!registry) {
-    ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-      behaviorId,
-      reason: 'no_registry',
-    });
-    return fail(req, start, 'no_registry: behaviorRegistry not in AtomicContext');
-  }
-
-  const behavior = registry.get(behaviorId);
-  if (!behavior) {
-    ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-      behaviorId,
-      reason: 'behavior_not_found',
-    });
-    return fail(req, start, `behavior_not_found: ${behaviorId}`);
-  }
-
-  // WorldStateView が必須 · plan() に渡す
-  const world = ctx.worldState;
-  if (!world) {
-    ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-      behaviorId,
-      reason: 'no_world_state',
-    });
-    return fail(req, start, 'no_world_state: worldState not in AtomicContext');
-  }
-
-  if (behavior.run) {
-    ctx.bus.publish('atomic.invoke_behavior.start', 'info', {
-      behaviorId,
-      adaptive: true,
-    });
-    let adaptiveResult;
-    try {
-      adaptiveResult = await behavior.run({
-        taskParams: req.target?.behaviorParams,
-        getWorld: () => {
-          const latest = ctx.worldState;
-          if (!latest) throw new Error('world_state_unavailable');
-          return latest;
-        },
-        execute: async sub => {
-          if (sub.type === 'invoke_behavior') {
-            ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-              behaviorId,
-              reason: 'nested_invoke_behavior_forbidden',
-              subType: sub.type,
-            });
-            return fail(sub, Date.now(), `nested invoke_behavior forbidden (behavior: ${behaviorId})`);
-          }
-          return executeAtomic(sub, ctx);
-        },
-        publish: (type, level, payload) => ctx.bus.publish(type, level, payload),
-      });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-        behaviorId,
-        reason: 'adaptive_behavior_error',
-        error: detail,
-      });
-      return fail(req, start, `adaptive_behavior_error: ${detail}`);
-    }
-    if (!adaptiveResult.ok) {
-      const detail = adaptiveResult.error ?? 'adaptive behavior failed';
-      ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-        behaviorId,
-        reason: 'adaptive_behavior_failed',
-        error: detail,
-        ...(adaptiveResult.details ?? {}),
-      });
-      return fail(req, start, detail);
-    }
-    ctx.bus.publish('atomic.invoke_behavior.success', 'info', {
-      behaviorId,
-      adaptive: true,
-      ...(adaptiveResult.details ?? {}),
-    });
-    return { ok: true, request: req, durationMs: Date.now() - start };
-  }
-
-  const subRequests = behavior.plan({
-    world,
-    taskParams: req.target?.behaviorParams,
-  });
-
-  ctx.bus.publish('atomic.invoke_behavior.start', 'info', {
-    behaviorId,
-    subRequestCount: subRequests.length,
-  });
-
-  // 递归执行子请求（行为不应再产生 invoke_behavior，避免无限循环）
-  for (const sub of subRequests) {
-    if (sub.type === 'invoke_behavior') {
-      ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-        behaviorId,
-        reason: 'nested_invoke_behavior_forbidden',
-        subType: sub.type,
-      });
-      return fail(req, start, `nested invoke_behavior forbidden (behavior: ${behaviorId})`);
-    }
-    const result = await executeAtomic(sub, ctx);
-    if (!result.ok) {
-      ctx.bus.publish('atomic.invoke_behavior.fail', 'recoverable', {
-        behaviorId,
-        reason: 'sub_atomic_failed',
-        subType: sub.type,
-        error: result.error,
-      });
-      return { ok: false, request: req, durationMs: Date.now() - start, error: result.error };
-    }
-  }
-
-  ctx.bus.publish('atomic.invoke_behavior.success', 'info', { behaviorId });
-  return { ok: true, request: req, durationMs: Date.now() - start };
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
 }
 
 // ───────────────────────── fish · FEAT-L3-05 ─────────────────────────
@@ -1852,7 +1632,7 @@ function wait(ms: number): Promise<void> {
  * 流程：装钓竿 → （可选 lookAt 水面） → activateItem 抛钩 →
  *      等 durationMs → deactivateItem 收杆 → success（不保证钓到）。
  *
- * 后续 GameAdapter 加 onFishBite/fish() 后升级"咬钩即收"·ActionType 名稳定不动。
+ * 后续 GameView 加 onFishBite/fish() 后升级"咬钩即收"·ActionType 名稳定不动。
  */
 async function fishAtomic(
   req: ActionRequest,
@@ -1872,29 +1652,29 @@ async function fishAtomic(
 
   // ③ 装备
   try {
-    await ctx.game.equip('fishing_rod', 'hand');
+    await ctx.actions.equip('fishing_rod', 'hand');
   } catch (e) {
     return fail(req, start, `fish_failed:equip:${(e as Error).message}`);
   }
   // 看向水面（若给了）
   let lookedAt = false;
   if (waterPos) {
-    try { await ctx.game.lookAt(waterPos, true); lookedAt = true; } catch { /* ignore */ }
+    try { await ctx.actions.lookAt(waterPos, true); lookedAt = true; } catch { /* ignore */ }
   }
 
   // ④ 抛钩
   ctx.bus.publish('atomic.fish.cast', 'info', { source: req.source, lookedAt });
-  try { ctx.game.activateItem(false); } catch (e) {
+  try { await ctx.actions.activateItem(false); } catch (e) {
     return fail(req, start, `fish_failed:cast:${(e as Error).message}`);
   }
 
   // ⑤ 等咬钩窗口
   ctx.bus.publish('atomic.fish.wait', 'info', { source: req.source, ms: durationMs });
-  await wait(durationMs);
+  await ctx.execution.wait(durationMs);
 
   // ⑥ 收杆
   ctx.bus.publish('atomic.fish.reel', 'info', { source: req.source });
-  try { ctx.game.deactivateItem(); } catch { /* ignore */ }
+  try { await ctx.actions.deactivateItem(); } catch { /* ignore */ }
 
   ctx.bus.publish('atomic.fish.success', 'info', { source: req.source, durationMs });
   return { ok: true, request: req, durationMs: Date.now() - start };
@@ -1931,14 +1711,14 @@ async function climbUpAtomic(
     return fail(req, start, 'climb_up_failed:not_climbable');
   }
 
-  ctx.game.setControlState('jump', true);
-  ctx.game.setControlState('sneak', false);
+  await ctx.actions.setControlState('jump', true);
+  await ctx.actions.setControlState('sneak', false);
   let lastY = before.y;
   let lastProgress = Date.now();
   const deadline = Date.now() + Math.max(5000, (targetY - before.y) * 1500 + 2000);
   try {
     while (Date.now() < deadline) {
-      await wait(200);
+      await ctx.execution.wait(200);
       const cur = ctx.game.getPosition();
       if (cur.y >= targetY) {
         ctx.bus.publish('atomic.climb_up.success', 'info', { source: req.source, dy: cur.y - before.y });
@@ -1953,7 +1733,7 @@ async function climbUpAtomic(
     ctx.bus.publish('atomic.climb_up.fail', 'recoverable', { source: req.source, reason: 'timeout' });
     return fail(req, start, 'climb_up_failed:timeout');
   } finally {
-    ctx.game.setControlState('jump', false);
+    await ctx.actions.setControlState('jump', false);
   }
 }
 
@@ -1993,20 +1773,20 @@ async function pillarUpAtomic(
         return fail(req, start, 'pillar_up_failed:no_pillar_block');
       }
 
-      try { await ctx.game.equip(blk.name, 'hand'); } catch { /* ignore · 下面 placeBlock 会失败再兜 */ }
+      try { await ctx.actions.equip(blk.name, 'hand'); } catch { /* ignore · 下面 placeBlock 会失败再兜 */ }
       // 看脚下
-      await ctx.game.look(ctx.game.getOrientation().yaw, Math.PI / 2 - 0.03, true);
-      ctx.game.setControlState('jump', true);
+      await ctx.actions.look(ctx.game.getOrientation().yaw, Math.PI / 2 - 0.03, true);
+      await ctx.actions.setControlState('jump', true);
       const apex = Date.now() + 500;
-      while (Date.now() < apex && ctx.game.getPosition().y < fy + 0.5) await wait(25);
+      while (Date.now() < apex && ctx.game.getPosition().y < fy + 0.5) await ctx.execution.wait(25);
       const ref = ctx.game.getBlockAt({ x: fx, y: fy - 1, z: fz });
       let placed = false;
       if (ref && ref.boundingBox === 'block') {
-        try { await ctx.game.placeBlock(ref, { x: 0, y: 1, z: 0 }); placed = true; } catch { /* ignore */ }
+        try { await ctx.actions.placeBlock(ref, { x: 0, y: 1, z: 0 }); placed = true; } catch { /* ignore */ }
       }
-      await wait(120);
-      ctx.game.setControlState('jump', false);
-      await wait(360);
+      await ctx.execution.wait(120);
+      await ctx.actions.setControlState('jump', false);
+      await ctx.execution.wait(360);
       if (placed && Math.floor(ctx.game.getPosition().y) > fy) climbed++;
       else {
         // 没升高 → 早退（避免无效循环占执行锁）
@@ -2014,7 +1794,7 @@ async function pillarUpAtomic(
       }
     }
   } finally {
-    ctx.game.setControlState('jump', false);
+    await ctx.actions.setControlState('jump', false);
   }
   const dy = Math.round((ctx.game.getPosition().y - startY) * 10) / 10;
   ctx.bus.publish('atomic.pillar_up.success', 'info', { source: req.source, climbed, dy });
@@ -2050,22 +1830,22 @@ async function digDownAtomic(
     }
     if (!b1 || b1.boundingBox !== 'block') {
       // 已经是空 → 走完？让 bot 自己下落，跳到下次循环
-      await wait(400);
+      await ctx.execution.wait(400);
       const after = ctx.game.getPosition();
       if (after.y < pos.y - 0.5) continue; // 下落了一格
       ctx.bus.publish('atomic.dig_down.success', 'info', { source: req.source, dug, reason: 'air_below' });
       return { ok: true, request: req, durationMs: Date.now() - start };
     }
-    await ctx.game.lookAt({ x: below.x + 0.5, y: below.y + 0.5, z: below.z + 0.5 }, true);
+    await ctx.actions.lookAt({ x: below.x + 0.5, y: below.y + 0.5, z: below.z + 0.5 }, true);
     try {
-      await ctx.game.dig(below);
+      await ctx.actions.dig(below);
       dug++;
     } catch (e) {
       ctx.bus.publish('atomic.dig_down.fail', 'recoverable', { source: req.source, reason: 'dig_failed', error: (e as Error).message, dug });
       return fail(req, start, `dig_down_failed:dig_failed:${(e as Error).message}`);
     }
     // 等下落
-    await wait(650);
+    await ctx.execution.wait(650);
   }
   ctx.bus.publish('atomic.dig_down.success', 'info', { source: req.source, dug });
   return { ok: true, request: req, durationMs: Date.now() - start };
@@ -2092,13 +1872,13 @@ async function placeScaffoldAtomic(
   }
   ctx.bus.publish('atomic.place_scaffold.start', 'info', { source: req.source, item: itemName, refPos, faceVector });
   try {
-    await ctx.game.equip(itemName, 'hand');
+    await ctx.actions.equip(itemName, 'hand');
     const ref = ctx.game.getBlockAt(refPos);
     if (!ref) {
       ctx.bus.publish('atomic.place_scaffold.fail', 'recoverable', { source: req.source, reason: 'no_ref_block' });
       return fail(req, start, 'place_scaffold_failed:no_ref_block');
     }
-    await ctx.game.placeBlock(ref, faceVector);
+    await ctx.actions.placeBlock(ref, faceVector);
   } catch (e) {
     ctx.bus.publish('atomic.place_scaffold.fail', 'recoverable', { source: req.source, error: (e as Error).message });
     return fail(req, start, `place_scaffold_failed:${(e as Error).message}`);
@@ -2109,12 +1889,6 @@ async function placeScaffoldAtomic(
 
 // ───────────────────────── 载具 · FEAT-L3-09（骨架） ─────────────────────────
 
-/** AtomicContext.game 的可选扩展（GameAdapter 后续补齐 mount/dismount 后即生效） */
-type MountCapable = {
-  mount?: (entityId: number) => Promise<void>;
-  dismount?: () => Promise<void>;
-};
-
 async function mountAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
@@ -2122,13 +1896,8 @@ async function mountAtomic(
 ): Promise<ExecutionResult> {
   const eid = req.target?.entityId;
   if (eid == null) return fail(req, start, 'mount requires target.entityId');
-  const adp = ctx.game as unknown as MountCapable;
-  if (typeof adp.mount !== 'function') {
-    ctx.bus.publish('atomic.mount.fail', 'recoverable', { source: req.source, reason: 'adapter_unsupported' });
-    return fail(req, start, 'mount_failed:adapter_unsupported');
-  }
   try {
-    await adp.mount(eid);
+    await ctx.actions.mount(eid);
   } catch (e) {
     ctx.bus.publish('atomic.mount.fail', 'recoverable', { source: req.source, error: (e as Error).message });
     return fail(req, start, `mount_failed:${(e as Error).message}`);
@@ -2142,13 +1911,8 @@ async function dismountAtomic(
   ctx: AtomicContext,
   start: number,
 ): Promise<ExecutionResult> {
-  const adp = ctx.game as unknown as MountCapable;
-  if (typeof adp.dismount !== 'function') {
-    ctx.bus.publish('atomic.dismount.fail', 'recoverable', { source: req.source, reason: 'adapter_unsupported' });
-    return fail(req, start, 'dismount_failed:adapter_unsupported');
-  }
   try {
-    await adp.dismount();
+    await ctx.actions.dismount();
   } catch (e) {
     ctx.bus.publish('atomic.dismount.fail', 'recoverable', { source: req.source, error: (e as Error).message });
     return fail(req, start, `dismount_failed:${(e as Error).message}`);
@@ -2173,14 +1937,14 @@ async function kiteAtomic(
   if (!ent) return fail(req, start, 'kite_failed:target_not_found');
   const backMs = Math.min(Math.max(req.target?.backDurationMs ?? 600, 100), 2500);
 
-  await ctx.game.lookAt(ent.position, true);
-  ctx.game.attack(id);
+  await ctx.actions.lookAt(ent.position, true);
+  await ctx.actions.attack(id);
   ctx.bus.publish('atomic.kite.swing', 'info', { source: req.source, entityId: id, target: ent.name });
-  ctx.game.setControlState('back', true);
+  await ctx.actions.setControlState('back', true);
   try {
-    await wait(backMs);
+    await ctx.execution.wait(backMs);
   } finally {
-    ctx.game.setControlState('back', false);
+    await ctx.actions.setControlState('back', false);
   }
   ctx.bus.publish('atomic.kite.success', 'info', { source: req.source, entityId: id, backMs });
   return { ok: true, request: req, durationMs: Date.now() - start };
@@ -2201,17 +1965,17 @@ async function blockWithShieldAtomic(
   }
   const durationMs = Math.min(Math.max(req.target?.durationMs ?? 1500, 200), 5000);
   try {
-    await ctx.game.equip('shield', 'off-hand');
+    await ctx.actions.equip('shield', 'off-hand');
   } catch (e) {
     ctx.bus.publish('atomic.block_with_shield.fail', 'recoverable', { source: req.source, error: (e as Error).message });
     return fail(req, start, `block_with_shield_failed:equip:${(e as Error).message}`);
   }
   ctx.bus.publish('atomic.block_with_shield.up', 'info', { source: req.source, durationMs });
-  ctx.game.activateItem(true);
+  await ctx.actions.activateItem(true);
   try {
-    await wait(durationMs);
+    await ctx.execution.wait(durationMs);
   } finally {
-    ctx.game.deactivateItem();
+    await ctx.actions.deactivateItem();
   }
   ctx.bus.publish('atomic.block_with_shield.success', 'info', { source: req.source });
   return { ok: true, request: req, durationMs: Date.now() - start };
@@ -2241,17 +2005,17 @@ async function bowShootAtomic(
   }
   const drawMs = Math.min(Math.max(req.target?.drawMs ?? 1200, 200), 4000);
   try {
-    await ctx.game.equip('bow', 'hand');
+    await ctx.actions.equip('bow', 'hand');
   } catch (e) {
     return fail(req, start, `bow_shoot_failed:equip:${(e as Error).message}`);
   }
-  await ctx.game.lookAt(ent.position, true);
+  await ctx.actions.lookAt(ent.position, true);
   ctx.bus.publish('atomic.bow_shoot.draw', 'info', { source: req.source, entityId: id, drawMs });
-  ctx.game.activateItem(false);
+  await ctx.actions.activateItem(false);
   try {
-    await wait(drawMs);
+    await ctx.execution.wait(drawMs);
   } finally {
-    ctx.game.deactivateItem(); // 放箭
+    await ctx.actions.deactivateItem(); // 放箭
   }
   ctx.bus.publish('atomic.bow_shoot.success', 'info', { source: req.source, entityId: id });
   return { ok: true, request: req, durationMs: Date.now() - start };
@@ -2271,14 +2035,14 @@ async function critJumpAttackAtomic(
   const ent = ctx.game.getEntityById(id);
   if (!ent) return fail(req, start, 'crit_jump_attack_failed:target_not_found');
 
-  await ctx.game.lookAt(ent.position, true);
-  ctx.game.setControlState('jump', true);
+  await ctx.actions.lookAt(ent.position, true);
+  await ctx.actions.setControlState('jump', true);
   try {
-    await wait(250);
-    ctx.game.attack(id);
+    await ctx.execution.wait(250);
+    await ctx.actions.attack(id);
     ctx.bus.publish('atomic.crit_jump_attack.success', 'info', { source: req.source, entityId: id, target: ent.name });
   } finally {
-    ctx.game.setControlState('jump', false);
+    await ctx.actions.setControlState('jump', false);
   }
   return { ok: true, request: req, durationMs: Date.now() - start };
 }

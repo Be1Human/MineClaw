@@ -18,7 +18,7 @@ function world(): WorldStateView {
 }
 
 test('BUG-CROSS-59 · chest withdrawal approaches the chest before withdrawing the requested count', () => {
-  const actions = new ChestWithdrawBehavior().plan({
+  const actions = new ChestWithdrawBehavior().compile({
     world: world(),
     taskParams: { chestPos: { x: 5, y: 64, z: 2 }, item: 'iron_pickaxe', count: 1 },
   });
@@ -31,6 +31,6 @@ test('BUG-CROSS-59 · chest withdrawal approaches the chest before withdrawing t
 
 test('BUG-CROSS-59 · invalid chest parameters fail closed with no actions', () => {
   const behavior = new ChestWithdrawBehavior();
-  assert.deepEqual(behavior.plan({ world: world(), taskParams: { item: 'iron_pickaxe' } }), []);
-  assert.deepEqual(behavior.plan({ world: world(), taskParams: { chestPos: { x: 1, y: 2, z: 3 } } }), []);
+  assert.deepEqual(behavior.compile({ world: world(), taskParams: { item: 'iron_pickaxe' } }), []);
+  assert.deepEqual(behavior.compile({ world: world(), taskParams: { chestPos: { x: 1, y: 2, z: 3 } } }), []);
 });

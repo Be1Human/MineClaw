@@ -8,7 +8,8 @@ import type {
   AtomicContractRegistry,
   PreparedAction,
 } from '../../atomic/contracts/atomicContractRegistry.js';
-import { contractFailure, type FailureEnvelope } from './failureEnvelope.js';
+import { contractFailure } from './failureEnvelope.js';
+import type { FailureEnvelope } from '../contracts/failureEnvelope.js';
 
 export interface ActionPreparationContext {
   execId: string;

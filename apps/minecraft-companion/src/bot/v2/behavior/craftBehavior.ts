@@ -4,20 +4,21 @@
  * id: 'craft_one'
  *
  * 由 ProvisionStrategy 调用。taskParams: { item, count, tablePos? }
- * plan() 展开为：
+ * compile() 展开为：
  *   (若需工作台) move_to(tablePos) → 靠近工作台
  *   craft(item, count, tablePos)
  */
 
-import type { IBehavior, BehaviorContext } from './types.js';
+import type { SequenceBehavior, BehaviorContext } from './types.js';
 import type { ActionRequest } from '../types.js';
 import type { Vec3 } from '../../adapter/types.js';
 
-export class CraftBehavior implements IBehavior {
+export class CraftBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'craft_one';
   private seq = 0;
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const p = ctx.taskParams ?? {};
     const item = p.item as string | undefined;
     if (!item) return [];

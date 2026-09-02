@@ -9,7 +9,7 @@
  *   ⑤ TaskSched      · L6 sched 推进 + 输出当前 active task
  *   ⑥ StrategyTick   · L5 任务驱动策略.tick() → ActionRequest[]
  *   ⑦ Arbitrate ★    · ActionArbitrator.arbitrate(requests) → winner
- *   ⑧ Execute        · executeAtomic(winner) → ExecutionResult
+ *   ⑧ Execute        · BodyActionService → BodyExecutionRuntime → Receipt
  *   ⑨ Critic / Emit  · 评测 + 广播 task.tick_done
  *   ⑩ MemoryCommit   · memory.commitTick()
  *
@@ -25,7 +25,7 @@ import type { RuntimeSupervisor } from '../decision/supervisor.js';
 import type { ReflexStrategy } from '../strategy/reflexStrategy.js';
 import type { IStrategy, StrategyContext } from '../strategy/types.js';
 import type { ActionRequest, ArbitrationResult, WorldStateView } from '../types.js';
-import { executeAtomic, type AtomicContext } from '../atomic/atomics.js';
+import type { BodyActionService } from '../task/execution/bodyActionService.js';
 import type { AsyncTaskQueue } from './asyncTaskQueue.js';
 import { TickRate, type TickRegistry, type TickContext } from './tickRegistry.js';
 import type { ICriticRegistry } from '../task/critic/types.js';
@@ -49,7 +49,7 @@ export interface HeartbeatDeps {
   autoDefenseStrategies?: IStrategy[];
   /** 生产调参热开关；未提供时保持兼容并视为开启。 */
   isAutomaticDefenseEnabled?: () => boolean;
-  atomic: AtomicContext;
+  body: BodyActionService;
   /** 可选 · AsyncTaskQueue · ② DrainEvents 时消费已完成结果 */
   asyncQueue?: AsyncTaskQueue;
   /** 可选 · TickRegistry · ④ 节拍分发时按 rate 触发注册模块 */
@@ -57,20 +57,12 @@ export interface HeartbeatDeps {
   /** 可选 · ICriticRegistry · ⑨ Critic 每 SLOW tick 评测 running 任务 · success → tasks.complete */
   critic?: ICriticRegistry;
   /** FEAT-CROSS-08 / BUG-CROSS-25 · 每 tick 现读游戏身体态，陪聊态只运行安全子循环。 */
-  isEmbodied?: () => boolean;
+  isEmbodied: () => boolean;
 }
 
 export class Heartbeat {
   private tick = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
-  /** 是否有 ⑧ Execute 正在跑（非阻塞模式下一 tick 不发起新的） */
-  private executing = false;
-  /** 当前正在执行的 ActionRequest（用于取消/打断判断） */
-  private currentReq: ActionRequest | null = null;
-  /** executing 变为 true 的时刻 · 用于 watchdog 超时检测 */
-  private executingSince = 0;
-  /** executing watchdog 最大容忍毫秒 · 超过强制重置 */
-  private static readonly MAX_EXECUTE_MS = 35_000;
   private arbitrator = new ActionArbitrator();
   /** FEAT-NARR-01 · 统一语言中枢 · 每 tick flushTick 一次（在 ⑦ Arbitrate 前）*/
   private narration: { flushTick(): void; narrate(intent: import('../narration/types.js').SpeechIntent): void } | null = null;
@@ -106,21 +98,7 @@ export class Heartbeat {
     const before = this.externalRequests.length;
     this.externalRequests = this.externalRequests.filter(req => isLightAction(req.type));
 
-    // Coordinator 直驱的复合行为可能在 Heartbeat 执行锁之外持有 Motor。
-    // 任务切换仍必须撤销这类残留身体动作，否则新目标会被旧导航以 motor_busy 拦住。
-    const motor = this.deps.atomic.motor;
-    if (motor && typeof motor.current === 'function' && motor.current()) {
-      motor.cancel();
-    } else if (this.executing) {
-      if (this.deps.atomic.motor) this.deps.atomic.motor.cancel();
-      else {
-        this.deps.atomic.navRouter?.cancel();
-        this.deps.atomic.nav.stop();
-      }
-    }
-    this.executing = false;
-    this.currentReq = null;
-    this.executingSince = 0;
+    this.deps.body.cancelAll('heartbeat_cancel');
     return before - this.externalRequests.length;
   }
 
@@ -152,7 +130,7 @@ export class Heartbeat {
 
   private async runTick(): Promise<void> {
     this.tick += 1;
-    const { bus, memory, perception, tasks, supervisor, reflex, taskStrategies, autoDefenseStrategies, atomic } = this.deps;
+    const { bus, memory, perception, tasks, supervisor, reflex, taskStrategies, autoDefenseStrategies, body } = this.deps;
     const automaticDefenseEnabled = this.deps.isAutomaticDefenseEnabled?.() ?? true;
     if (this.automaticDefenseEnabled !== automaticDefenseEnabled) {
       const wasEnabled = this.automaticDefenseEnabled;
@@ -168,9 +146,7 @@ export class Heartbeat {
         resetPendingEvents: !automaticDefenseEnabled,
       });
     }
-    const embodied = this.deps.isEmbodied
-      ? this.deps.isEmbodied()
-      : atomic.embodied !== false;
+    const embodied = this.deps.isEmbodied();
 
     // BUG-CROSS-36 · 陪聊态不空跑游戏 10 步循环。仍以短 tick drain/commit，
     // 保证真实聊天事件及时落盘；只在 IDLE 节拍唤醒主动关怀判断。
@@ -245,15 +221,17 @@ export class Heartbeat {
       const taskRequests: ActionRequest[] = [];
       // BUG-CROSS-28：重动作执行期不为必然被 busy 拒绝的请求做昂贵规划。
       // Reflex 已在上一步运行，紧急 hard 抢占不受影响；任务 Strategy 在动作结束后的下一 tick 恢复。
-      if (embodied && !this.executing) {
+      const safetyOrigins = new Map<ActionRequest,string>(reflexRequests.map(request=>[request,'reflex']));
+      if (embodied) {
         const strategies = automaticDefenseEnabled
           ? [...(autoDefenseStrategies ?? []), ...taskStrategies]
           : taskStrategies;
         for (const s of strategies) {
-          if (s.isActive(ctx)) {
+          if (!body.busy() && s.isActive(ctx) || (automaticDefenseEnabled && autoDefenseStrategies?.includes(s) && s.isActive(ctx))) {
             const rs = s.tick(ctx);
             // FEAT-CROSS-05 · 任务驱动策略的请求自动用当前 active task 背书（reflex 类自带 taskId 不覆盖）
-            for (const r of rs) if (r.taskId == null && ctx.activeTaskId) r.taskId = ctx.activeTaskId;
+            if (autoDefenseStrategies?.includes(s)) for (const r of rs) safetyOrigins.set(r,'automatic-defense');
+            else for (const r of rs) if (r.taskId == null && ctx.activeTaskId) r.taskId = ctx.activeTaskId;
             taskRequests.push(...rs);
           }
         }
@@ -286,7 +264,7 @@ export class Heartbeat {
           });
           return false;
         }
-        if (!r.resource.includes('movement')) return true;
+        if (safetyOrigins.has(r) || isLightAction(r.type)) return true;
         if (r.taskId && tasks.isRunning(r.taskId)) return true;
         bus.publish('arbiter.orphan_request', 'recoverable', {
           source: r.source, type: r.type, taskId: r.taskId ?? null, tick: this.tick,
@@ -295,68 +273,15 @@ export class Heartbeat {
         return false;
       });
 
-      const arb = this.arbitrator.arbitrate(authorizedReq, world, this.executing, this.currentReq);
+      const arb = this.arbitrator.arbitrate(authorizedReq, world, body.busy(), body.currentRequest());
       this.publishArbitration(bus, arb);
 
-      // ⑧ Execute · 多 winner 并发跑（资源已经检过不冲突）
-      // 区分两类：
-      //   - 阻塞型（move/follow/attack）→ 用 executing 锁，一 tick 最多一个
-      //   - 副作用型（say/stop）→ 直接 fire，不抢锁
-
-      // ⑧.0 Watchdog：executing 卡死超时 → 强制重置（防 nav.goto 永不 resolve）
-      if (this.executing && this.executingSince > 0) {
-        const stuck = Date.now() - this.executingSince;
-        if (stuck > Heartbeat.MAX_EXECUTE_MS) {
-          bus.publish('heartbeat.executing_watchdog', 'recoverable', {
-            tick: this.tick,
-            stuckMs: stuck,
-            req: this.currentReq?.source ?? 'unknown',
-          });
-          if (this.deps.atomic.motor) this.deps.atomic.motor.cancel();
-          else {
-            this.deps.atomic.navRouter?.cancel();
-            this.deps.atomic.nav.stop();
-          }
-          this.executing = false;
-          this.currentReq = null;
-          this.executingSince = 0;
-        }
-      }
-
-      for (const w of arb.winners) {
-        if (isLightAction(w.type)) {
-          // say / stop · 立刻跑，不占 executing 锁
-          if (this.cfg.blockingExecute) await this.runExecute(w, atomic, world);
-          else void this.runExecute(w, atomic, world);
-          continue;
-        }
-        if (this.cfg.blockingExecute) {
-          await this.runExecute(w, atomic, world);
-        } else if (!this.executing) {
-          this.executing = true;
-          this.executingSince = Date.now();
-          this.currentReq = w;
-          this.runExecute(w, atomic, world).finally(() => {
-            this.executing = false;
-            this.currentReq = null;
-            this.executingSince = 0;
-          });
-        } else if (
-          w.interrupt_level === 'hard' &&
-          this.currentReq &&
-          w.priority > this.currentReq.priority
-        ) {
-          // hard 抢占：停掉当前 nav → 下一 tick 再下发新的
-          if (this.deps.atomic.motor) this.deps.atomic.motor.cancel();
-          else {
-            this.deps.atomic.navRouter?.cancel();
-            this.deps.atomic.nav.stop();
-          }
-          this.executing = false;
-          this.currentReq = null;
-          this.executingSince = 0;
-        }
-        // else: 当前忙且不能抢占 · 等下一 tick
+      // The body runtime is the only busy/timeout/preemption authority.
+      // Dispatch producers carry their trusted origin separately from request.source.
+      for (const request of arb.winners) {
+        const work = this.runExecute(request,safetyOrigins.get(request));
+        if (this.cfg.blockingExecute) await work;
+        else void work;
       }
 
       // ⑨ Critic / Emit · 每 SLOW tick（10 tick）调 critic.verifyAll → success 的 complete
@@ -410,7 +335,7 @@ export class Heartbeat {
   }
 
   private async runCompanionTick(): Promise<void> {
-    const { bus, memory, atomic } = this.deps;
+    const { bus, memory } = this.deps;
     bus.drain();
 
     if (this.deps.asyncQueue) {
@@ -437,8 +362,8 @@ export class Heartbeat {
         });
         continue;
       }
-      if (this.cfg.blockingExecute) await this.runExecute(request, atomic, {} as WorldStateView);
-      else void this.runExecute(request, atomic, {} as WorldStateView);
+      if (this.cfg.blockingExecute) await this.runExecute(request);
+      else void this.runExecute(request);
     }
 
     const committed = memory.commitTick();
@@ -447,11 +372,12 @@ export class Heartbeat {
 
   private async runExecute(
     req: ActionRequest,
-    ctx: AtomicContext,
-    _world: WorldStateView,
+    safetyPolicy?: string,
   ): Promise<void> {
     const start = Date.now();
-    const result = await executeAtomic(req, ctx);
+    const result = safetyPolicy
+      ? await this.deps.body.executeSafety(req,safetyPolicy)
+      : await this.deps.body.executeTask(req);
     const elapsedMs = Date.now() - start;
     this.deps.bus.publish(result.ok ? 'exec.success' : 'exec.fail', 'info', {
       source: req.source,

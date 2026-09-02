@@ -11,7 +11,10 @@
  *   T7 · 路径前方关闭门 → 单次交互 · 不接管移动
  */
 
-import { describe, it } from 'node:test';
+import { describe, it as nodeIt } from 'node:test';
+import { withinBody } from '../../__tests__/mocks/withinBody.js';
+import type { ControlledExecutionContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/ports/controlledExecution.js';
+const it=(name:string,work:(scope:ControlledExecutionContext)=>unknown)=>nodeIt(name,()=>withinBody(async scope=>work(scope)));
 import assert from 'node:assert/strict';
 
 import { canonicalDoorPosition, DoorMonitor } from '../../../../../../apps/minecraft-companion/src/bot/v2/strategy/doorMonitor.js';
@@ -110,7 +113,7 @@ function doorBlock(name: string, x: number, y: number, z: number): RawBlock {
 
 describe('DoorMonitor · BUG-L1-02 v2', () => {
 
-  it('BUG-CROSS-08 · 仅普通双格门 upper 归一化到 lower', () => {
+  it('BUG-CROSS-08 · 仅普通双格门 upper 归一化到 lower', async (scope) => {
     assert.deepEqual(
       canonicalDoorPosition({ x: 1, y: 65, z: 2 }, 'oak_door', { half: 'upper' }),
       { x: 1, y: 64, z: 2 },
@@ -125,7 +128,7 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     );
   });
 
-  it('BUG-CROSS-08 · 路径命中 upper 时事件和交互都使用 lower 坐标', () => {
+  it('BUG-CROSS-08 · 路径命中 upper 时事件和交互都使用 lower 坐标', async (scope) => {
     const nav = new MockNav();
     nav.path = [{ x: 1, y: 65, z: 0 }];
     const game = new MockGame();
@@ -136,16 +139,16 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const bus = new EventBusV2();
     let detectedPos: Vec3 | null = null;
     bus.on('door.detected', ev => { detectedPos = (ev.payload as { pos: Vec3 }).pos; });
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, {} as never);
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
 
-    dm.tick();
+    await dm.tick(nav as never);
 
     assert.deepEqual(detectedPos, { x: 1, y: 64, z: 0 });
     assert.deepEqual(game.interactPositions, [{ x: 1, y: 64, z: 0 }]);
   });
 
   // T1 · 不在导航中 → tick 直接返回
-  it('T1 · isMoving=false · tick 不消费事件 · 不发 bus 事件', () => {
+  it('T1 · isMoving=false · tick 不消费事件 · 不发 bus 事件', async (scope) => {
     const nav = new MockNav();
     nav.moving = false;
     const game = new MockGame();
@@ -153,13 +156,13 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const events: string[] = [];
     bus.onAny(e => events.push(e.type));
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    await dm.tick(nav as never);
     assert.equal(events.length, 0);
   });
 
   // T2 · 路径前方有关闭 oak_door → 检测到 + door.detected 事件
-  it('T2 · 前方关闭 oak_door → publish door.detected 并单次开门', () => {
+  it('T2 · 前方关闭 oak_door → publish door.detected 并单次开门', async (scope) => {
     const nav = new MockNav();
     nav.path = [
       { x: 0, y: 64, z: 0 },
@@ -174,15 +177,15 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const events: string[] = [];
     bus.onAny(e => events.push(e.type));
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    await dm.tick(nav as never);
 
     assert.ok(events.includes('door.detected'), `events=${events.join(',')}`);
     assert.equal(game.interactPositions.length, 1, '物理开门必须只归 DoorMonitor 且只执行一次');
   });
 
   // T3 · 路径前方 open=true 的门 → 不发事件
-  it('T3 · 前方 oak_door 已 open=true → 不 publish door.detected', () => {
+  it('T3 · 前方 oak_door 已 open=true → 不 publish door.detected', async (scope) => {
     const nav = new MockNav();
     nav.path = [{ x: 1, y: 64, z: 0 }];
     const game = new MockGame();
@@ -193,14 +196,14 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const events: string[] = [];
     bus.onAny(e => events.push(e.type));
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    await dm.tick(nav as never);
 
     assert.ok(!events.includes('door.detected'), `events=${events.join(',')}`);
   });
 
   // T4 · 铁门 → door.blocked 事件
-  it('T4 · 前方 iron_door → publish door.blocked', () => {
+  it('T4 · 前方 iron_door → publish door.blocked', async (scope) => {
     const nav = new MockNav();
     nav.path = [{ x: 1, y: 64, z: 0 }];
     const game = new MockGame();
@@ -211,15 +214,15 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const events: string[] = [];
     bus.onAny(e => events.push(e.type));
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    await dm.tick(nav as never);
 
     assert.ok(events.includes('door.blocked'), `events=${events.join(',')}`);
     assert.ok(!events.includes('door.detected'));
   });
 
   // T5 · 5s 冷却内不重复触发
-  it('T5 · 连续 3 次 tick 同一关闭门 · door.detected 只发 1 次（冷却）', () => {
+  it('T5 · 连续 3 次 tick 同一关闭门 · door.detected 只发 1 次（冷却）', async (scope) => {
     const nav = new MockNav();
     nav.path = [{ x: 1, y: 64, z: 0 }];
     const game = new MockGame();
@@ -230,16 +233,16 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     let detectedCount = 0;
     bus.on('door.detected', () => detectedCount++);
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    dm.tick();
-    dm.tick();
-    dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    await dm.tick(nav as never);
+    await dm.tick(nav as never);
+    await dm.tick(nav as never);
 
     assert.equal(detectedCount, 1);
   });
 
   // T6 · 新契约：废除暴力穿门 —— 卡在门旁也绝不接管移动、不发 force_walk、不 nav.stop
-  it('T6 · 连续不动 + 附近有门(无路径) → 不发 force_walk · 不抢 forward · 不 nav.stop', () => {
+  it('T6 · 连续不动 + 附近有门(无路径) → 不发 force_walk · 不抢 forward · 不 nav.stop', async (scope) => {
     const nav = new MockNav();
     nav.moving = true;
     nav.path = []; // 无路径 → 穿门交给 A*，DoorMonitor 不应做任何事
@@ -252,8 +255,8 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const events: string[] = [];
     bus.onAny(e => events.push(e.type));
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    for (let i = 0; i < 20; i++) dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    for (let i = 0; i < 20; i++) await dm.tick(nav as never);
 
     assert.ok(!events.some(e => e.startsWith('door.force_walk')), `不应发 force_walk，实际 events=${events.join(',')}`);
     const fwd = game.controlLog.filter(e => Array.isArray(e) && e[0] === 'forward');
@@ -262,7 +265,7 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
   });
 
   // T7 · 路径前方关闭门 → 单次开门，全程不接管移动
-  it('T7 · 前方关闭门 → 单次开门 · 不接管 forward · 不 nav.stop', () => {
+  it('T7 · 前方关闭门 → 单次开门 · 不接管 forward · 不 nav.stop', async (scope) => {
     const nav = new MockNav();
     nav.moving = true;
     nav.path = [{ x: 0, y: 64, z: 0 }, { x: 1, y: 64, z: 0 }, { x: 2, y: 64, z: 0 }];
@@ -275,8 +278,8 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const events: string[] = [];
     bus.onAny(e => events.push(e.type));
 
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, { createTask: () => ({ id: "d" }), startEmergency: () => ({ ok: true }), complete: () => {} } as never);
-    for (let i = 0; i < 10; i++) dm.tick();
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
+    for (let i = 0; i < 10; i++) await dm.tick(nav as never);
 
     assert.ok(events.includes('door.detected'), `应检测到门，events=${events.join(',')}`);
     assert.equal(game.interactPositions.length, 1, 'DoorMonitor 只点击一次');
@@ -285,7 +288,7 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     assert.equal(nav.stopCalls, 0, 'DoorMonitor 不应 nav.stop');
   });
 
-  it('BUG-CROSS-08 · 普通门打开后把 facing/hinge 交给导航适配器穿门', async () => {
+  it('BUG-CROSS-08 · 普通门打开后把 facing/hinge 交给导航适配器穿门', async (scope) => {
     const nav = new MockNav();
     nav.path = [{ x: 1, y: 64, z: 0 }];
     const game = new MockGame();
@@ -296,9 +299,9 @@ describe('DoorMonitor · BUG-L1-02 v2', () => {
     const bus = new EventBusV2();
     let passed = 0;
     bus.on('door.passed', () => passed++);
-    const dm = new DoorMonitor(nav, game as unknown as GameAdapter, bus, {} as never);
+    const dm = new DoorMonitor(game as never,game as never,scope,bus);
 
-    dm.tick();
+    await dm.tick(nav as never);
     await new Promise(resolve => setTimeout(resolve, 450));
 
     assert.equal(nav.passageCalls.length, 1);

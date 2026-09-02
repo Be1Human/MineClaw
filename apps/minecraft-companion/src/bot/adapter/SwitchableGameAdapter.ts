@@ -1,4 +1,5 @@
 import type { GameAdapter } from './GameAdapter.js';
+import type { BoundGameActions, DeviceExecutionScope } from './GameActions.js';
 import type {
   ChestOpResult,
   ControlKey,
@@ -26,7 +27,7 @@ import type {
  * 进/退游戏时只 setTarget(真身体 ↔ Null)，子模块无感知。
  *
  * 两个职责：
- *  ① 方法委托：所有查询/动作转发到当前 target。
+ *  ① 方法委托：查询转发到当前 target；动作在绑定时固定 target。
  *  ② 订阅簿记 + 重放：on* 注册的监听记账，setTarget 时把在册监听重挂到新 target、
  *     旧 target 解绑——子模块的订阅跨身体切换存活。
  */
@@ -47,6 +48,19 @@ export class SwitchableGameAdapter implements GameAdapter {
       try { rec.unsub(); } catch { /* 旧 target 解绑失败不阻断切换 */ }
       rec.unsub = rec.rebind(next);
     }
+  }
+
+  bind(scope: DeviceExecutionScope): BoundGameActions {
+    const target = this.target;
+    const check = (stage?: string) => {
+      scope.assertCurrent(stage);
+      if (this.target !== target) throw new Error('device_generation_changed');
+    };
+    return target.bind({
+      signal: scope.signal, assertCurrent: check,
+      effect: run => scope.effect(() => { check('device_dispatch'); return run(); }),
+      wait: ms => scope.wait(ms),
+    });
   }
 
   /** 当前底层身体（调试/测试用）。 */
@@ -99,45 +113,10 @@ export class SwitchableGameAdapter implements GameAdapter {
   getOffhandItem(): RawItem | null { return this.target.getOffhandItem(); }
   getEffects(): RawEffect[] { return this.target.getEffects(); }
   getOxygen(): number { return this.target.getOxygen(); }
-
-  // ── 低级控制 ──────────────────────────────────────────
-  setControlState(key: ControlKey, value: boolean): void { this.target.setControlState(key, value); }
-  clearControlStates(): void { this.target.clearControlStates(); }
-  lookAt(target: Vec3, force?: boolean): Promise<void> { return this.target.lookAt(target, force); }
-  look(yaw: number, pitch: number, force?: boolean): Promise<void> { return this.target.look(yaw, pitch, force); }
   chat(message: string): void { this.target.chat(message); }
-
-  // ── 原子动作 ──────────────────────────────────────────
-  attack(entityId: number): void { this.target.attack(entityId); }
-  dig(pos: Vec3): Promise<void> { return this.target.dig(pos); }
-  equip(itemName: string, destination?: EquipDestination): Promise<void> { return this.target.equip(itemName, destination); }
-  toss(itemName: string, count?: number): Promise<number> { return this.target.toss(itemName, count); }
-  activateItem(offHand?: boolean): void { this.target.activateItem(offHand); }
-  deactivateItem(): void { this.target.deactivateItem(); }
   getBlockProperties(pos: Vec3): Record<string, string> | null { return this.target.getBlockProperties(pos); }
-  interactBlock(pos: Vec3): Promise<void> { return this.target.interactBlock(pos); }
-  placeBlock(block: RawBlock, faceVector: Vec3): Promise<void> { return this.target.placeBlock(block, faceVector); }
-
-  // ── 生存 / 容器 ───────────────────────────────────────
-  consume(): Promise<boolean> { return this.target.consume(); }
   findBestFood(): string | null { return this.target.findBestFood(); }
-  sleep(pos: Vec3): Promise<void> { return this.target.sleep(pos); }
-  wake(): Promise<void> { return this.target.wake(); }
   findNearbyBed(maxDistance: number): Vec3 | null { return this.target.findNearbyBed(maxDistance); }
-  depositToChest(chestPos: Vec3, itemName: string, count: number): Promise<ChestOpResult> {
-    return this.target.depositToChest(chestPos, itemName, count);
-  }
-  withdrawFromChest(chestPos: Vec3, itemName: string, count: number): Promise<ChestOpResult> {
-    return this.target.withdrawFromChest(chestPos, itemName, count);
-  }
-
-  // ── 合成 / 配方 ───────────────────────────────────────
-  craft(itemName: string, count: number, tablePos: Vec3 | null): Promise<CraftResult> {
-    return this.target.craft(itemName, count, tablePos);
-  }
-  smelt(furnacePos: Vec3, input: string, fuel: string, count: number): Promise<SmeltResult> {
-    return this.target.smelt(furnacePos, input, fuel, count);
-  }
   getCraftRecipes(itemName: string, withTable: boolean): RecipeInfo[] { return this.target.getCraftRecipes(itemName, withTable); }
   getItemSource(itemName: string): ItemSource | null { return this.target.getItemSource(itemName); }
 

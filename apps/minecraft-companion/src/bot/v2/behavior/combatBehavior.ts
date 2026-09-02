@@ -3,12 +3,7 @@
  *
  * id: 'combat'
  *
- * plan() 保留静态兼容路径；run() 为生产自适应路径，每个短动作后重读世界。
- * 静态 plan() 序列：
- *   1. look_at   → 锁定目标实体
- *   2. equip    → 装备最佳武器（从背包找剑，找不到则空手）
- *   3. move_to   → 接近到 2 格以内（stopRadius: 2）
- *   4. attack    → 挥击一次
+ * 每个短动作后重读世界；等待和子动作均由所属操作控制取消。
  *
  * params:
  *   targetEntityId: number         — 要攻击的实体 id
@@ -18,8 +13,7 @@
  */
 
 import type {
-  IBehavior,
-  BehaviorContext,
+  AdaptiveBehavior,
   AdaptiveBehaviorContext,
   AdaptiveBehaviorResult,
 } from './types.js';
@@ -75,79 +69,9 @@ function pickBestWeapon(items: { name: string }[]): string | null {
   return best;
 }
 
-export class CombatBehavior implements IBehavior {
+export class CombatBehavior implements AdaptiveBehavior {
+  readonly kind = 'adaptive' as const;
   readonly id = 'combat';
-
-  plan(ctx: BehaviorContext): ActionRequest[] {
-    const targetEntityId = ctx.taskParams?.targetEntityId as number | undefined;
-    if (targetEntityId == null) return [];
-
-    const weaponName = pickBestWeapon(ctx.world.inventory.items);
-    const ts = Date.now();
-    const seq: ActionRequest[] = [];
-
-    // 1. look_at — 锁定目标
-    seq.push({
-      id: `${SOURCE}-look-${ts}`,
-      source: SOURCE,
-      type: 'look_at',
-      priority: 60,
-      interrupt_level: 'hard',
-      resource: ['vision'],
-      target: { entityId: targetEntityId },
-      preconditions: [],
-      expected_effect: ['facing_target'],
-      timeout_ms: 1500,
-    });
-
-    // 2. equip — 仅装备背包里真实存在的武器；没有武器时允许空手。
-    if (weaponName) {
-      seq.push({
-        id: `${SOURCE}-equip-${ts}`,
-        source: SOURCE,
-        type: 'equip',
-        priority: 60,
-        interrupt_level: 'soft',
-        resource: ['inventory'],
-        target: { itemName: weaponName },
-        preconditions: [],
-        expected_effect: ['weapon_equipped'],
-        timeout_ms: 2000,
-      });
-    }
-
-    // 3. move_to — 接近到 2 格以内。实体快照可能晚于行为计划，
-    // atomic 支持 entityId 目标并会在执行时读取最新实体位置。
-    const targetEntity = ctx.world.entities.find(e => e.id === targetEntityId);
-    seq.push({
-      id: `${SOURCE}-moveto-${ts}`,
-      source: SOURCE,
-      type: 'move_to',
-      priority: 60,
-      interrupt_level: 'soft',
-      resource: ['movement'],
-      target: { entityId: targetEntityId, ...(targetEntity?.position ? { position: targetEntity.position } : {}) },
-      preconditions: [],
-      expected_effect: ['in_melee_range'],
-      timeout_ms: 8000,
-    });
-
-    // 4. attack — 挥击一次
-    seq.push({
-      id: `${SOURCE}-attack-${ts}`,
-      source: SOURCE,
-      type: 'attack',
-      priority: 62,
-      interrupt_level: 'hard',
-      resource: ['movement', 'vision'],
-      target: { entityId: targetEntityId },
-      preconditions: [],
-      expected_effect: ['hostile_damaged'],
-      timeout_ms: 1200,
-    });
-
-    return seq;
-  }
 
   async run(ctx: AdaptiveBehaviorContext): Promise<AdaptiveBehaviorResult> {
     const startedAt = Date.now();
@@ -192,7 +116,7 @@ export class CombatBehavior implements IBehavior {
             details: { cleared: true, attacks, moves, eats, emptySnapshots },
           };
         }
-        await delay(150);
+        await ctx.wait(150);
         continue;
       }
       emptySnapshots = 0;
@@ -216,7 +140,7 @@ export class CombatBehavior implements IBehavior {
         // natural regeneration. Keep the target at a safe distance and let the
         // next world snapshot observe health recovery instead of retrying eat.
         if (target.distance > SAFE_EAT_DISTANCE && world.self.food >= 20) {
-          await delay(750);
+          await ctx.wait(750);
           continue;
         }
         if (target.distance <= SAFE_EAT_DISTANCE) {
@@ -291,7 +215,7 @@ export class CombatBehavior implements IBehavior {
         action: attackType,
         attacks,
       });
-      if (attackType === 'attack') await delay(ATTACK_COOLDOWN_MS);
+      if (attackType === 'attack') await ctx.wait(ATTACK_COOLDOWN_MS);
     }
 
     return {
@@ -373,8 +297,4 @@ function failedAction(
     error: `combat_${action}_failed: ${error ?? 'unknown error'}`,
     details,
   };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }

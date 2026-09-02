@@ -1,38 +1,18 @@
 ---
 name: 资源决策
 agent: goal
-description: 当合成/任务卡在缺料、要决定用哪种替代品时使用。例：缺铁矿但有铜矿，让 policy 决定能不能替代。一般是其他 skill 内部串联调用，主人不会直接说"资源决策"。
+description: 缺材料或工具时，从观察、配方与可用操作形成有因果关系的补给步骤；不擅自替换物品或扩大资源权限。
 category: meta
-uses: [resolve_resource, decide_with_policy, ask_master, say]
+triggers: [缺料, 缺工具, 材料不足, 补给]
+uses: [world_observe, knowledge_search, knowledge_get, capability_search, capability_get, plan_read, plan_commit, action_list, action_execute, progress_verify, owner_ask]
 ---
 
-# 资源决策 · Skill
+# 资源决策
 
-## 何时用我
+程序负责执行授权，模型只在已知操作和真实资源证据之间选择路径。
 
-**通常被其他 skill 内部串联**，不是主人直接触发的：
-- 合成卡在缺料 → 走本 skill 查替代品
-- 多个候选不知道选哪个 → policy 帮你定
+读取新鲜库存、相关配方和能力详情，区分缺材料、缺工具、缺位置与根本没有执行能力。
+通过 plan_read / plan_commit 表达必要前置步骤，再从 action_list 选择候选执行并验真，不改小最终目标。
+容器必须有授权，采料不能无界扩大范围，替代配方须有知识依据；铜不能因为看起来也是金属就替代铁。
 
-## 执行步骤
-
-1. **找候选**：
-   ```
-   resolve_resource({
-     kind: "item",
-     name: "<物品名>",
-     minDurability: 100   // 可选
-   })
-   ```
-   返回 `candidates: [{summary, satisfaction:"full"/"partial"/"none", partialAmount?, estimatedCostSec}]`
-2. **policy 决策**：`decide_with_policy({})`（无参数；policy 自动取上一次 resolve_resource 结果）
-3. **按结果走**：
-   - `kind: "auto"` → 用 `chosen`，调对应工具
-   - `kind: "ask_master"` → 立即 `ask_master(question)` 反问主人
-   - `kind: "escalate_llm"` → 自己从 candidates 里挑（看 estimatedCostSec 取小的）
-   - `kind: "no_solution"` → say 告诉主人办不到
-
-## 不要
-
-- ❌ 跳过 resolve_resource 直接 ask_master（先看选项再决定）
-- ❌ policy 说 ask_master 但你擅自决策（policy 优先于自我判断）
+确需用户选择目标或授权范围时 owner_ask；缺框架能力则准确报告，不能无限请求用户换说法。

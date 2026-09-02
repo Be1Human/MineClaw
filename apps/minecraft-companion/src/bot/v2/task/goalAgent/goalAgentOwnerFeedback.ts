@@ -67,7 +67,7 @@ export function computeOwnerFeedback(input: OwnerFeedbackInput): GoalAgentOwnerF
       const tried = failure ? `最近失败：${failure.detail ?? failureCode}` : '已尝试搜索但无结果';
       return {
         kind: 'blocked',
-        summary: `连续 ${input.emptySearchStreak} 次知识/技能/能力搜索都没有结果，${tried}。我暂时找不到可执行的路径，先停下来向主人说明，不再空转。`,
+        summary: `连续 ${input.emptySearchStreak} 次知识/技能/能力搜索都没有结果，${tried}。我暂时找不到可执行的路径，会在限定的恢复次数内检查其他合法办法。`,
         evidenceRefs: ['goalagent:empty_search_streak', ...(failure?.evidenceRefs ?? [])],
         ownerActionable: false,
       };

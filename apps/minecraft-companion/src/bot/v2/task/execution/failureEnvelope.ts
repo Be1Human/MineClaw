@@ -1,37 +1,4 @@
-export type FailureOrigin =
-  | 'decision'
-  | 'contract'
-  | 'atomic'
-  | 'behavior'
-  | 'navigation'
-  | 'perception'
-  | 'environment'
-  | 'infra'
-  | 'safety';
-
-export type FailureStage = 'deciding' | 'preparing' | 'executing' | 'observing' | 'verifying';
-
-export type FailureCategory =
-  | 'contract'
-  | 'precondition'
-  | 'resource'
-  | 'navigation'
-  | 'environment'
-  | 'transient'
-  | 'timeout'
-  | 'cancelled'
-  | 'fatal';
-
-export interface FailureEnvelope {
-  code: string;
-  origin: FailureOrigin;
-  stage: FailureStage;
-  category: FailureCategory;
-  retryable: boolean;
-  ownerActionable: boolean;
-  evidenceRefs: string[];
-  detail?: string;
-}
+import type { FailureOrigin, FailureCategory, FailureEnvelope } from '../contracts/failureEnvelope.js';
 
 export function isFailureEnvelope(value: unknown): value is FailureEnvelope {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

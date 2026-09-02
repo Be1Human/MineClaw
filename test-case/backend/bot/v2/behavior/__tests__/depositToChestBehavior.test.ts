@@ -18,7 +18,7 @@ function world(): WorldStateView {
 }
 
 test('BUG-CROSS-61 · chest deposit approaches the chest before depositing the exact count', () => {
-  const actions = new DepositToChestBehavior().plan({
+  const actions = new DepositToChestBehavior().compile({
     world: world(),
     taskParams: { chestPos: { x: 5, y: 64, z: 2 }, item: 'cobblestone', count: 16 },
   });
@@ -31,6 +31,6 @@ test('BUG-CROSS-61 · chest deposit approaches the chest before depositing the e
 
 test('BUG-CROSS-61 · invalid deposit parameters fail closed with no actions', () => {
   const behavior = new DepositToChestBehavior();
-  assert.deepEqual(behavior.plan({ world: world(), taskParams: { item: 'cobblestone' } }), []);
-  assert.deepEqual(behavior.plan({ world: world(), taskParams: { chestPos: { x: 1, y: 2, z: 3 } } }), []);
+  assert.deepEqual(behavior.compile({ world: world(), taskParams: { item: 'cobblestone' } }), []);
+  assert.deepEqual(behavior.compile({ world: world(), taskParams: { chestPos: { x: 1, y: 2, z: 3 } } }), []);
 });

@@ -1,4 +1,6 @@
 import type { WorldStateView } from '../../types.js';
+import { GoalProgressGuard, goalProgress } from './goalProgressGuard.js';
+import { tuning } from '../../infra/tuning.js';
 import {
   assertGoalAgentStateV1,
   cloneGoalAgentState,
@@ -76,13 +78,11 @@ export class GoalAgentRoundLoop {
   private readonly deadlineClock: GoalAgentDeadlineClock;
   private readonly locks = new Map<string, Promise<void>>();
   private readonly aborts = new Map<string, { epoch: number; controller: AbortController }>();
-  /** BUG-CROSS-80 · 每个会话已发过的主人反馈 kind（防重复打扰）。 */
-  private readonly sentFeedbackKinds = new Map<string, Set<GoalAgentOwnerFeedbackKind>>();
-  /** BUG-CROSS-80 · 每个会话连续未调用 action_execute 的轮数（观察/搜索循环检测）。 */
-  private readonly inactiveRoundsBySession = new Map<string, number>();
+  private readonly progressGuard: GoalProgressGuard;
 
   constructor(private readonly options: GoalAgentRoundLoopOptions) {
     this.tools = options.tools ?? {};
+    this.progressGuard = new GoalProgressGuard(this.tools.progress);
     this.now = options.now ?? (() => new Date().toISOString());
     this.nowMs = options.nowMs ?? (() => Date.now());
     this.maxRoundsPerRun = options.maxRoundsPerRun ?? 24;
@@ -260,6 +260,8 @@ export class GoalAgentRoundLoop {
       next.owner = { question: null, answer: answer.trim(), requestedAt: current.owner.requestedAt, answeredAt: next.updatedAt };
       next.interpretation.clarificationReason = null;
       next.verdict = null;
+      const progress = goalProgress(next);
+      progress.mode = 'recovery'; progress.waiting = null; progress.recoveryStartedRound = progress.rounds;
       appendTimeline(next, 'transition', 'owner answer received; continue same round loop', [], { role: roleFor(next) });
       const persisted = this.options.store.commit({
         expectedRevision: current.revision,
@@ -283,6 +285,16 @@ export class GoalAgentRoundLoop {
     let state = this.requireExisting(sessionId);
     for (let round = 0; round < maxRounds; round += 1) {
       if (isGoalAgentTerminalPhase(state.phase) || state.phase === 'paused_owner') return state;
+      if (state.progress?.waiting) {
+        if (this.nowMs() < Math.min(state.progress.waiting.nextCheckAt, state.progress.waiting.deadlineAt)) return state;
+        try { state = await this.pollWaiting(state); }
+        catch (error) {
+          if (error instanceof GoalAgentDeadlineExceededError) return this.commitTimedOut(state, error);
+          if (this.controllerFor(state.sessionId, state.epoch).signal.aborted) return this.requireExisting(sessionId);
+          throw error;
+        }
+        if (state.progress?.waiting || state.terminal || state.phase === 'paused_owner') return state;
+      }
       const stepRole = roleFor(state);
       const controller = this.controllerFor(state.sessionId, state.epoch);
       const deadline = this.deadlineFor(state);
@@ -342,6 +354,11 @@ export class GoalAgentRoundLoop {
           next.phase = 'running';
           next.activeNode = 'round';
         }
+        const catalogVersion = [...new Set(this.options.capabilities?.list().flatMap(value => 'catalogVersion' in value ? [value.catalogVersion] : []) ?? [])].sort().join('|');
+        const progressTransition = this.progressGuard.afterRound(next, this.nowMs(), catalogVersion, receipts.some(value => value.name === 'action_execute'));
+        if (progressTransition) appendTimeline(next, 'transition', progressTransition, next.verdict?.evidenceRefs ?? [], { progressMode: next.progress?.mode });
+        // Persist notification dedupe in the same checkpoint as the decision, before publishing it.
+        const feedback = this.evaluateOwnerFeedback(next, receipts);
         appendTimeline(next, 'model_call', `round ${response.modelCallIndex}: ${stepRole}`, receipts.flatMap(value => value.receipt.evidenceRefs), {
           modelCallIndex: response.modelCallIndex,
           role: stepRole,
@@ -366,11 +383,10 @@ export class GoalAgentRoundLoop {
           ...(terminal ? { outcome: state.terminal?.outcome } : {}),
         });
         // BUG-CROSS-80 · 每轮提交后判定主人反馈（空搜索/预算/缺料求助），命中即经事件投影
-        const feedback = this.evaluateOwnerFeedback(state, receipts);
         if (feedback) {
           this.publish('goalagent.owner.feedback', state, { feedback });
         }
-        if (terminal || state.phase === 'paused_owner') return state;
+        if (terminal || state.phase === 'paused_owner' || state.progress?.waiting) return state;
       } catch (error) {
         if (error instanceof GoalAgentDeadlineExceededError) return this.commitTimedOut(state, error);
         if (controller.signal.aborted) return this.requireExisting(sessionId);
@@ -387,27 +403,52 @@ export class GoalAgentRoundLoop {
     state: GoalAgentStateV1,
     receipts: Array<{ callId: string; name: string; receipt: GoalAgentRoundToolReceipt }>,
   ): GoalAgentOwnerFeedback | null {
-    const sent = this.sentFeedbackKinds.get(state.sessionId) ?? new Set<GoalAgentOwnerFeedbackKind>();
+    if (state.terminal || state.phase === 'paused_owner' || state.progress?.waiting) return null;
+    const progress = goalProgress(state);
+    const sent = new Set(progress.sentFeedbackKinds as GoalAgentOwnerFeedbackKind[]);
     const actionListReceipt = receipts.find(value => value.name === 'action_list');
     const candidates = actionListReceipt?.receipt.content.candidates;
     const lastCandidateCount = Array.isArray(candidates) ? candidates.length : null;
-    const acted = receipts.some(value => value.name === 'action_execute');
-    const inactiveRounds = acted
-      ? 0
-      : (this.inactiveRoundsBySession.get(state.sessionId) ?? 0) + 1;
-    this.inactiveRoundsBySession.set(state.sessionId, inactiveRounds);
     const feedback = computeOwnerFeedback({
       state,
-      emptySearchStreak: this.toolRuntime.emptySearchStreak(state.sessionId),
+      emptySearchStreak: progress.emptySearchStreak,
       lastCandidateCount,
-      inactiveRounds,
+      inactiveRounds: progress.inactiveRounds,
       alreadySentKinds: sent,
     });
     if (feedback) {
       sent.add(feedback.kind);
-      this.sentFeedbackKinds.set(state.sessionId, sent);
+      progress.sentFeedbackKinds = [...sent];
     }
     return feedback;
+  }
+
+  private async pollWaiting(current: GoalAgentStateV1): Promise<GoalAgentStateV1> {
+    const next = cloneGoalAgentState(current);
+    next.revision++; next.updatedAt = this.now();
+    const controller = this.controllerFor(next.sessionId, next.epoch);
+    const wait = next.progress!.waiting!;
+    let observation: GoalAgentRoundToolReceipt | null = null;
+    if (this.nowMs() < wait.deadlineAt) {
+      let rejectAbort: () => void = () => {};
+      const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = () => reject(Object.assign(new Error('world wait aborted'), { name: 'AbortError' })); });
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+      const deadline = this.deadlineFor(next);
+      try {
+        observation = await runWithGoalAgentDeadline({ controller, scope: deadline.scope,
+          timeoutMs: Math.min(deadline.timeoutMs, wait.deadlineAt - this.nowMs(), tuning().goalProgress.waitObservationTimeoutMs), clock: this.deadlineClock,
+          operation: () => Promise.race([this.toolRuntime.execute({ id: `wait:${next.revision}`, name: 'world_observe', arguments: {} }, next, controller.signal), aborted]),
+        });
+      } finally { controller.signal.removeEventListener('abort', rejectAbort); }
+    }
+    if (controller.signal.aborted) return this.requireExisting(next.sessionId);
+    const transition = this.progressGuard.pollWaiting(next, this.nowMs());
+    if (next.terminal && next.progress) { next.progress.waiting = null; next.progress.mode = next.terminal.outcome === 'completed' ? 'running' : 'failed'; }
+    appendTimeline(next, 'observation', transition ?? 'world wait verified', observation?.evidenceRefs ?? [], { source: 'bounded_world_wait', modelInvoked: false });
+    const state = this.options.store.commit({ expectedRevision: current.revision, expectedEpoch: current.epoch, state: next,
+      messages: [{ role: 'system', content: `[Bounded world wait] ${transition ?? next.terminal?.summary ?? 'checked'}; ${observation?.summary ?? ''}` }] });
+    this.publish(state.terminal ? 'goalagent.session.terminal' : 'goalagent.wait.checked', state, { transition, ...(state.terminal ? { outcome: state.terminal.outcome } : {}) });
+    return state;
   }
 
   private handlePlainResponse(
@@ -458,6 +499,7 @@ export class GoalAgentRoundLoop {
         completedAt: next.updatedAt,
         evidenceRefs: [...new Set(evidenceRefs)],
       };
+      if (next.progress) { next.progress.waiting = null; next.progress.mode = outcome === 'completed' ? 'running' : 'failed'; }
       if (outcome === 'failed') {
         next.verdict = {
           decision: 'fail', summary: next.terminal.summary, machineCriteriaSatisfied: false,
@@ -484,6 +526,7 @@ export class GoalAgentRoundLoop {
       ownerActionable: false, retryable: false, evidenceRefs: [evidenceRef],
     };
     next.terminal = { outcome: 'timed_out', summary: error.message, completedAt: next.updatedAt, evidenceRefs: [evidenceRef] };
+    if (next.progress) { next.progress.waiting = null; next.progress.mode = 'failed'; }
     appendTimeline(next, 'terminal', error.message, [evidenceRef], { deadlineScope: error.scope, timeoutMs: error.timeoutMs });
     const persisted = this.options.store.commit({ expectedRevision: current.revision, expectedEpoch: current.epoch, state: next });
     this.publish('goalagent.session.terminal', persisted, { outcome: 'timed_out', runtime: 'continuous_round_loop' });

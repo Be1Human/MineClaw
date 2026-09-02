@@ -2,6 +2,7 @@ import type { GoalAgentStateV1 } from '../goalAgentState.js';
 
 export interface GoalAgentVerificationResult {
   ok: boolean;
+  status?: 'satisfied' | 'unsatisfied' | 'unknown';
   detail: string;
   evidenceRefs: string[];
 }

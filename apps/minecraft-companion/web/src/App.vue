@@ -1631,7 +1631,7 @@ onMounted(() => {
 .perception-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(151,184,151,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(151,184,151,.035) 1px,transparent 1px); background-size:32px 32px; }
 .perception-grid::before { position:absolute; inset:0; background-image:linear-gradient(rgba(105,201,74,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(105,201,74,.04) 1px,transparent 1px); background-size:160px 160px; content:''; }
 .perception-vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 62% 66% at 50% 48%,rgba(25,45,29,.14),transparent 65%),linear-gradient(180deg,rgba(4,8,5,.08),rgba(4,8,5,.3)); }
-.perception-scene { position:absolute; z-index:1; inset:0; }
+.perception-scene { --perception-hud-top-safe-area:112px; position:absolute; z-index:1; inset:0; }
 .perception-camera-controls { position:absolute; z-index:3; top:66px; left:50%; display:flex; gap:8px; transform:translateX(-50%); }
 .stage-button { display:inline-flex; min-height:34px; align-items:center; gap:7px; padding:7px 12px; cursor:pointer; background:rgba(17,24,19,.9); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:var(--mc-type-body); font-weight:700; white-space:nowrap; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast),color var(--mc-duration-fast); backdrop-filter:blur(10px); }
 .stage-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }

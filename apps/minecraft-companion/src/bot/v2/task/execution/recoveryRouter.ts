@@ -1,4 +1,4 @@
-import type { FailureEnvelope } from './failureEnvelope.js';
+import type { FailureEnvelope } from '../contracts/failureEnvelope.js';
 
 export type RecoveryRoute =
   | { kind: 'correct_proposal'; feedback: string }

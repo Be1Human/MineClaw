@@ -1,10 +1,11 @@
 import type { ParentGoalTargetKind } from '../task/planner/plannerContracts.js';
+import { jsonSnapshot } from '../infra/jsonSnapshot.js';
 
 export type GoalTargetCriterionTemplate =
   | { type: 'inventory'; item: string; count: number | '$quantity' }
   | { type: 'entity_dead'; entityName: string }
   | { type: 'reached'; relativeTo: 'owner'; radius: number }
-  | { type: 'predicate'; predicate: string };
+  | { type: 'predicate'; predicate: string; predicateVersion?: string; args?: Readonly<Record<string, unknown>> };
 
 export interface GoalTargetDefinition {
   kind: ParentGoalTargetKind;
@@ -103,7 +104,7 @@ export class InMemoryGoalKnowledgePort implements GoalKnowledgePort {
         aliases: Object.freeze([...new Set(definition.aliases.map(normalizeSurface).filter(Boolean))]),
         taskFamilies: Object.freeze([...new Set(definition.taskFamilies)]),
         ...(definition.successCriteria ? {
-          successCriteria: Object.freeze(definition.successCriteria.map(value => Object.freeze({ ...value }))),
+          successCriteria: jsonSnapshot([...definition.successCriteria]),
         } : {}),
       }));
     }
@@ -163,7 +164,7 @@ function cloneDefinition(definition: GoalTargetDefinition): GoalTargetDefinition
     ...definition,
     aliases: [...definition.aliases],
     taskFamilies: [...definition.taskFamilies],
-    ...(definition.successCriteria ? { successCriteria: definition.successCriteria.map(value => ({ ...value })) } : {}),
+    ...(definition.successCriteria ? { successCriteria: structuredClone(definition.successCriteria) } : {}),
   };
 }
 

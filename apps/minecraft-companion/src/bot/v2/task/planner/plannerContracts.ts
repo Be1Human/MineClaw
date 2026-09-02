@@ -18,7 +18,7 @@ export interface GoalContract {
   metadata?: Record<string, unknown>;
 }
 
-export type AgentGoalOutcome = 'obtain' | 'deliver' | 'deposit' | 'place' | 'reach' | 'build' | 'defeat' | 'explore' | 'survive';
+export type AgentGoalOutcome = 'obtain' | 'deliver' | 'deposit' | 'place' | 'reach' | 'build' | 'defeat' | 'explore' | 'survive' | 'composed';
 export type ParentGoalTargetKind = 'item' | 'entity' | 'location' | 'structure' | 'state';
 
 export interface CommittedAgentGoal {
@@ -43,10 +43,12 @@ export interface GoalSignature {
   quantity: number;
   constraintsHash: string;
   compatibleTaskFamilies: readonly string[];
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
 }
 
 export interface PlanNode {
+  /** Only the composed-goal authority may populate this code-verified binding. */
+  causal?: import('../contracts/goalPlanOperation.js').BoundGoalPlanOperation;
   id: string;
   goal: GoalContract;
   state: 'pending' | 'ready' | 'dispatched' | 'satisfied' | 'failed' | 'skipped' | 'needs_replan';

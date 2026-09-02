@@ -34,6 +34,15 @@ import {
 import type { GoalAgentStateV1 } from './goalAgentState.js';
 import type { GoalAgentTools } from './goalAgentRuntimeContracts.js';
 import { stableJson } from './goalAgentJson.js';
+import { tuning } from '../../infra/tuning.js';
+import { GoalAgentCandidateAuthority, prepareCandidateArguments } from './goalAgentCandidateAuthority.js';
+import type { GoalAgentActionCandidate } from './ports/executionPort.js';
+import { parseWorldFactRequests } from './goalAgentFactRequests.js';
+import type { WorldFactRequest } from '../contracts/worldFact.js';
+import { GOAL_DRAFT_SCHEMA } from '../contracts/goalDraft.js';
+import { GOAL_AGENT_STATE_SCHEMA_V2 } from './goalAgentState.js';
+import type { GoalPlanNodeProposal } from '../contracts/goalPlanOperation.js';
+import { goalProgress } from './goalProgressGuard.js';
 
 export interface GoalAgentRoundToolCall {
   id: string;
@@ -84,10 +93,9 @@ export class GoalAgentRoundToolRuntime {
   private readonly encoder = new ContextEncoder();
   private readonly signatures = new GoalSignatureCompiler();
   private readonly verifier = new PlanVerifier();
+  private readonly candidateAuthority = new GoalAgentCandidateAuthority();
   private readonly now: () => string;
   private readonly goalId: () => string;
-  /** BUG-CROSS-80 · 每个会话连续空搜索（knowledge/skill/capability）次数，供反馈协议读取。 */
-  private readonly emptySearchStreaks = new Map<string, number>();
 
   constructor(private readonly options: GoalAgentRoundToolRuntimeOptions) {
     if (!options.profileId.trim()) throw new Error('GoalAgent round tools require profileId');
@@ -110,17 +118,9 @@ export class GoalAgentRoundToolRuntime {
     return [...this.registry.keys()].sort((left, right) => left.localeCompare(right));
   }
 
-  /** BUG-CROSS-80 · 当前会话连续空搜索结果次数（反馈协议判定用）。 */
-  emptySearchStreak(sessionId: string): number {
-    return this.emptySearchStreaks.get(sessionId) ?? 0;
-  }
-
-  private noteSearchResult(sessionId: string, empty: boolean): void {
-    if (empty) {
-      this.emptySearchStreaks.set(sessionId, this.emptySearchStreak(sessionId) + 1);
-    } else {
-      this.emptySearchStreaks.delete(sessionId);
-    }
+  private noteSearchResult(state: GoalAgentStateV1, empty: boolean): void {
+    const progress = goalProgress(state);
+    progress.emptySearchStreak = empty ? progress.emptySearchStreak + 1 : 0;
   }
 
   async execute(
@@ -153,7 +153,9 @@ export class GoalAgentRoundToolRuntime {
       this.tool('goal_get_target', 'Read one controlled target definition by registryId.', {
         registryId: { type: 'string' },
       }, ['registryId'], (state, args) => this.getTarget(state, args)),
-      this.tool('goal_create', 'Create the durable root goal after selecting a controlled target. outcome must faithfully reflect the player intent: "给我/交给/递给/拿给/扔给/交给玩家 X" or "give/deliver/bring X to me" requires outcome=deliver; only "做/造/采/获得 X" without handover wording may use outcome=obtain. A deliver goal is only complete after the item is really handed to the owner, never when it merely sits in your inventory.', {
+      this.tool('goal_create', 'Create an immutable root goal. Default/template mode selects a controlled target. With mode=composed, submit draft containing versioned registered predicates and targetRefs from world_observe.goalBindings; preserve every required target/predicate and original scope. No template is required, but unbound scopes and unsupported predicates are rejected. Template outcome must reflect intent: 给我/交给/递给 or give/deliver/bring requires deliver, not merely inventory obtain.', {
+        mode: { type: 'string', enum: ['template', 'composed'] },
+        draft: GOAL_DRAFT_SCHEMA,
         outcome: { type: 'string', enum: [...OUTCOMES] },
         target: {
           type: 'object',
@@ -175,14 +177,22 @@ export class GoalAgentRoundToolRuntime {
           required: ['relativeTo', 'relation'],
         },
         constraints: { type: 'array', items: { type: 'string' } },
-      }, ['outcome', 'target'], (state, args) => this.createGoal(state, args)),
-      this.tool('world_observe', 'Read a fresh bounded world snapshot. Use before planning, answering queries and after environmental change.', {}, [],
-        (state, _args, signal) => this.observeWorld(state, signal)),
+      }, [], (state, args) => this.createGoal(state, args), {
+        anyOf: [
+          { required: ['mode', 'draft'], properties: { mode: { const: 'composed' } } },
+          { required: ['outcome', 'target'], properties: { mode: { const: 'template' } } },
+        ],
+      }),
+      this.tool('world_observe', 'Read a fresh bounded world snapshot. Optional factRequests use registered read-only Providers discovered via capability_get; their closed input schemas and versions are enforced. Requests are refreshed after subsequent actions.', {
+        factRequests: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['providerId', 'version', 'params'],
+          properties: { providerId: { type: 'string' }, version: { type: 'string' }, params: { type: 'object' } } } },
+      }, [], (state, args, signal) => this.observeWorld(state, signal, true,
+        args.factRequests === undefined ? undefined : parseWorldFactRequests(args.factRequests))),
       this.tool('experience_load', 'Load relevant prior execution experience. Requires both goal_create and world_observe to have succeeded first.', {}, [],
         state => this.loadExperience(state)),
       this.tool('plan_read', 'Read the current plan, machine-required milestones and active task.', {}, [],
         state => this.readPlan(state)),
-      this.tool('plan_commit', 'Create or replace the current machine-verifiable task plan. Copy authoritative criteria exactly from goal_create.successCriteria and plan_read.requiredMilestones; preserve dynamic fields such as since and never invent criterion type aliases. Inventory checkpoints must be separate predecessor tasks from actions that consume the same item (place/deliver/deposit/decrease).', {
+      this.tool('plan_commit', 'Create or replace the current machine-verifiable task plan. For composed goals each node MUST include operation {id,version,args}, requires and satisfies copied from capability_get(arguments). Only code-verified causal predecessors within the root scope are permitted. Copy authoritative successCriteria exactly and preserve since. Inventory checkpoints must be separate predecessor tasks from consuming actions.', {
         rationale: { type: 'string' },
         tasks: {
           type: 'array',
@@ -217,11 +227,18 @@ export class GoalAgentRoundToolRuntime {
                       description: 'underfoot is an input alias normalized to the executable near-ground relation.',
                     },
                     predicate: { type: 'string' },
+                    predicateVersion: { type: 'string' },
+                    args: { type: 'object' },
                   },
                   required: ['type'],
                 },
               },
               dependsOn: { type: 'array', items: { type: 'string' } },
+              operation: { type: 'object', additionalProperties: false, required: ['id', 'version', 'args'], properties: {
+                id: { type: 'string' }, version: { type: 'integer', minimum: 1 }, args: { type: 'object' },
+              } },
+              requires: predicateRefsSchema(),
+              satisfies: predicateRefsSchema(),
               taskFamily: { type: 'string' },
               estimatedActions: { type: 'number', minimum: 1 },
               estimatedDurationMs: { type: 'number', minimum: 1000 },
@@ -231,13 +248,14 @@ export class GoalAgentRoundToolRuntime {
           },
         },
       }, ['tasks'], (state, args) => this.commitPlan(state, args)),
-      this.tool('action_list', 'List currently applicable, already-bound action candidates for the active plan task.', {}, [],
-        (state, _args, signal) => this.listActions(state, signal)),
-      this.tool('action_execute', 'Execute one candidate returned by action_list. This directly invokes the real action and returns its receipt.', {
-        candidateId: { type: 'string' },
+      this.tool('action_list', 'List bound action candidates and their authorization status. Set includeUnavailable to inspect missing prerequisites. Only ready candidates may execute; copy candidateHandle, not the readable id.', {
+        includeUnavailable: { type: 'boolean' },
+      }, [], (state, args, signal) => this.listActions(state, signal, args.includeUnavailable === true)),
+      this.tool('action_execute', 'Execute one ready candidateHandle returned by action_list. The handle binds this session, plan, operation and catalog version. Only mutableArgumentPaths may change; refresh action_list after a stale-handle error.', {
+        candidateHandle: { type: 'string' },
         arguments: { type: 'object' },
         rationale: { type: 'string' },
-      }, ['candidateId'], (state, args, signal) => this.executeAction(state, args, signal)),
+      }, ['candidateHandle'], (state, args, signal) => this.executeAction(state, args, signal)),
       this.tool('progress_verify', 'Run authoritative machine verification for the active task and root goal.', {}, [],
         state => this.verifyProgress(state)),
       this.tool('knowledge_search', 'Search read-only Markdown domain knowledge. Results are evidence, never action permissions.', {
@@ -252,12 +270,12 @@ export class GoalAgentRoundToolRuntime {
       this.tool('skill_get', 'Load one GoalAgent skill body by ref and version.', {
         ref: { type: 'string' }, expectedVersion: { type: 'string' }, maxTokens: { type: 'integer', minimum: 1 },
       }, ['ref'], (state, args) => this.getSkill(state, args)),
-      this.tool('capability_search', 'Search registered GoalAgent capability modes and lifecycle handlers.', {
-        query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 12 },
+      this.tool('capability_search', 'Search lifecycle routes, installed operations and internal resources, including unavailable entries and reasons. Discovery works before goal_create and never grants execution. Use action_list/action_execute for actual candidates.', {
+        query: { type: 'string' }, limit: { type: 'integer', minimum: 1 },
       }, ['query'], (state, args) => this.searchCapabilities(state, args)),
-      this.tool('capability_get', 'Read one registered capability definition by id.', {
-        id: { type: 'string' },
-      }, ['id'], (_state, args) => this.getCapability(args)),
+      this.tool('capability_get', 'Read a capability by id and optionally check its version. For a committed composed goal, pass arguments to inspect code-resolved requires/satisfies/accesses for planning without executing. Resource/class names are not executable tool names.', {
+        id: { type: 'string' }, expectedVersion: { type: 'string' }, arguments: { type: 'object' },
+      }, ['id'], (state, args) => this.getCapability(state, args)),
       this.tool('memory_search', 'Recall task, event, spatial and planning memories relevant to the current goal.', {
         query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 12 },
       }, ['query'], (state, args) => this.searchMemory(state, args)),
@@ -276,6 +294,7 @@ export class GoalAgentRoundToolRuntime {
     properties: Record<string, unknown>,
     required: string[],
     execute: ToolHandler,
+    constraints: { anyOf?: Array<Record<string, unknown>> } = {},
   ): RegisteredTool {
     return {
       schema: {
@@ -283,7 +302,7 @@ export class GoalAgentRoundToolRuntime {
         function: {
           name,
           description,
-          parameters: { type: 'object', properties, ...(required.length ? { required } : {}) },
+          parameters: { type: 'object', properties, ...(required.length ? { required } : {}), ...constraints },
         },
       },
       execute,
@@ -314,9 +333,28 @@ export class GoalAgentRoundToolRuntime {
   }
 
   private async createGoal(state: GoalAgentStateV1, args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
+    if (state.terminal) return failureReceipt('goal_session_already_terminal');
     if (state.rootGoal) {
       return { content: { ok: true, alreadyCreated: true, goal: state.rootGoal }, summary: 'root goal already exists', evidenceRefs: state.interpretation.evidenceRefs };
     }
+    if (args.mode === 'composed') {
+      if (Object.keys(args).some(key => !['mode', 'draft'].includes(key))) return failureReceipt('composed_goal_unknown_arguments');
+      const compiler = this.options.tools.goals;
+      if (!compiler) return failureReceipt('composed_goal_compiler_unavailable');
+      const committed = compiler.compile({ draft: args.draft, state, profileId: this.options.profileId, goalId: this.goalId(), acceptedAt: this.now() });
+      state.schema = GOAL_AGENT_STATE_SCHEMA_V2;
+      state.rootGoal = committed.rootGoal;
+      state.goal = { definition: committed.goal, signature: committed.signature, context: state.goal.context };
+      state.interpretation.lastValidationError = null;
+      state.interpretation.clarificationReason = null;
+      return {
+        content: { ok: true, goalId: committed.rootGoal.goalId, goalSignature: committed.signature.key,
+          schema: committed.rootGoal.schema, successCriteria: committed.goal.successCriteria, scope: committed.rootGoal.scope },
+        summary: `created composed root goal ${committed.rootGoal.goalId}`,
+        evidenceRefs: committed.rootGoal.scope.bindings.flatMap(binding => [...binding.evidenceRefs]),
+      };
+    }
+    if (args.mode !== undefined && args.mode !== 'template') return failureReceipt('unknown_goal_creation_mode');
     const proposedTarget = record(args.target);
     const registryId = text(proposedTarget.registryId);
     const selected = state.interpretation.candidates.find(candidate => candidate.registryId === registryId);
@@ -378,15 +416,18 @@ export class GoalAgentRoundToolRuntime {
     state: GoalAgentStateV1,
     signal: AbortSignal,
     verifyRoot = true,
+    requestedFacts?: readonly WorldFactRequest[],
   ): Promise<GoalAgentRoundToolReceipt> {
     const perception = this.options.tools.perception;
     if (!perception) return failureReceipt('world_perception_unavailable');
-    const world = await perception.observe(signal);
+    const factRequests = requestedFacts ?? state.world.factRequests ?? [];
+    const world = await perception.observe(signal, factRequests);
     const observedAt = new Date(world.timestamp).toISOString();
     state.world = {
       latest: structuredClone(world),
       beforeAction: state.world.latest ? structuredClone(state.world.latest) : state.world.beforeAction,
       observedAt,
+      ...(factRequests.length ? { factRequests: structuredClone(factRequests) } : {}),
     };
     state.goal.context = this.encoder.encode({
       inventory: world.inventory.items,
@@ -396,12 +437,16 @@ export class GoalAgentRoundToolRuntime {
       worldRevision: `tick:${world.tick}`,
     });
     const evidenceRef = `world:${world.tick}:${world.timestamp}`;
+    let goalBindings: unknown[] = [], bindingIssues: string[] = [];
+    try { goalBindings = [...(this.options.tools.goals?.bindings(state) ?? [])]; }
+    catch (error) { bindingIssues = [error instanceof Error ? error.message : String(error)]; }
     if (verifyRoot && state.rootGoal && this.options.tools.verification) {
       const root = await this.options.tools.verification.verifyRoot({ state });
       if (root.ok) completeState(state, root.detail, root.evidenceRefs, this.now());
     }
     return {
-      content: { ok: true, world: boundedWorld(world), rootCompleted: state.terminal?.outcome === 'completed' },
+      content: { ok: true, world: boundedWorld(world), requestRef: state.requestId, goalBindings, bindingIssues,
+        composedGoalsEnabled: tuning().goalComposition.enabled, rootCompleted: state.terminal?.outcome === 'completed' },
       summary: `observed world tick ${world.tick}`,
       evidenceRefs: [evidenceRef, ...(state.terminal?.evidenceRefs ?? [])],
     };
@@ -449,7 +494,9 @@ export class GoalAgentRoundToolRuntime {
   private async commitPlan(state: GoalAgentStateV1, args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
     if (!state.rootGoal || !state.goal.signature || !state.goal.context) return failureReceipt('plan_requires_goal_and_world');
     if (state.plan.graph && state.budget.graphReplans >= state.budget.maxGraphReplans) return failureReceipt('graph_replan_budget_exhausted');
-    const parsed = parsePlanProposal(args, 24);
+    const maxTasks = tuning().goalComposition.maxPlanNodes;
+    if (!Number.isSafeInteger(maxTasks) || maxTasks < 1) return failureReceipt('invalid_plan_node_limit');
+    const parsed = parsePlanProposal(args, maxTasks);
     if ('error' in parsed) return failureReceipt(parsed.error);
     const tasks = parsed.tasks.map(task => ({
       ...task,
@@ -460,7 +507,11 @@ export class GoalAgentRoundToolRuntime {
         )),
     }));
     const revision = state.plan.revision + 1;
-    const graph = buildPlanGraph(state, tasks, revision, 24);
+    let graph = buildPlanGraph(state, tasks, revision, maxTasks);
+    if (state.rootGoal.schema === 'mineclaw.goal/v2') {
+      if (!this.options.tools.plans) return failureReceipt('causal_plan_authority_unavailable');
+      graph = this.options.tools.plans.validatePlan(state, graph, tasks);
+    }
     const plannedCriteria = graph.nodes.flatMap(node => node.goal.metadata?.structuredSuccessCriteria ?? []);
     const required = requiredPlanMilestones(state, this.options.planMilestones);
     const issues = [
@@ -491,22 +542,31 @@ export class GoalAgentRoundToolRuntime {
     };
   }
 
-  private async listActions(state: GoalAgentStateV1, signal: AbortSignal): Promise<GoalAgentRoundToolReceipt> {
+  private async listActions(state: GoalAgentStateV1, signal: AbortSignal, includeUnavailable: boolean): Promise<GoalAgentRoundToolReceipt> {
     const execution = this.options.tools.execution;
     const planNodeId = state.plan.activeNodeId;
     if (!execution || !state.rootGoal) return failureReceipt('action_list_requires_execution_and_root_goal');
-    const candidates = await execution.listCandidates({ state, ...(planNodeId ? { planNodeId } : {}), signal });
+    if (state.terminal || state.phase === 'paused_owner' || state.progress?.waiting) return failureReceipt('action_session_not_running');
+    const listed = await execution.listCandidates({ state, ...(planNodeId ? { planNodeId } : {}), includeUnavailable, signal });
+    if (signal.aborted) throw abortError();
+    const candidates = listed.map(candidate => this.catalogCheckedCandidate(candidate));
+    const catalogVersion = this.catalogVersion();
     return {
       content: {
         ok: true,
         target: planNodeId ?? 'root',
+        catalogVersion,
         candidates: candidates.map(candidate => ({
           id: candidate.id,
+          candidateHandle: this.candidateAuthority.issue(candidate, state, catalogVersion),
           kind: candidate.kind,
           action: candidate.action,
           description: candidate.description,
           fixedArgs: candidate.fixedArgs,
           argumentSchema: candidate.argumentSchema,
+          mutableArgumentPaths: candidate.mutableArgumentPaths ?? [],
+          authorization: candidate.authorization ?? { status: 'ready', reasons: [] },
+          operationRef: candidate.operationRef,
           evidenceRefs: candidate.evidenceRefs,
         })),
       },
@@ -523,20 +583,31 @@ export class GoalAgentRoundToolRuntime {
     const execution = this.options.tools.execution;
     const planNodeId = state.plan.activeNodeId;
     if (!execution || !state.rootGoal) return failureReceipt('action_execute_requires_execution_and_root_goal');
+    if (state.terminal || state.phase === 'paused_owner' || state.progress?.waiting) return failureReceipt('action_session_not_running');
     if (state.budget.actions >= state.budget.maxActions) return failureReceipt('action_budget_exhausted');
-    const candidateId = text(args.candidateId);
-    const candidates = await execution.listCandidates({ state, ...(planNodeId ? { planNodeId } : {}), signal });
-    const candidate = candidates.find(value => value.id === candidateId);
-    if (!candidate) return failureReceipt(`action_candidate_not_available:${candidateId}`);
-    const modelArgs = record(args.arguments);
+    const handle = text(args.candidateHandle);
+    const candidateId = this.candidateAuthority.candidateId(handle);
+    if (!candidateId) return failureReceipt('action_candidate_handle_required:refresh_action_list');
+    const candidates = await execution.listCandidates({ state, ...(planNodeId ? { planNodeId } : {}), includeUnavailable: true, signal });
+    if (signal.aborted) throw abortError();
+    const fresh = candidates.find(value => value.id === candidateId);
+    const candidate = fresh ? this.catalogCheckedCandidate(fresh) : null;
+    if (!candidate || !this.candidateAuthority.matches(handle, candidate, state, this.catalogVersion())) {
+      return failureReceipt('action_candidate_handle_stale:refresh_action_list');
+    }
+    if (candidate.authorization && candidate.authorization.status !== 'ready') {
+      return failureReceipt(`action_not_authorized:${candidate.authorization.reasons.join(',')}`);
+    }
     const proposal = {
       source: candidate.source,
       action: candidate.action,
-      // BUG-CROSS-80 · 模型参数优先：fixedArgs 只兜底未填字段（幂等/审计由 actionKey 保证），
-      // 关键业务参数（item/itemName/count）由模型观察世界后填写，schema/领域校验兜底。
-      args: { ...structuredClone(candidate.fixedArgs), ...modelArgs },
+      args: prepareCandidateArguments(candidate, args.arguments),
       rationale: text(args.rationale) || candidate.description,
     };
+    if (state.rootGoal.schema === 'mineclaw.goal/v2') {
+      if (!this.options.tools.plans) return failureReceipt('causal_plan_authority_unavailable');
+      this.options.tools.plans.authorize(state, candidate, proposal.args);
+    }
     const idempotencyKey = actionKey(state, candidate.id, proposal.args);
     state.world.beforeAction = state.world.latest ? structuredClone(state.world.latest) : null;
     state.action = { proposal, result: null, executionSessionId: null, idempotencyKey };
@@ -545,6 +616,7 @@ export class GoalAgentRoundToolRuntime {
       epoch: state.epoch,
       idempotencyKey,
       proposal,
+      candidate,
       state,
       signal,
     });
@@ -593,6 +665,24 @@ export class GoalAgentRoundToolRuntime {
       summary: result.ok ? `action completed: ${result.detail}` : `action failed: ${result.detail}`,
       evidenceRefs: [...new Set([...result.evidenceRefs, ...(state.verdict?.evidenceRefs ?? []), ...(state.terminal?.evidenceRefs ?? [])])],
     };
+  }
+
+  private catalogVersion(): string {
+    const versions = this.options.capabilities?.list().flatMap(entry => 'catalogVersion' in entry ? [entry.catalogVersion] : []) ?? [];
+    return [...new Set(versions)].sort().join('|') || 'legacy-catalog';
+  }
+
+  private catalogCheckedCandidate(input: GoalAgentActionCandidate): GoalAgentActionCandidate {
+    const candidate = structuredClone(input);
+    if (!candidate.operationRef) return candidate; // Existing v1 adapters retain their own guarded candidate path.
+    const entry = this.options.capabilities?.get(candidate.operationRef.id);
+    const reasons = !entry || !('operation' in entry) || !entry.operation
+      ? ['operation_not_registered']
+      : entry.packageVersion !== candidate.operationRef.version ? ['operation_version_stale']
+        : entry.availability.state === 'unavailable' ? [...entry.availability.reasons]
+          : !candidate.authorization ? ['operation_authorization_missing'] : [];
+    if (reasons.length) candidate.authorization = { status: 'blocked', reasons };
+    return candidate;
   }
 
   private async verifyProgress(state: GoalAgentStateV1): Promise<GoalAgentRoundToolReceipt> {
@@ -685,7 +775,7 @@ export class GoalAgentRoundToolRuntime {
       ...(state.action.result?.failure?.code ? { failureCode: state.action.result.failure.code } : {}),
       limit: integer(args.limit, 6, 1, 12),
     });
-    this.noteSearchResult(state.sessionId, results.length === 0);
+    this.noteSearchResult(state, results.length === 0);
     const refs = results.map(result => result.evidenceRef);
     state.cognition.knowledgeRefs = [...new Set([...state.cognition.knowledgeRefs, ...refs])];
     return { content: { ok: true, skills: results }, summary: `found ${results.length} skills`, evidenceRefs: refs };
@@ -697,7 +787,7 @@ export class GoalAgentRoundToolRuntime {
       query: text(args.query),
       limit: integer(args.limit, 6, 1, 12),
     });
-    this.noteSearchResult(state.sessionId, results.length === 0);
+    this.noteSearchResult(state, results.length === 0);
     const refs = results.map(result => result.evidenceRef);
     state.cognition.knowledgeRefs = [...new Set([...state.cognition.knowledgeRefs, ...refs])];
     return {
@@ -737,16 +827,24 @@ export class GoalAgentRoundToolRuntime {
 
   private async searchCapabilities(state: GoalAgentStateV1, args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
     if (!this.options.capabilities) return failureReceipt('capability_knowledge_unavailable');
-    const results = this.options.capabilities.search({ query: text(args.query), limit: integer(args.limit, 6, 1, 12) });
-    this.noteSearchResult(state.sessionId, results.length === 0);
-    return { content: { ok: true, capabilities: results }, summary: `found ${results.length} capabilities`, evidenceRefs: results.map(value => `capability:${value.id}`) };
+    const configured = tuning().capabilityCatalog.searchLimit;
+    const results = this.options.capabilities.search({ query: text(args.query), limit: integer(args.limit, configured, 1, configured) });
+    this.noteSearchResult(state, results.length === 0);
+    const refs = results.map(value => `capability:${value.id}${'version' in value ? `@${value.version}` : ''}`);
+    state.cognition.knowledgeRefs = [...new Set([...state.cognition.knowledgeRefs, ...refs])];
+    return { content: { ok: true, capabilities: results }, summary: `found ${results.length} capabilities`, evidenceRefs: refs };
   }
 
-  private async getCapability(args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
+  private async getCapability(state: GoalAgentStateV1, args: Record<string, unknown>): Promise<GoalAgentRoundToolReceipt> {
     if (!this.options.capabilities) return failureReceipt('capability_knowledge_unavailable');
     const result = this.options.capabilities.get(text(args.id));
+    const expectedVersion = text(args.expectedVersion);
+    if (result && expectedVersion && (!('version' in result) || result.version !== expectedVersion)) return failureReceipt('capability_version_stale');
+    const planning = result && args.arguments !== undefined && 'operation' in result && result.operation
+      ? this.options.tools.plans?.inspect(state, { id: result.id, version: result.packageVersion!, args: record(args.arguments) })
+      : undefined;
     return result
-      ? { content: { ok: true, capability: result }, summary: `loaded capability ${result.id}`, evidenceRefs: [`capability:${result.id}`] }
+      ? { content: { ok: true, capability: result, ...(planning ? { planning } : {}) }, summary: `loaded capability ${result.id}`, evidenceRefs: [`capability:${result.id}${'version' in result ? `@${result.version}` : ''}`] }
       : failureReceipt(`capability_not_found:${text(args.id)}`);
   }
 
@@ -813,7 +911,7 @@ export class GoalAgentRoundToolRuntime {
   }
 }
 
-interface PlanTaskInput {
+interface PlanTaskInput extends GoalPlanNodeProposal {
   id: string;
   goalText: string;
   successCriteria: Array<Record<string, unknown>>;
@@ -848,6 +946,9 @@ function parsePlanProposal(args: Record<string, unknown>, maxTasks: number): { t
       goalText,
       successCriteria,
       dependsOn,
+      ...(raw.operation !== undefined ? { operation: structuredClone(raw.operation) as GoalPlanNodeProposal['operation'] } : {}),
+      ...(raw.requires !== undefined ? { requires: structuredClone(raw.requires) as GoalPlanNodeProposal['requires'] } : {}),
+      ...(raw.satisfies !== undefined ? { satisfies: structuredClone(raw.satisfies) as GoalPlanNodeProposal['satisfies'] } : {}),
       ...(text(raw.taskFamily) ? { taskFamily: text(raw.taskFamily) } : {}),
       estimatedActions: positive(raw.estimatedActions, 1),
       estimatedDurationMs: positive(raw.estimatedDurationMs, 30_000),
@@ -1074,6 +1175,12 @@ function rootCoverageIssues(plannedCriteria: unknown[], rootCriteria: unknown[])
   return rootCriteria.flatMap(criterion => planned.has(stableJson(criterion)) ? [] : [`root_criterion_not_covered:${stableJson(criterion)}`]);
 }
 
+function predicateRefsSchema(): Record<string, unknown> {
+  return { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'version', 'args'], properties: {
+    id: { type: 'string' }, version: { type: 'string' }, args: { type: 'object' },
+  } } };
+}
+
 function boundedWorld(world: GoalAgentStateV1['world']['latest']): Record<string, unknown> | null {
   if (!world) return null;
   return {
@@ -1083,6 +1190,7 @@ function boundedWorld(world: GoalAgentStateV1['world']['latest']): Record<string
     owner: world.owner,
     inventory: world.inventory,
     environment: world.environment,
+    ...(world.capabilityFacts ? { capabilityFacts: world.capabilityFacts } : {}),
     nearbyEntities: world.entities.slice(0, 20).map(entity => ({
       id: entity.id, name: entity.name, category: entity.category, distance: entity.distance, position: entity.position,
     })),

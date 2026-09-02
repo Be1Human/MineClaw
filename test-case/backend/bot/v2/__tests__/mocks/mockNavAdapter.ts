@@ -1,7 +1,32 @@
 import type { DoorPassageRequest, NavigationAdapter, GotoOptions, NavGoal } from '../../../../../../apps/minecraft-companion/src/bot/adapter/NavigationAdapter.js';
 import type { Vec3, NavResult, MovementOptions, Unsubscribe } from '../../../../../../apps/minecraft-companion/src/bot/adapter/types.js';
+import type { BoundNavigation, NavigationBindingInput } from '../../../../../../apps/minecraft-companion/src/bot/adapter/NavigationExecution.js';
 
 export class MockNavigationAdapter implements NavigationAdapter {
+  bind(input: NavigationBindingInput): BoundNavigation {
+    let closed=false;
+    const pending = new Set<Promise<unknown>>();
+    const run = async (work:()=>Promise<NavResult>) => {
+      input.scope.assertCurrent('mock-navigation');
+      if (closed) throw new Error('mock_navigation_closed');
+      const promise=work(); pending.add(promise);
+      try { const result=await promise; input.scope.assertCurrent('mock-navigation-result'); return result; }
+      finally { pending.delete(promise); }
+    };
+    return {actions:{
+      goto:(goal,options)=>run(()=>this.goto(goal,options)),
+      follow:(id,range)=>run(async()=>{
+        this.startFollow(id,range);
+        while(!closed && this.isFollowing(id)) await input.scope.wait(this.gotoDelay);
+        return {ok:false,reason:'cancelled'};
+      }),
+      guideThroughDoor:request=>run(()=>this.guideThroughDoor(request)),
+      stop:async()=>{ this.stop(); await Promise.allSettled([...pending]); },
+      replan:()=>{},setMovementOptions:options=>this.setMovementOptions(options),
+      isFollowing:id=>this.isFollowing(id),isMoving:()=>this.isMoving(),isMining:()=>this.isMining(),isBuilding:()=>this.isBuilding(),
+      getCurrentGoal:()=>this.getCurrentGoal(),getCurrentPath:()=>this.getCurrentPath(),
+    },stop:async()=>{closed=true;this.stop();await Promise.allSettled([...pending]);}};
+  }
   private _isMoving = false;
   private _currentGoal: NavGoal | null = null;
 

@@ -1,12 +1,13 @@
 import type { ActionRequest } from '../types.js';
-import type { BehaviorContext, IBehavior } from './types.js';
+import type { BehaviorContext, SequenceBehavior } from './types.js';
 
 /** Approach one grounded item entity; Minecraft performs the actual pickup. */
-export class PickupGroundItemBehavior implements IBehavior {
+export class PickupGroundItemBehavior implements SequenceBehavior {
+  readonly kind = 'sequence' as const;
   readonly id = 'pickup_ground_item';
   private sequence = 0;
 
-  plan(ctx: BehaviorContext): ActionRequest[] {
+  compile(ctx: BehaviorContext): ActionRequest[] {
     const params = ctx.taskParams ?? {};
     const position = finitePosition(params.position);
     const item = typeof params.item === 'string' ? params.item.trim() : '';

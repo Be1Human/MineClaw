@@ -187,6 +187,21 @@ export class GoalAgentSessionStore implements GoalAgentSessionStorePort, GoalAge
         throw new Error('GoalAgent session identity is immutable');
       }
       const previous = parseState(current.state_json);
+      if (previous.progress) {
+        if (!next.progress) throw new Error('progress_checkpoint_cannot_be_removed');
+        for (const key of ['rounds', 'totalNoProgressRounds', 'recoveryAttempts'] as const) {
+          if (next.progress[key] < previous.progress[key]) throw new Error(`progress_budget_cannot_reset:${key}`);
+        }
+        if (previous.progress.sentFeedbackKinds.some(kind => !next.progress!.sentFeedbackKinds.includes(kind))) throw new Error('progress_feedback_dedupe_cannot_reset');
+        if (previous.progress.seenFingerprints.some(value => !next.progress!.seenFingerprints.includes(value))) throw new Error('progress_evidence_history_cannot_reset');
+        if (previous.progress.waitStartedAt !== null && next.progress.waitStartedAt !== previous.progress.waitStartedAt) throw new Error('wait_budget_cannot_reset');
+      }
+      if (previous.schema === 'mineclaw.goal-agent-state/v2' && next.schema !== previous.schema) throw new Error('goal_agent_schema_downgrade_forbidden');
+      if (previous.rootGoal?.schema === 'mineclaw.goal/v2'
+        && (next.rootGoal?.schema !== 'mineclaw.goal/v2' || next.rootGoal.contentHash !== previous.rootGoal.contentHash)) {
+        throw new Error('composed_root_goal_is_immutable');
+      }
+      if (previous.rootGoal?.schema === 'mineclaw.goal/v1' && next.rootGoal?.schema === 'mineclaw.goal/v2') throw new Error('running_v1_goal_cannot_be_reinterpreted');
       const firstMessageIndex = this.messageCount(next.sessionId);
       for (const [offset, message] of (input.messages ?? []).entries()) {
         this.appendMessageInternal({

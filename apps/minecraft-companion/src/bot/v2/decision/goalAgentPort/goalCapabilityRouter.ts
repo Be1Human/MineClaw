@@ -1,4 +1,5 @@
 import type { GoalRequestV2 } from './contracts.js';
+import type { CapabilityCatalogEntry } from '../../capabilities/capabilityCatalog.js';
 
 export type GoalCapabilityMode = 'planned_goal' | 'persistent_behavior' | 'query' | 'cancel';
 
@@ -12,9 +13,9 @@ export interface GoalCapabilityDefinition {
 }
 
 export interface GoalCapabilityKnowledgePort {
-  list(): GoalCapabilityDefinition[];
-  search(input: { query: string; limit?: number }): GoalCapabilityDefinition[];
-  get(id: string): GoalCapabilityDefinition | null;
+  list(): Array<GoalCapabilityDefinition | CapabilityCatalogEntry>;
+  search(input: { query: string; limit?: number }): Array<GoalCapabilityDefinition | CapabilityCatalogEntry>;
+  get(id: string): GoalCapabilityDefinition | CapabilityCatalogEntry | null;
 }
 
 export interface GoalCapabilityMatch {

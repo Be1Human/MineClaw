@@ -1,57 +1,18 @@
 ---
 name: 跟随主人
 agent: goal
-description: 让 bot 跟着主人走 / 来到主人身边 / 去某个坐标。主人说"跟我走/来我这里/到 X,Y,Z"时触发。持续性任务，到达后不要主动结束。
+description: 区分持续跟随和一次性到达；持续跟随通过专门生命周期路由，一次性到达通过目标与动作候选。
 category: task
-triggers: [跟, 跟着, 来, 过来, 跟我, 到]
-uses: [decompose_task, start_task, say]
+triggers: [跟我, 跟随, 跟着, 来我这里, 过来]
+uses: [capability_search, capability_get, world_observe, goal_search_targets, goal_get_target, goal_create, action_list, action_execute, progress_verify, owner_ask]
 ---
 
-# 跟随主人 · Skill
+# 跟随主人
 
-## 何时用我
+“跟着我”是持续跟随，“到这里来一次”是到达目标，不能混用终态。
 
-主人让 bot **靠近他**：
-- "跟着我" / "跟我走"
-- "来我这里" / "来找我"
-- "到 -87 107 126" / "去 X,Y,Z"
+持续跟随由上游 GoalCapabilityRouter 的 follow_owner 路由负责；用 capability_get 了解入口，不在 GoalAgent 中凭空创建重复任务。
+如果持续请求误入普通规划且没有对应工具，报告路由问题，不用一次性到达冒充持续跟随。
 
-## 执行步骤
-
-1. **解析目标位置**：
-   - 主人话里出现了**任何坐标数字**（"我在 0,0,0"/"到 -87 107 126"）→ **必须**把它填进 `targetPosition`
-   - 主人没给数字 → 不传，默认跟随当前主人位置
-2. **创建任务**：
-   ```
-   decompose_task({
-     kind: "follow_owner",
-     ownerName: "<主人玩家名>",
-     targetPosition: { x, y, z }   // 主人给了坐标就【必填】！
-   })
-   ```
-3. **启动**：`start_task({taskId})`
-4. **回应**：`say("好的，过来了～" / "马上到！")`
-
-## 🔴 铁律：坐标必须进入工具入参
-
-- ❌ **错误示范（真实事故）**：思考写"主人给了坐标 0,0,0 我直接跑过去"，入参却只传 `{"kind":"follow_owner"}` —— 坐标只在你脑子里，系统拿不到，bot 原地不动，主人暴怒。
-- ✅ 正确：`decompose_task({"kind":"follow_owner","ownerName":"qxy","targetPosition":{"x":0,"y":0,"z":0}})`
-- 你**嘴上说的目的地必须和入参一致**。说"跑向 X" 而入参没 X = 欺骗主人。
-
-## ⚠ 重要：这是【持续性任务】
-
-- **到达身边 ≠ 完成**。bot 会持续跟随，直到主人明确说停。
-- **禁止主动 complete_task**。即便看到"已到达"也不要结束任务。
-- 只有主人说"停 / 别跟了 / 取消" → 用「任务管理」skill 走 `cancel_task`。
-
-## 主人问"到了吗/在哪"
-
-不要重启任务！正确做法：
-1. invoke_skill("感知世界") 看 `activeTasks` + 当前位置
-2. 直接 say 报告（如"在路上，快到了"）
-
-## 不要
-
-- ❌ 每次主人说"跟着我"都重新建任务（已经有 follow 任务在跑就别建第二个）
-- ❌ 到达后调 complete_task
-- ❌ 没传 ownerName（必填）
+一次性到达：观察真实主人位置，查目标、goal_create，然后 action_list / action_execute，最后 progress_verify。
+用户给出的坐标必须进入实际目标绑定，不能只写在推理或回复中。找不到主人且无法绑定目标时才询问必要位置。

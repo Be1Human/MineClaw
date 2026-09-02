@@ -12,6 +12,8 @@ export interface GoalSuccessCriterion {
   relativeTo?: 'owner' | 'self';
   relation?: 'near' | 'right' | 'front' | 'at';
   predicate?: string;
+  predicateVersion?: string;
+  args?: Readonly<Record<string, unknown>>;
 }
 
 /** Neutral executable goal value. It contains data only and owns no loop. */

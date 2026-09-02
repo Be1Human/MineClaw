@@ -28,7 +28,7 @@ import type { WorldStateView } from '../../../../../../apps/minecraft-companion/
 function makeMockSkill(id: string): IBehavior {
   return {
     id,
-    plan: (_ctx) => [],
+    kind: 'sequence', compile: (_ctx) => [],
   };
 }
 
@@ -93,7 +93,7 @@ describe('BehaviorRegistry', () => {
   test('④ register overwrites skill with same id', () => {
     const reg = new BehaviorRegistry();
     const s1 = makeMockSkill('dup');
-    const s2: IBehavior = { id: 'dup', plan: () => [] };
+    const s2: IBehavior = { id: 'dup', kind: 'sequence', compile: () => [] };
     reg.register(s1);
     reg.register(s2);
     assert.equal(reg.get('dup'), s2);
@@ -126,7 +126,7 @@ describe('FollowBehavior', () => {
         entityId: 100,
       },
     } as any);
-    const result1 = skill.plan({ world: world1 });
+    const result1 = skill.compile({ world: world1 });
     assert.ok(Array.isArray(result1));
     assert.equal(result1.length, 0);
 
@@ -139,7 +139,7 @@ describe('FollowBehavior', () => {
         entityId: 100,
       },
     } as any);
-    const result2 = skill.plan({ world: world2 });
+    const result2 = skill.compile({ world: world2 });
     assert.ok(Array.isArray(result2));
     assert.equal(result2.length, 1);
     assert.equal(result2[0]!.type, 'follow_entity');
@@ -152,7 +152,7 @@ describe('FarmBehavior', () => {
     assert.equal(skill.id, 'farm_one_plot');
 
     const world = makeWorldState();
-    const result = skill.plan({
+    const result = skill.compile({
       world,
       taskParams: { seedName: 'wheat_seeds', hoeName: 'wooden_hoe' },
     });
@@ -168,34 +168,16 @@ describe('FarmBehavior', () => {
 });
 
 describe('CombatBehavior', () => {
-  test('⑧ id=combat, plan() 含 targetEntityId 时返回 4 步序列（look→equip→move→attack）', () => {
-    const skill = new CombatBehavior();
-    assert.equal(skill.id, 'combat');
-
-    const world = makeWorldState({
-      inventory: {
-        items: [{ name: 'iron_sword', count: 1, slot: 0 }],
-        held: null,
-        freeSlots: 8,
-      },
-    });
-    const result = skill.plan({ world, taskParams: { targetEntityId: 42 } });
-
-    assert.ok(Array.isArray(result));
-    assert.equal(result.length, 4);
-    assert.equal(result[0]!.type, 'look_at');
-    assert.equal(result[1]!.type, 'equip');
-    assert.equal(result[2]!.type, 'move_to');
-    assert.equal(result[3]!.type, 'attack');
-
-    // 无 targetEntityId → 空数组
-    const empty = skill.plan({ world, taskParams: {} });
-    assert.equal(empty.length, 0);
+  test('combat has exactly one adaptive execution entry', () => {
+    const behavior = new CombatBehavior();
+    assert.equal(behavior.id,'combat');
+    assert.equal(behavior.kind,'adaptive');
+    assert.equal(typeof behavior.run,'function');
+    assert.equal('compile' in behavior,false);
+    assert.equal('plan' in behavior,false);
   });
-
-  test('没有真实武器时 plan() 不发送虚假 equip', () => {
-    const skill = new CombatBehavior();
-    const result = skill.plan({ world: makeWorldState(), taskParams: { targetEntityId: 42 } });
-    assert.deepEqual(result.map(request => request.type), ['look_at', 'move_to', 'attack']);
+  test('registry rejects mixed adaptive/sequence definitions', () => {
+    const registry=new BehaviorRegistry();
+    assert.throws(()=>registry.register({id:'invalid',kind:'adaptive',compile:()=>[],run:async()=>({ok:true})} as never),/invalid_behavior/);
   });
 });

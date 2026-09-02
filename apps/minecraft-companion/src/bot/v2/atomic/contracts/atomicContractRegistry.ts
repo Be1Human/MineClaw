@@ -1,5 +1,5 @@
 import type { ExecutionResult } from '../../types.js';
-import type { FailureEnvelope } from '../../task/execution/failureEnvelope.js';
+import type { FailureEnvelope } from '../../task/contracts/failureEnvelope.js';
 
 export interface JsonSchema {
   type: 'object';
