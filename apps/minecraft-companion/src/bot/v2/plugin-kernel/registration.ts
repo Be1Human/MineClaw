@@ -139,8 +139,8 @@ export class RegistrationTransaction {
     // Within-one-generation duplicates are rejected earlier (stage/ID conflict).
     assertExecutionClosure(this.manifest);
     for (const contribution of this.contributions) {
-      if (contribution.kind === 'execution' && contribution.atomicExecutor !== undefined && this.manifest.kind !== 'system') {
-        throw pluginError('permission_denied', `atomic executor requires system plugin kind (${contribution.id})`);
+      if (contribution.kind === 'execution' && contribution.atomicCatalog !== undefined && this.manifest.kind !== 'system') {
+        throw pluginError('permission_denied', `atomic catalog requires system plugin kind (${contribution.id})`);
       }
     }
     this.state = 'validated';

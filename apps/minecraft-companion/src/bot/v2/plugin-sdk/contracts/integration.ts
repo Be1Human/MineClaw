@@ -14,6 +14,8 @@ export interface PluginSystemIntegration {
   start(scoped: ScopedHostContext, signal: AbortSignal): Promise<void> | void;
   stop(signal: AbortSignal): Promise<void> | void;
   status(): PluginSystemIntegrationStatus;
+  /** Optional service table the host publishes to dependent plugin contexts after activation. */
+  readonly services?: Readonly<Record<string, unknown>>;
 }
 
 /**

@@ -1,0 +1,34 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.inventory
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - world.read:bounded-inventory
+  - fact.read:mineclaw.inventory.observation.owner-inventory
+contributions:
+  - kind: observation
+    id: mineclaw.inventory.observation.owner-inventory
+    version: 1.0.0
+    factKinds:
+      - inventory
+  - kind: goal
+    id: mineclaw.inventory.goal.item-available
+    version: 1.0.0
+    target:
+      registryId: mineclaw.inventory.goal.item-available
+      goalKind: item
+      aliases:
+        - 材料
+        - 资源
+        - 物资
+        - 工具
+      successCriteria:
+        - type: inventory
+          item: $item
+          count: $count

@@ -1,7 +1,71 @@
 {
-  "generatedAt": "2026-09-02T14:57:46.161Z",
+  "generatedAt": "2026-09-02T15:18:37.398Z",
   "schema": "mineclaw.builtin-index/v1",
   "plugins": [
+    {
+      "pluginId": "mineclaw.inventory",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.inventory",
+      "manifestHash": "1cc0f75e30d136b2c7da86c4c26bd2892c6ed37dc43574863082342150024323",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.inventory",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {
+          "plugins": [
+            {
+              "pluginId": "mineclaw.minecraft-system",
+              "range": "^1.0.0"
+            }
+          ]
+        },
+        "permissions": [
+          "world.read:bounded-inventory",
+          "fact.read:mineclaw.inventory.observation.owner-inventory"
+        ],
+        "contributions": [
+          {
+            "kind": "observation",
+            "id": "mineclaw.inventory.observation.owner-inventory",
+            "version": "1.0.0",
+            "factKinds": [
+              "inventory"
+            ]
+          },
+          {
+            "kind": "goal",
+            "id": "mineclaw.inventory.goal.item-available",
+            "version": "1.0.0",
+            "target": {
+              "registryId": "mineclaw.inventory.goal.item-available",
+              "goalKind": "item",
+              "aliases": [
+                "材料",
+                "资源",
+                "物资",
+                "工具"
+              ],
+              "successCriteria": [
+                {
+                  "type": "inventory",
+                  "item": "$item",
+                  "count": "$count"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "imports": [
+        "plugin-sdk/index.ts",
+        "plugin-sdk/contracts/integration.ts",
+        "plugin-sdk/contracts/observation.ts",
+        "plugin-sdk/identity.ts"
+      ]
+    },
     {
       "pluginId": "mineclaw.minecraft-system",
       "kind": "system",

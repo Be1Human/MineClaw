@@ -40,6 +40,8 @@ export interface PluginConstructionContext {
   readonly plugin: PluginIdentity;
   /** Present only for release-builtin system plugins (adapter/storage/LLM ports, startup assembly). */
   readonly systemPorts?: Readonly<Record<string, unknown>>;
+  /** Services published by already-activated plugins (e.g. system observation ports), resolved by dependency order. */
+  readonly services?: Readonly<Record<string, unknown>>;
   readonly signal?: AbortSignal;
 }
 

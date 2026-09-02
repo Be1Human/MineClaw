@@ -31,6 +31,8 @@ export interface PluginHostConfig {
   readonly staticDependencyPolicy?: StaticDependencyPolicy;
   /** entryKey → static import list collected by the build index generator. */
   readonly staticDependencyImports?: ReadonlyMap<string, readonly string[]>;
+  /** Adapter/storage/LLM ports injected into release-builtin system plugins at construct time. */
+  readonly systemPorts?: Readonly<Record<string, unknown>>;
   readonly onGenerationActivated?: (record: ActiveGenerationRecord) => void;
 }
 
@@ -45,6 +47,8 @@ export interface PluginHostBootResult {
   readonly gate: PluginActivationGate;
   readonly installed: readonly string[];
   readonly failures: readonly PluginPackageFailure[];
+  /** Services published by activated plugins (system observation ports etc.), by dependency order. */
+  readonly services: Readonly<Record<string, unknown>>;
 }
 
 export class PluginHost {
@@ -69,6 +73,7 @@ export class PluginHost {
       code: failure.code as PluginFailureCode,
       message: failure.message,
     }));
+    const services = new Map<string, unknown>();
 
     let resolved;
     try {
@@ -76,7 +81,7 @@ export class PluginHost {
     } catch (error) {
       const failure = toPluginFailure(error);
       failures.push({ pluginId: '<resolution>', code: failure.code, message: failure.message });
-      return Object.freeze({ slot: slotInstance, gate, installed: Object.freeze(installed), failures: Object.freeze(failures) });
+      return Object.freeze({ slot: slotInstance, gate, installed: Object.freeze(installed), failures: Object.freeze(failures), services: Object.freeze({}) });
     }
 
     for (const pkg of resolved.order) {
@@ -86,13 +91,14 @@ export class PluginHost {
       });
       try {
         this.checkStaticGate(pkg);
-        const context = this.stagingContext(pkg);
+        const context = this.stagingContext(pkg, services);
         tx.construct(pkg.factory ?? dataPluginFactory(pkg), context);
         tx.stage();
         tx.validate();
         await tx.prepareStart(gate);
         const record = tx.commit(gate, slotInstance.read());
         installed.push(pkg.identity.pluginId);
+        collectServices(record, services);
         this.config.onGenerationActivated?.(record);
       } catch (error) {
         await tx.abort().catch(() => undefined);
@@ -105,11 +111,14 @@ export class PluginHost {
       gate,
       installed: Object.freeze(installed),
       failures: Object.freeze(failures),
+      services: Object.freeze({ ...Object.fromEntries(services) }),
     });
   }
 
   private checkStaticGate(pkg: DiscoveredPluginPackage): void {
     if (pkg.factory === undefined) return;
+    // Trusted system plugins are release-owned and may reach adapter ports; the gate protects domain plugins.
+    if (pkg.manifest.kind === 'system') return;
     const imports = this.config.staticDependencyImports?.get(pkg.factory.entryKey) ?? [];
     checkStaticDependencyPolicy(
       pkg.identity.pluginId,
@@ -119,11 +128,23 @@ export class PluginHost {
     );
   }
 
-  private stagingContext(pkg: DiscoveredPluginPackage): PluginConstructionContext {
+  private stagingContext(pkg: DiscoveredPluginPackage, services: ReadonlyMap<string, unknown>): PluginConstructionContext {
     return Object.freeze({
       host: { version: this.config.hostApiVersion, buildId: this.config.buildId },
       plugin: pkg.identity,
+      ...(pkg.manifest.kind === 'system' && this.config.systemPorts !== undefined ? { systemPorts: this.config.systemPorts } : {}),
+      ...(services.size > 0 ? { services: Object.freeze({ ...Object.fromEntries(services) }) } : {}),
+      ...(pkg.manifest.kind === 'system' ? { signal: new AbortController().signal } : {}),
     });
+  }
+}
+
+/** Publish integration services of a freshly committed generation to the host service table. */
+function collectServices(record: ActiveGenerationRecord, services: Map<string, unknown>): void {
+  for (const contribution of record.registry.byId.values()) {
+    if (contribution.contribution.kind !== 'integration') continue;
+    const integration = (contribution.contribution as { integration?: { services?: Readonly<Record<string, unknown>> } }).integration;
+    for (const [key, service] of Object.entries(integration?.services ?? {})) services.set(key, service);
   }
 }
 

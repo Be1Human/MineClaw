@@ -32,7 +32,6 @@ export interface MineclawSystemPorts {
   readonly blockObservation?: BoundedBlockObservationPort;
   readonly inventoryObservation?: BoundedInventoryObservationPort;
 }
-
 function createAtomicExecutor(atomicId: string, ports: MineclawSystemPorts) {
   return {
     id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.atomic.${atomicId}`,
@@ -64,6 +63,7 @@ export function createMineclawMinecraftSystemPlugin(): PluginFactory {
     create: (context): readonly PluginContribution[] => {
       const ports = (context.systemPorts ?? {}) as MineclawSystemPorts;
       const atomicCatalog = ATOMIC_IDS.map(atomicId => ({ atomicId, version: '1.0.0', executor: createAtomicExecutor(atomicId, ports) }));
+      const bounded = createBoundedObservationPorts(ports);
       const integration = {
         id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.integration.game`,
         version: '1.0.0',
@@ -73,6 +73,10 @@ export function createMineclawMinecraftSystemPlugin(): PluginFactory {
           start: async (): Promise<void> => undefined,
           stop: async (): Promise<void> => undefined,
           status: (): 'running' | 'stopped' => 'running',
+          services: Object.freeze({
+            'bounded.block.observation': bounded.block,
+            'bounded.inventory.observation': bounded.inventory,
+          }),
         },
       };
       return [
@@ -112,7 +116,7 @@ export function createBoundedObservationPorts(ports: MineclawSystemPorts): {
       };
     },
   };
-  const inventory: BoundedInventoryObservationPort = {
+  const inventory: BoundedInventoryObservationPort = ports.inventoryObservation ?? {
     observe: async (input) => {
       void input;
       return {
