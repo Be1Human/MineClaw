@@ -656,7 +656,8 @@ test('BUG-CROSS-82: MainBrain 每轮现读身体态，且 owner 未观察不等�
   let presence: GamePresenceState = { embodied: false, ownerObservation: 'unknown' };
   const llm = {
     callWithTools: async (args: { messages: Array<{ role: string; content: string }> }) => {
-      systems.push(args.messages[0]?.content ?? '');
+      // FEAT-CROSS-28: 运行态在受控 context 消息（messages[1]），system 保持静态。
+      systems.push(`${args.messages[0]?.content ?? ''}\n${args.messages[1]?.content ?? ''}`);
       return parseLegacyAsToolCall(sayResponse());
     },
   } as unknown as LLMClient;

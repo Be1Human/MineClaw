@@ -450,9 +450,10 @@ describe('LLMToolLoop (function calling)', () => {
       companionBlock: () => '── 陪伴上下文（辅助判断，不得当作用户事实）──\n核心人格 v1：诚实',
     }, () => {});
     await loop.run('你好');
-    const system = String(capturedCalls[0]?.messages[0]?.content);
-    assert.match(system, /陪伴上下文/);
-    assert.match(system, /不得当作用户事实/);
+    const context = String(capturedCalls[0]?.messages[1]?.content);
+    assert.equal(capturedCalls[0]?.messages[1]?.role, 'user');
+    assert.match(context, /陪伴上下文/);
+    assert.match(context, /不得当作用户事实/);
   });
 
   // C-01
@@ -901,9 +902,12 @@ describe('LLMToolLoop (function calling)', () => {
     await loop.run('上次打僵尸好惊险呀');
 
     assert.deepEqual(seenQueries, ['上次打僵尸好惊险呀']);
-    const system = capturedCalls[0]!.messages[0]!.content;
-    assert.match(system, /村庄北门击退僵尸/);
-    assert.ok(system.indexOf('村庄北门击退僵尸') > system.indexOf('刚才只提到局部信息'));
+    const contexts = capturedCalls[0]!.messages.slice(1).filter(m => m.role === 'user' && /你记得的事/.test(m.content));
+    assert.equal(contexts.length, 1);
+    const context = contexts[0]!.content;
+    const conversation = capturedCalls[0]!.messages.slice(1).map(m => m.content).join('\n');
+    assert.match(context, /村庄北门击退僵尸/);
+    assert.ok(conversation.indexOf('村庄北门击退僵尸') > conversation.indexOf('刚才只提到局部信息'));
   });
 
   // FEAT-L3-13 R3 · 拦截 LLM 把动作 JSON 当文字吐进聊天

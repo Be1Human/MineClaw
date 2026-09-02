@@ -186,12 +186,16 @@ export class LLMToolLoop {
     const isResume = priorHistory.length > 0;
     const history: HistoryEntry[] = [...priorHistory];
 
-    const systemContent = this.buildSystem(userMessage, history, isResume, opts?.systemFeedback);
+    const systemContent = this.buildSystem(opts?.systemFeedback ? userMessage : userMessage, isResume);
     // BUG-L7 ask_master 死循环根治：恢复时必须按真实时序——
-    //   system → 回放上一轮 assistant/tool 历史(末尾是 ask_master 提问) → 主人这次的答复(放最后)。
+    //   system → context(动态运行态/记忆/对话) → 回放上一轮 assistant/tool 历史(末尾是 ask_master 提问) → 主人这次的答复(放最后)。
     //   旧实现把 userMessage 塞在 priorHistory 之前，导致主人答复时序上排到"提问之前"，
     //   LLM 看到最后一句是自己在问①②③、答复反而在前面 → 永远当没答、逐字重发同一句澄清。
     const messages: LLMChatMessage[] = [{ role: 'system', content: systemContent }];
+    // FEAT-CROSS-28 §5.7: 动态运行态/记忆/对话/回执不再进入 system——
+    // 作为受控 context 消息（标注来源，不冒充玩家原话）编译进面。
+    const contextMessages = this.buildContextMessages(userMessage, opts?.systemFeedback);
+    for (const context of contextMessages) messages.push(context);
     // 把 priorHistory 还原成 assistant + tool 消息对（保留上下文）
     for (const h of priorHistory) {
       this.appendHistoryToMessages(messages, h);
@@ -682,63 +686,35 @@ export class LLMToolLoop {
    * 构造 system 段：基座 systemPrompt + 可选的 resume 提示 + 渐进式披露的任务详情。
    * （user 消息只放当前这句话；历史以 assistant/tool 消息对出现）
    */
-  private buildSystem(userMessage: string, history: HistoryEntry[], isResume: boolean, systemFeedback?: string): string {
+  private buildSystem(userMessage: string, isResume: boolean): string {
     const parts: string[] = [this.cfg.systemPrompt];
-    if (this.cfg.characterBlock) {
-      const character = this.cfg.characterBlock(userMessage);
-      if (character.trim()) parts.push('', character);
-    }
-    if (this.cfg.runtimeBlock) {
-      const runtime = this.cfg.runtimeBlock();
-      if (runtime.trim()) parts.push('', '── 当前运行态（机器事实）──', runtime);
-    }
-    // FEAT-L7-16 · 任务执行回执（内部状态通道 · 非朋友发言）· 放最前，是本 turn 的主要决策依据
-    if (systemFeedback && systemFeedback.trim().length > 0) {
-      parts.push('');
-      parts.push('── 你的执行进展（内部状态 · 不是朋友说的话 · 这些事都是你在做）──');
-      parts.push(normalizeInternalExecutionNarrative(systemFeedback));
-      parts.push('你的动作：继续多步计划的下一步 / 换个做法重试 / 放弃；需要时再 say 告诉主人（简单成功可不打扰）。');
-    }
+    // 角色卡（世界书）属于静态人格配置的延伸，但同样不随对话/记忆/运行态变化；
+    // 动态人格选择保留在 context 消息，避免每次生成改变 system hash。
     if (isResume) {
       parts.push('');
       parts.push('（这是 ask_master 后的恢复 · 玩家刚答复了你的问题）');
     }
-    // FEAT-NARR-01 · 近期事件通知（伙伴自己做/遇到的事）· 供大模型知情并自然带出
-    if (this.cfg.recentNotices) {
-      const notices = this.cfg.recentNotices();
-      if (notices && notices.trim().length > 0) {
-        parts.push('');
-        parts.push('── 你最近做/遇到的事（内部执行记录 · 可在回答时自然提及，不必复述）──');
-        parts.push(normalizeInternalExecutionNarrative(notices));
-      }
-    }
-    if (this.cfg.companionBlock) {
-      const companion = this.cfg.companionBlock();
-      if (companion && companion.trim().length > 0) {
-        parts.push('');
-        parts.push(companion);
-      }
-    }
-    // 热刷新 · 最近对话历史（每 turn 重读）
-    if (this.cfg.conversationBlock) {
-      const conv = this.cfg.conversationBlock();
-      if (conv && conv.trim().length > 0) {
-        parts.push('');
-        parts.push(conv);
-      }
-    }
-    // 热刷新 · 个性化记忆（每 turn 重读，存了立即生效）。
-    // 放在最近对话之后，让治理后的权威记忆成为 system 段最后依据；
-    // 当前 user 消息仍在整个 system 段之后，明确的新信息继续拥有最高时序优先级。
-    if (this.cfg.memoryBlock) {
-      const mem = this.cfg.memoryBlock(userMessage);
-      if (mem && mem.trim().length > 0) {
-        parts.push('');
-        parts.push('── 你记得的事（始终生效 · 自然融入对话，别生硬复述）──');
-        parts.push(mem);
-      }
-    }
     return parts.join('\n');
+  }
+
+  /** FEAT-CROSS-28 §5.7: context messages carry source-labeled runtime data; never system. */
+  private buildContextMessages(userMessage: string, systemFeedback?: string): LLMChatMessage[] {
+    const context: LLMChatMessage[] = [];
+    const push = (label: string, content: string): void => {
+      if (!content.trim()) return;
+      context.push({ role: 'user', content: `【${label}】\n${content.trim()}` });
+    };
+    if (this.cfg.characterBlock) push('角色卡', this.cfg.characterBlock(userMessage));
+    if (this.cfg.runtimeBlock) push('当前运行态（机器事实）', this.cfg.runtimeBlock());
+    if (systemFeedback && systemFeedback.trim()) {
+      push('你的执行进展（内部状态 · 不是朋友说的话 · 这些事都是你在做）',
+        `${normalizeInternalExecutionNarrative(systemFeedback)}\n你的动作：继续多步计划的下一步 / 换个做法重试 / 放弃；需要时再 say 告诉主人（简单成功可不打扰）。`);
+    }
+    if (this.cfg.recentNotices) push('你最近做/遇到的事（内部执行记录 · 可在回答时自然提及，不必复述）', this.cfg.recentNotices());
+    if (this.cfg.companionBlock) push('陪伴上下文', this.cfg.companionBlock());
+    if (this.cfg.conversationBlock) push('最近对话记录（每 turn 重读）', this.cfg.conversationBlock());
+    if (this.cfg.memoryBlock) push('你记得的事（始终生效 · 自然融入对话，别生硬复述）', this.cfg.memoryBlock(userMessage));
+    return context;
   }
 
   /**

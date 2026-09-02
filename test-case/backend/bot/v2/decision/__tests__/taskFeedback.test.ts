@@ -186,12 +186,13 @@ describe('FEAT-L7-16 · task_feedback 通道', () => {
 
     assert.ok(capture.calls.length >= 1, 'LLM 应被调用');
     const msgs = capture.calls[0];
-    const sys = msgs.find(m => m.role === 'system')?.content ?? '';
-    const user = msgs.find(m => m.role === 'user')?.content ?? '';
-    assert.ok(sys.includes('· 「走到金块」✅ 成功'), '回执内容应在 system 段');
-    assert.ok(sys.includes('不是朋友说的话'), 'system 段应标注非朋友发言');
-    assert.ok(sys.includes('这些事都是你在做'), 'system 段应明确回执属于伙伴自身执行');
-    assert.ok(!sys.includes('系统反馈'), '模型可见标题不得制造外部系统主体');
+    // FEAT-CROSS-28: 回执走受控 context 消息（标注内部来源），不再进 system。
+    const context = msgs.find(m => m.role === 'user' && m.content.includes('执行进展'))?.content ?? '';
+    const user = msgs.find(m => m.role === 'user' && m.content.includes('[内部状态触发'))?.content ?? '';
+    assert.ok(context.includes('· 「走到金块」✅ 成功'), '回执内容应在 context 消息');
+    assert.ok(context.includes('不是朋友说的话'), 'context 应标注非朋友发言');
+    assert.ok(context.includes('这些事都是你在做'), 'context 应明确回执属于伙伴自身执行');
+    assert.ok(!context.includes('系统反馈'), '模型可见标题不得制造外部系统主体');
     assert.ok(!user.includes('走到金块'), 'user 位不得含回执内容');
     assert.ok(user.includes('[内部状态触发，不是朋友发言]'), 'user 位应是中性占位');
   });
@@ -261,9 +262,9 @@ describe('FEAT-L7-16 · task_feedback 通道', () => {
     await flush();
 
     assert.equal(capture.calls.length, 1, '同一批回执只应触发一个 LLM turn');
-    const system = capture.calls[0]?.find(m => m.role === 'system')?.content ?? '';
-    assert.match(system, /先到金块旁.*已到达/s);
-    assert.match(system, /再原地待命.*已取消/s);
+    const context = capture.calls[0]?.find(m => m.role === 'user' && m.content.includes('执行进展'))?.content ?? '';
+    assert.match(context, /先到金块旁.*已到达/s);
+    assert.match(context, /再原地待命.*已取消/s);
     brain.shutdown('test_done');
   });
 
@@ -311,11 +312,11 @@ describe('FEAT-L7-16 · task_feedback 通道', () => {
 
     assert.equal(feedbackSignal?.aborted, true, '主人消息应立即 abort 在途 feedback 请求');
     assert.ok(capture.calls.length >= 2, 'feedback 结束后应立即执行排队的主人 turn');
-    const ownerUser = capture.calls[1]?.find(m => m.role === 'user')?.content ?? '';
-    assert.equal(ownerUser, '先回答我这句话', '主人消息必须先于回放的 feedback 执行');
+    const ownerUser = capture.calls[1]?.filter(m => m.role === 'user').map(m => m.content).join('\n') ?? '';
+    assert.ok(ownerUser.includes('先回答我这句话'), '主人消息必须先于回放的 feedback 执行');
     assert.equal(b.taskFeedbackQueue.length, 0, '被抢占的反馈应合并进紧随其后的主人回合，不再重复唤醒');
-    const ownerSystem = capture.calls[1]?.find(m => m.role === 'system')?.content ?? '';
-    assert.match(ownerSystem, /走到金块.*已到达/s, '主人回合必须收到被抢占的内部事实');
+    const ownerContext = capture.calls[1]?.filter(m => m.role === 'user').map(m => m.content).join('\n') ?? '';
+    assert.match(ownerContext, /走到金块.*已到达/s, '主人回合必须收到被抢占的内部事实');
 
     brain.shutdown('test_done');
   });
