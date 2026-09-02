@@ -16,8 +16,24 @@ import { BehaviorRegistry } from '../../../../../../../apps/minecraft-companion/
 import type { GoalAgentStateV1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
 import type { OperationReceipt } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/contracts/operationReceipt.js';
 import type { WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
+import type { GenerationAtomicEntryPort } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/generationResolversPorts.js';
+import type { PluginAtomicExecutor } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-sdk/contracts/execution.js';
 
 const TEST_SNAPSHOT = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
+
+/** 夹具原子解析器：move_to 等解析为转发到 game 的 executor（占位真执行由 game mock 完成）。 */
+function fixtureAtomicResolver(): GenerationAtomicEntryPort {
+  const executor: PluginAtomicExecutor = {
+    id: 'mineclaw.minecraft-system.atomic.move_to',
+    version: '1.0.0',
+    execute: async () => ({ ok: true }),
+  };
+  return {
+    resolve: (_snapshot, atomicId) => atomicId === 'move_to' || atomicId === 'look_at' || atomicId === 'equip'
+      ? { status: 'resolved', value: { executor, contract: null, contribution: { pluginId: 'mineclaw.minecraft-system', pluginVersion: '1.0.0', contributionId: 'mineclaw.minecraft-system.execution.atomics', contributionVersion: '1.0.0' } } }
+      : { status: 'in_doubt', reason: `atomic_not_in_generation:${atomicId}` },
+  };
+}
 
 test('P1-4 goal 命令固定 state.snapshotRef；task 命令用当前代快照', async () => {
   const bot = createMockBot();
@@ -33,7 +49,7 @@ test('P1-4 goal 命令固定 state.snapshotRef；task 命令用当前代快照',
   let goalState: GoalAgentStateV1 | null = null;
   const body = new BodyActionService({
     game: bot.game, nav: bot.nav, bus, registry, tasks, getWorld: world, isEmbodied: () => true,
-    getGoalState: () => goalState, getSnapshot: () => TEST_SNAPSHOT,
+    getGoalState: () => goalState, getSnapshot: () => TEST_SNAPSHOT, atomicResolver: fixtureAtomicResolver(),
   });
   const opId = 'op-snapshot';
   const state = {
@@ -63,7 +79,7 @@ test('P1-4 goal 无 snapshotRef（旧记录）→ needs_rebind fail-closed，不
   let goalState: GoalAgentStateV1 | null = null;
   const body = new BodyActionService({
     game: bot.game, nav: bot.nav, bus, registry, tasks, getWorld: world, isEmbodied: () => true,
-    getGoalState: () => goalState, getSnapshot: () => TEST_SNAPSHOT,
+    getGoalState: () => goalState, getSnapshot: () => TEST_SNAPSHOT, atomicResolver: fixtureAtomicResolver(),
   });
   const state = { sessionId: 'goal-legacy', epoch: 1, phase: 'running', plan: { revision: 1 } } as unknown as GoalAgentStateV1;
   goalState = state;

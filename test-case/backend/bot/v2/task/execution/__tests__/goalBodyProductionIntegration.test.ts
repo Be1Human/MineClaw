@@ -12,6 +12,7 @@ import { GoalAgentSessionStore } from '../../../../../../../apps/minecraft-compa
 import { GoalAgentActionLedger } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/production/goalAgentActionLedger.js';
 import { GoalAgentProductionExecutionPort,GoalAgentProductionPerceptionPort,GoalAgentProductionVerificationPort } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/production/goalAgentProductionPorts.js';
 import { createGoalAgentState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
+import { executeAtomic as unboundExecuteAtomic } from '../../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
 import type { WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 import type { OperationReceipt } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/contracts/operationReceipt.js';
 
@@ -28,7 +29,17 @@ test('production GoalAgent action_list → action_execute → body lease → dev
     inventory:{items:bot.game.getInventoryItems(),held:null,freeSlots:35},taskContext:null} as WorldStateView);
   let loop!:GoalAgentRoundLoop;
   const TEST_SNAPSHOT = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
-  const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,tasks,registry,getWorld:world,isEmbodied:()=>true,getGoalState:id=>loop.snapshot(id),getSnapshot:()=>TEST_SNAPSHOT});
+  const atomicResolver = {
+    resolve: (_snapshot: unknown, atomicId: string) => atomicId === 'craft'
+      ? { status: 'resolved' as const, value: { executor: { id: 'mineclaw.minecraft-system.atomic.craft', version: '1.0.0', execute: async (command: { request: Record<string, unknown>; source: string }) => {
+          const result = await unboundExecuteAtomic({ id: command.request.id ?? 'craft', source: command.source, taskId: 'task', type: 'craft', priority: 35, interrupt_level: 'soft', resource: [], preconditions: [], timeout_ms: 5000, target: command.request.target as Record<string, unknown> } as never, {
+            game: bot.game, actions: bot.game, nav: bot.nav, bus, getWorld: world, execution: { assertCurrent: () => undefined, wait: async () => undefined },
+          } as never);
+          return { ok: result.ok, ...(result.error ? { error: result.error } : {}) };
+        } }, contract: null, contribution: { pluginId: 'mineclaw.minecraft-system', pluginVersion: '1.0.0', contributionId: 'mineclaw.minecraft-system.execution.atomics', contributionVersion: '1.0.0' } } }
+      : { status: 'in_doubt' as const, reason: `atomic_not_in_generation:${atomicId}` },
+  };
+  const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,tasks,registry,getWorld:world,isEmbodied:()=>true,getGoalState:id=>loop.snapshot(id),getSnapshot:()=>TEST_SNAPSHOT,atomicResolver:atomicResolver as never});
   const receipts:OperationReceipt[]=[];bus.on('body.operation_receipt',e=>receipts.push(e.payload as unknown as OperationReceipt));
   const execution=new GoalAgentProductionExecutionPort({game:bot.game,bus,body,getWorld:world,behaviors:registry,tasks,parentTaskId:()=>parent.id,actionLedger:ledger});
   let rounds=0;
