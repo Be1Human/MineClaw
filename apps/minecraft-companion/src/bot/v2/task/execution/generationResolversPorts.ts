@@ -23,11 +23,18 @@ export interface GenerationAtomicResolverPort {
 
 /** F12 · Contract/Executor returned together from the pinned generation. */
 export interface GenerationAtomicEntryPort {
-  resolve(snapshot: RegistrySnapshotRef, atomicId: string): ResolverOutcome<{ readonly executor: PluginAtomicExecutor; readonly contract: PluginAtomicContract | null }>;
+  resolve(snapshot: RegistrySnapshotRef, atomicId: string): ResolverOutcome<{
+    readonly executor: PluginAtomicExecutor;
+    readonly contract: PluginAtomicContract | null;
+    /** 精确贡献引用（审计/追溯；P08 同一次逻辑操作全程同 ref）。 */
+    readonly contribution: ContributionRef;
+  }>;
 }
 
 export interface GenerationContractResolverPort {
   resolve(snapshot: RegistrySnapshotRef, atomicId: string): ResolverOutcome<PluginAtomicContract>;
+  /** 该代全部原子（LLM 工具展示 / 候选 schema）；空 = 代内无原语。 */
+  list(snapshot: RegistrySnapshotRef): ResolverOutcome<readonly PluginAtomicContract[]>;
 }
 
 /** Behavior factories come from the pinned generation's execution contributions. */
@@ -71,6 +78,11 @@ export function createContractResolver(resolvers: GenerationResolvers): Generati
     resolve(snapshot, atomicId) {
       return resolveAtomicContract(resolvers, snapshot, atomicId);
     },
+    list(snapshot) {
+      const entries = resolveAtomicEntries(resolvers, snapshot);
+      if (entries.status !== 'resolved') return entries;
+      return { status: 'resolved', value: entries.value.map(entry => entry.contract).filter((contract): contract is PluginAtomicContract => contract !== undefined) };
+    },
   };
 }
 
@@ -98,15 +110,31 @@ function resolveAtomicEntry(
   resolvers: GenerationResolvers,
   snapshot: RegistrySnapshotRef,
   atomicId: string,
-): ResolverOutcome<{ readonly executor: PluginAtomicExecutor; readonly contract: PluginAtomicContract | null }> {
+): ResolverOutcome<{ readonly executor: PluginAtomicExecutor; readonly contract: PluginAtomicContract | null; readonly contribution: ContributionRef }> {
+  const entries = resolveAtomicEntries(resolvers, snapshot);
+  if (entries.status !== 'resolved') return entries;
+  const entry = entries.value.find(candidate => candidate.atomicId === atomicId);
+  if (!entry) return { status: 'in_doubt', reason: `atomic_not_in_generation:${atomicId}` };
+  return { status: 'resolved', value: { executor: entry.executor, contract: entry.contract ?? null, contribution: entry.contribution } };
+}
+
+function resolveAtomicEntries(
+  resolvers: GenerationResolvers,
+  snapshot: RegistrySnapshotRef,
+): ResolverOutcome<AtomicCatalogEntry[]> {
   const result = resolvers.resolveById(snapshot, 'mineclaw.minecraft-system.execution.atomics');
   if (result.status !== 'resolved' || !result.entry) {
     return { status: 'in_doubt', reason: result.reason ?? 'system_plugin_unresolved' };
   }
   const catalog = (result.entry.contribution as { atomicCatalog?: AtomicCatalogEntry[] }).atomicCatalog ?? [];
-  const entry = catalog.find(candidate => candidate.atomicId === atomicId);
-  if (!entry) return { status: 'in_doubt', reason: `atomic_not_in_generation:${atomicId}` };
-  return { status: 'resolved', value: { executor: entry.executor, contract: entry.contract ?? null } };
+  // 精确贡献引用：原子由系统插件 execution 贡献整体承载（P08 全程同 ref）。
+  const contribution: ContributionRef = {
+    pluginId: result.entry.ref.pluginId,
+    pluginVersion: result.entry.ref.pluginVersion,
+    contributionId: result.entry.ref.contributionId,
+    contributionVersion: result.entry.ref.contributionVersion,
+  };
+  return { status: 'resolved', value: catalog.map(entry => ({ ...entry, contribution })) };
 }
 
 interface AtomicCatalogEntry {
@@ -114,6 +142,7 @@ interface AtomicCatalogEntry {
   readonly version: string;
   readonly executor: PluginAtomicExecutor;
   readonly contract?: PluginAtomicContract;
+  readonly contribution: ContributionRef;
 }
 
 /** Adapter: controlled execution context -> SDK atomic context (assertCurrent/wait/deadline). */

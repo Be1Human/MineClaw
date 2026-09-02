@@ -89,6 +89,17 @@ test('P3-4 F12 contract 承载：entry 解析返回 executor+contract；contract
     assert.ok(entry.value.contract !== null);
     assert.equal(entry.value.contract!.atomicId, 'move_to');
     assert.ok(entry.value.contract!.schema !== undefined);
+    // P08 精确贡献引用：原子由系统插件 execution 贡献承载
+    assert.equal(entry.value.contribution.pluginId, 'mineclaw.minecraft-system');
+    assert.equal(entry.value.contribution.contributionId, 'mineclaw.minecraft-system.execution.atomics');
+  }
+
+  // list 返回代内全部 contract（含每条目元数据）
+  const all = contractResolver.list(snapshot);
+  assert.equal(all.status, 'resolved');
+  if (all.status === 'resolved') {
+    assert.ok(all.value.length >= 30, `contract list ${all.value.length}`);
+    assert.ok(all.value.some(contract => contract.atomicId === 'toss_item'));
   }
 
   const contract = contractResolver.resolve(snapshot, 'move_to');
