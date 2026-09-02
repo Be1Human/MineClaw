@@ -78,6 +78,8 @@ export interface PluginActivationGate {
   /** A callback may run only when its record is the active one (new lease) or is draining (existing lease). */
   shouldRun(record: ActiveGenerationRecord, token: string, holdsExistingLease: boolean): boolean;
   openFor(record: ActiveGenerationRecord): void;
+  /** Revoke a drained record: even existing leases are refused (late callbacks rejected). */
+  retract(generationId: string): void;
 }
 
 export interface RegistrationTransactionOptions {
@@ -128,16 +130,13 @@ export class RegistrationTransaction {
     this.state = 'staged';
   }
 
-  /** Validation: implementation/declaration match, global ID uniqueness, execution closure, permission coherence. */
+  /** Validation: implementation/declaration match, execution closure, permission coherence. */
   validate(): void {
     if (this.state !== 'staged') throw pluginError('plugin_cancelled', `cannot validate in state ${this.state}`);
     assertImplementationMatch(this.manifest, this.contributions);
-    const current = this.options.existingSlot.read();
-    for (const record of this.staged.values()) {
-      if (current.active.registry.byId.has(record.ref.contributionId)) {
-        throw pluginError('id_conflict', `contribution id ${record.ref.contributionId} conflicts with the active generation`);
-      }
-    }
+    // Cross-generation re-registration of the same plugin contribution is a
+    // version upgrade: the previous record drains, the new one becomes active.
+    // Within-one-generation duplicates are rejected earlier (stage/ID conflict).
     assertExecutionClosure(this.manifest);
     for (const contribution of this.contributions) {
       if (contribution.kind === 'execution' && contribution.atomicExecutor !== undefined && this.manifest.kind !== 'system') {
@@ -304,6 +303,7 @@ export function bootstrapGeneration(buildId: string): PublishedGenerationSet {
 
 export function createActivationGate(): PluginActivationGate {
   let openRecord: ActiveGenerationRecord | null = null;
+  const retracted = new Set<string>();
   return Object.freeze({
     get open(): boolean {
       return openRecord !== null;
@@ -311,7 +311,12 @@ export function createActivationGate(): PluginActivationGate {
     openFor(record: ActiveGenerationRecord): void {
       openRecord = record;
     },
+    retract(generationId: string): void {
+      retracted.add(generationId);
+      if (openRecord?.generationId === generationId) openRecord = null;
+    },
     shouldRun(candidate: ActiveGenerationRecord, token: string, holdsExistingLease: boolean): boolean {
+      if (retracted.has(candidate.generationId)) return false;
       if (openRecord === null) return false;
       if (openRecord === candidate && token !== '') return true;
       if (holdsExistingLease) return true;

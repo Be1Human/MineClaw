@@ -64,7 +64,7 @@ test('U32 stage 重复贡献 ID → 结构化拒绝', () => {
     (error: unknown) => error instanceof PluginContractError && error.code === 'id_conflict');
 });
 
-test('U32 validate 与 active Generation 的 ID 冲突 → 整包失败', async () => {
+test('U32 同插件版本升级：非 id_conflict，旧代进入 draining', async () => {
   const { slot, gate } = slotSetup();
   // First package installs a skill.
   const first = new RegistrationTransaction(manifest('mineclaw.a'), { buildId: 'build-1', existingSlot: slot });
@@ -75,20 +75,22 @@ test('U32 validate 与 active Generation 的 ID 冲突 → 整包失败', async 
   first.stage();
   first.validate();
   first.prepareStart(gate);
-  first.commit(gate, slot.read());
+  const gen41 = first.commit(gate, slot.read());
 
-  // Second transaction with the same package id (direct construction, bypassing the resolver) must fail global ID uniqueness.
-  const second = new RegistrationTransaction(manifest('mineclaw.a'), { buildId: 'build-1', existingSlot: slot });
+  // Upgrade of the same plugin (new version) is a generation switch, not a conflict.
+  const second = new RegistrationTransaction(manifest('mineclaw.a', { version: '1.1.0' }), { buildId: 'build-1', existingSlot: slot });
   second.construct({
     entryKey: 'a',
     create: () => [skillImpl('mineclaw.a')],
-  }, { host: { version: '2.0.0', buildId: 'build-1' }, plugin: { pluginId: 'mineclaw.a', pluginVersion: '1.0.0' } });
+  }, { host: { version: '2.0.0', buildId: 'build-1' }, plugin: { pluginId: 'mineclaw.a', pluginVersion: '1.1.0' } });
   second.stage();
-  assert.throws(() => second.validate(),
-    (error: unknown) => error instanceof PluginContractError && error.code === 'id_conflict');
-  await second.abort();
-  assert.ok(slot.read().active.registry.byId.has('mineclaw.a.s1'));
-  assert.equal(slot.read().active.registry.byId.size, 1);
+  second.validate();
+  second.prepareStart(gate);
+  const gen42 = second.commit(gate, slot.read());
+  assert.notEqual(gen42.generationId, gen41.generationId);
+  const published = slot.read();
+  assert.ok(published.active.registry.byId.has('mineclaw.a.s1'));
+  assert.ok(published.drainingById.has(gen41.generationId), 'previous generation must drain');
 });
 
 test('U32 CAS 冲突（并发提交同一基代）→ generation_conflict', async () => {
