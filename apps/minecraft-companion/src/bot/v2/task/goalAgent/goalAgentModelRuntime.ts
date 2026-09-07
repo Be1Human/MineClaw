@@ -3,6 +3,17 @@ import type {
   LLMToolCallResult,
   LLMToolSchema,
 } from '../../cognitive/llm/types.js';
+import type { PreparedGovernedToolCall } from '../../cognitive/llm/LLMClient.js';
+import {
+  GovernedLlmPort,
+  type ContextCandidateV1,
+  type GovernedLlmTransport,
+  type GovernanceReceiptV1,
+} from '../../cognitive/llm/contextGovernance.js';
+import type { AgentContextPolicyConfigV1 } from '../../cognitive/llm/contextBudget.js';
+import type { ExactModelRequest } from '../../cognitive/llm/apiCodec.js';
+import type { ModelContextProfileResolution } from '../../../../llm/modelContextProfile.js';
+import { tuning } from '../../infra/tuning.js';
 import { cloneGoalAgentState, type GoalAgentNodeId, type GoalAgentStateV1 } from './goalAgentState.js';
 import { GoalAgentContextCompiler } from './goalAgentContextCompiler.js';
 import type {
@@ -15,8 +26,13 @@ import type { LlmTraceCallContext } from '../../infra/llmTrace/index.js';
 import {
   type GoalAgentSessionEventLogPort,
 } from './goalAgentSessionEventLog.js';
+import {
+  GoalAgentContextReducer,
+  type GoalAgentCompactionDraftV2,
+  type GoalAgentCompactionProposalV2,
+} from './goalAgentContextReducer.js';
 
-export interface GoalAgentModelClient {
+export interface GoalAgentLegacyModelClient {
   callWithTools(args: {
     messages: LLMChatMessage[];
     tools: LLMToolSchema[];
@@ -49,6 +65,9 @@ export interface GoalAgentModelRuntimeOptions {
   trace?: (trace: GoalAgentModelTrace) => void;
   timeoutMs?: number;
   maxTokensPerCall?: number;
+  /** Internal test seam only. GoalAgentOptions never exposes this escape hatch. */
+  allowLegacyTestClient?: boolean;
+  contextPolicy?: () => Readonly<AgentContextPolicyConfigV1>;
 }
 
 export interface GoalAgentTerminalReflectionResult {
@@ -97,11 +116,18 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
   private readonly eventLog: GoalAgentSessionEventLogPort;
   private readonly timeoutMs: number;
   private readonly maxTokensPerCall: number;
+  private readonly client: GoalAgentModelClient | GoalAgentLegacyModelClient;
+  private readonly legacyTestClient: boolean;
 
   constructor(
-    private readonly client: GoalAgentModelClient,
+    client: GoalAgentModelClient | GoalAgentLegacyModelClient,
     private readonly options: GoalAgentModelRuntimeOptions,
   ) {
+    this.client = client;
+    this.legacyTestClient = !isGovernedClient(client);
+    if (this.legacyTestClient && !options.allowLegacyTestClient) {
+      throw new Error('GoalAgent production model client must implement governed exact-request preparation');
+    }
     this.compiler = options.compiler ?? new GoalAgentContextCompiler();
     this.eventLog = options.eventLog;
     this.timeoutMs = options.timeoutMs ?? 90_000;
@@ -125,37 +151,19 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       node: invocation.node,
       instruction: invocation.instruction,
       historyMessages: projection.messages,
-      ...(projection.compactionSummary
-        ? { compaction: {
-            summary: projection.compactionSummary,
-            throughMessageIndex: projection.compactedThroughMessageIndex,
-          } }
-        : {}),
+      historyRefs: projection.messageRefs,
+      ...(projection.compaction ? { compaction: projection.compaction } : {}),
     });
     const modelCallIndex = state.budget.llmCalls + 1;
     const callId = `goalagent-${randomUUID()}`;
     const tools = invocation.tools ?? [];
     const toolChoice = invocation.toolChoice ?? (tools.length ? 'auto' : 'none');
-    this.eventLog.appendSessionEvent({
-      eventId: `${state.sessionId}:model-request:${callId}`,
-      sessionId: state.sessionId,
-      occurredAt: new Date().toISOString(),
-      type: 'model.requested',
-      node: invocation.node,
-      stateRevision: state.revision,
-      epoch: state.epoch,
-      payload: {
-        callId,
-        modelCallIndex,
-        messages: structuredClone(compiled.messages),
-        tools: structuredClone(tools),
-        toolChoice: structuredClone(toolChoice),
-        contextSources: structuredClone(compiled.contextSources),
-      },
-    });
-    let raw: LLMToolCallResult | null;
+    let raw: LLMToolCallResult;
+    let governanceReceipt: GovernanceReceiptV1;
+    let compaction: GoalAgentCompactionProposalV2 | undefined;
+    let dispatchedMessages = compiled.messages;
     try {
-      raw = await this.client.callWithTools({
+      const transport = new GoalAgentGovernedTransport(this.client, this.legacyTestClient, {
         messages: compiled.messages,
         tools,
         toolChoice,
@@ -176,7 +184,37 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
           contextSources: compiled.contextSources,
           abortReason: 'goalagent_deadline_or_cancel',
         },
+      }, compiled.segments, (prepared, receiptPending) => {
+        dispatchedMessages = structuredClone(prepared.messages);
+        this.eventLog.appendSessionEvent({
+          eventId: `${state.sessionId}:model-request:${callId}`,
+          sessionId: state.sessionId,
+          occurredAt: new Date().toISOString(),
+          type: 'model.requested',
+          node: invocation.node,
+          stateRevision: state.revision,
+          epoch: state.epoch,
+          payload: {
+            callId, modelCallIndex,
+            messages: structuredClone(prepared.messages), tools: structuredClone(tools),
+            toolChoice: structuredClone(toolChoice), exactRequest: structuredClone(prepared.exact),
+            contextSources: structuredClone(prepared.contextSources),
+            governance: structuredClone(receiptPending),
+          },
+        });
       });
+      const governed = await new GovernedLlmPort<PreparedGoalAgentCall, LLMToolCallResult | null, GoalAgentCompactionDraftV2>({
+        purpose: 'goalAgent',
+        policy: this.options.contextPolicy ?? (() => tuning().agentContext),
+        transport,
+        reducer: new GoalAgentContextReducer(state),
+      }).call(candidate(compiled.segments, tools, toolChoice, this.maxTokensPerCall), invocation.signal);
+      if (governed.kind === 'cancelled') throw abortError();
+      if (governed.kind !== 'completed') throw new GoalAgentContextGovernanceError(governed.reason, governed.detail);
+      if (!governed.result) throw new GoalAgentModelUnavailableError();
+      raw = governed.result;
+      governanceReceipt = governed.receipt;
+      compaction = governed.proposal ? finalizeCompaction(governed.proposal, governed.receipt) : undefined;
     } catch (error) {
       this.recordModelFailure(state, invocation.node, callId, modelCallIndex, error);
       throw error;
@@ -186,14 +224,9 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       this.recordModelFailure(state, invocation.node, callId, modelCallIndex, error);
       throw error;
     }
-    if (!raw) {
-      const error = new GoalAgentModelUnavailableError();
-      this.recordModelFailure(state, invocation.node, callId, modelCallIndex, error);
-      throw error;
-    }
-
     const normalizedContent = raw.content.trim() || JSON.stringify({ toolCalls: raw.toolCalls });
-    const estimatedPromptTokens = estimateTokens(compiled.messages.map(message => message.content).join('\n'));
+    const estimatedPromptTokens = governanceReceipt.reconciliation?.actualInputTokens
+      ?? governanceReceipt.measureAfter?.tokens ?? governanceReceipt.measureBefore.tokens;
     const estimatedCompletionTokens = estimateTokens(normalizedContent);
     const usage = selectTokenUsage(raw, estimatedPromptTokens, estimatedCompletionTokens);
     this.eventLog.appendSessionEvent({
@@ -240,7 +273,7 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       modelCallIndex,
       epoch: state.epoch,
       projectedMessages: compiled.projectedHistoryMessages,
-      omittedHistoryMessages: compiled.omittedHistoryMessages,
+      omittedHistoryMessages: compaction?.omittedMessages ?? 0,
       promptTokens,
       completionTokens,
       tokenUsageSource: usage.source,
@@ -250,7 +283,7 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       value,
       assistant,
       messagesToAppend,
-      ...(compiled.compaction ? { compaction: structuredClone(compiled.compaction) } : {}),
+      ...(compaction ? { compaction: structuredClone(compaction) } : {}),
       budget: next.budget,
       promptTokens,
       completionTokens,
@@ -283,36 +316,20 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
         'Return JSON only: {"summary":"concise factual lesson"}.',
       ].join('\n'),
       historyMessages: projection.messages,
-      ...(projection.compactionSummary
-        ? { compaction: {
-            summary: projection.compactionSummary,
-            throughMessageIndex: projection.compactedThroughMessageIndex,
-          } }
-        : {}),
+      historyRefs: projection.messageRefs,
+      ...(projection.compaction ? { compaction: projection.compaction } : {}),
     });
     const callId = `goalagent-reflection-${randomUUID()}`;
     const modelCallIndex = state.budget.llmCalls + 1;
-    this.eventLog.appendSessionEvent({
-      eventId: `${state.sessionId}:model-request:${callId}`,
-      sessionId: state.sessionId,
-      occurredAt: new Date().toISOString(),
-      type: 'model.requested',
-      node: 'terminal',
-      stateRevision: state.revision,
-      epoch: state.epoch,
-      payload: {
-        callId, modelCallIndex, purpose: 'quarantined_reflection',
-        messages: structuredClone(compiled.messages), tools: [], toolChoice: 'none',
-        contextSources: structuredClone(compiled.contextSources),
-      },
-    });
-    let raw: LLMToolCallResult | null;
+    let raw: LLMToolCallResult;
+    let governanceReceipt: GovernanceReceiptV1;
     try {
-      raw = await this.client.callWithTools({
+      const outputTokens = Math.min(1_024, this.maxTokensPerCall);
+      const transport = new GoalAgentGovernedTransport(this.client, this.legacyTestClient, {
         messages: compiled.messages,
         tools: [],
         toolChoice: 'none',
-        maxTokens: Math.min(1_024, this.maxTokensPerCall),
+        maxTokens: outputTokens,
         timeoutMs: this.timeoutMs,
         signal,
         traceContext: {
@@ -329,17 +346,38 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
           contextSources: compiled.contextSources,
           abortReason: 'goalagent_reflection_cancel',
         },
+      }, compiled.segments, prepared => {
+        this.eventLog.appendSessionEvent({
+          eventId: `${state.sessionId}:model-request:${callId}`,
+          sessionId: state.sessionId,
+          occurredAt: new Date().toISOString(),
+          type: 'model.requested',
+          node: 'terminal',
+          stateRevision: state.revision,
+          epoch: state.epoch,
+          payload: {
+            callId, modelCallIndex, purpose: 'quarantined_reflection',
+            messages: structuredClone(prepared.messages), tools: [], toolChoice: 'none',
+            exactRequest: structuredClone(prepared.exact),
+            contextSources: structuredClone(prepared.contextSources),
+          },
+        });
       });
+      const governed = await new GovernedLlmPort<PreparedGoalAgentCall, LLMToolCallResult | null, GoalAgentCompactionDraftV2>({
+        purpose: 'background', policy: this.options.contextPolicy ?? (() => tuning().agentContext), transport,
+        reducer: new GoalAgentContextReducer(state),
+      }).call(candidate(compiled.segments, [], 'none', outputTokens), signal);
+      if (governed.kind === 'cancelled') throw abortError();
+      if (governed.kind !== 'completed') throw new GoalAgentContextGovernanceError(governed.reason, governed.detail);
+      if (!governed.result) throw new GoalAgentModelUnavailableError();
+      raw = governed.result;
+      governanceReceipt = governed.receipt;
     } catch (error) {
       this.recordModelFailure(state, 'terminal', callId, modelCallIndex, error);
       throw error;
     }
-    if (!raw) {
-      const error = new GoalAgentModelUnavailableError();
-      this.recordModelFailure(state, 'terminal', callId, modelCallIndex, error);
-      throw error;
-    }
-    const estimatedPromptTokens = estimateTokens(compiled.messages.map(message => message.content).join('\n'));
+    const estimatedPromptTokens = governanceReceipt.reconciliation?.actualInputTokens
+      ?? governanceReceipt.measureAfter?.tokens ?? governanceReceipt.measureBefore.tokens;
     const estimatedCompletionTokens = estimateTokens(raw.content);
     const usage = selectTokenUsage(raw, estimatedPromptTokens, estimatedCompletionTokens);
     this.eventLog.appendSessionEvent({
@@ -364,7 +402,7 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
     this.options.trace?.({
       callId, sessionId: state.sessionId, node: 'terminal', contextRevision: state.revision,
       modelCallIndex, epoch: state.epoch, projectedMessages: compiled.projectedHistoryMessages,
-      omittedHistoryMessages: compiled.omittedHistoryMessages, promptTokens, completionTokens,
+      omittedHistoryMessages: 0, promptTokens, completionTokens,
       tokenUsageSource: usage.source,
     });
     return { callId, modelCallIndex, summary, promptTokens, completionTokens, tokenUsageSource: usage.source };
@@ -393,6 +431,200 @@ export class GoalAgentModelRuntime implements GoalAgentModelPort {
       },
     });
   }
+}
+
+interface PreparedGoalAgentCall {
+  exact: Readonly<ExactModelRequest>;
+  messages: LLMChatMessage[];
+  contextSources: LlmTraceCallContext['contextSources'];
+  production?: PreparedGovernedToolCall;
+  legacyArgs?: Parameters<GoalAgentLegacyModelClient['callWithTools']>[0];
+}
+
+class GoalAgentGovernedTransport implements GovernedLlmTransport<PreparedGoalAgentCall, LLMToolCallResult | null> {
+  constructor(
+    private readonly client: GoalAgentModelClient | GoalAgentLegacyModelClient,
+    private readonly legacyTestClient: boolean,
+    private readonly baseArgs: Parameters<GoalAgentLegacyModelClient['callWithTools']>[0],
+    private readonly originalSegments: readonly import('../../cognitive/llm/contextGovernance.js').ContextSegmentV1[],
+    private readonly beforeDispatch: (prepared: PreparedGoalAgentCall, preflight: Record<string, unknown>) => void,
+  ) {}
+
+  profile(): ModelContextProfileResolution {
+    return isGovernedClient(this.client) ? this.client.contextProfile() : legacyTestProfile();
+  }
+
+  prepare(candidateValue: Readonly<ContextCandidateV1>) {
+    const messages = canonicalMessagesToLegacy(candidateValue.segments.flatMap(segment => segment.messages));
+    const tools: LLMToolSchema[] = candidateValue.tools.map(tool => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: structuredClone(tool.parameters) as LLMToolSchema['function']['parameters'],
+      },
+    }));
+    const toolChoice = typeof candidateValue.toolChoice === 'object'
+      ? { type: 'function' as const, function: { name: candidateValue.toolChoice.name } }
+      : candidateValue.toolChoice;
+    const contextSources = contextSourcesForSegments(candidateValue.segments, this.originalSegments);
+    const args = {
+      ...this.baseArgs,
+      messages,
+      tools,
+      ...(toolChoice ? { toolChoice } : {}),
+      temperature: candidateValue.temperature ?? this.baseArgs.temperature,
+      maxTokens: candidateValue.requestedOutputTokens,
+      traceContext: this.baseArgs.traceContext
+        ? { ...this.baseArgs.traceContext, contextSources }
+        : undefined,
+    };
+    if (isGovernedClient(this.client)) {
+      const production = this.client.prepareGovernedToolCall(args);
+      return {
+        exact: production.exact,
+        prepared: { exact: production.exact, messages, contextSources, production },
+      };
+    }
+    if (!this.legacyTestClient) throw new Error('legacy GoalAgent transport is disabled');
+    const exact = legacyExactRequest(args);
+    return { exact, prepared: { exact, messages, contextSources, legacyArgs: args } };
+  }
+
+  async dispatch(prepared: PreparedGoalAgentCall, signal?: AbortSignal) {
+    const profile = this.profile();
+    this.beforeDispatch(prepared, {
+      profile: profile.kind === 'resolved' ? profile.profile.profileId : 'unresolved',
+      exactRequestDigest: shortDigest(JSON.stringify(prepared.exact)),
+    });
+    const value = prepared.production && isGovernedClient(this.client)
+      ? await this.client.dispatchPreparedGovernedToolCall(prepared.production)
+      : await this.client.callWithTools({ ...prepared.legacyArgs!, signal: signal ?? prepared.legacyArgs!.signal });
+    if (signal?.aborted) throw abortError();
+    return { value, ...(value?.usage?.inputTokens !== undefined ? { actualInputTokens: value.usage.inputTokens } : {}) };
+  }
+}
+
+function candidate(
+  segments: ContextCandidateV1['segments'],
+  tools: readonly LLMToolSchema[],
+  toolChoice: NonNullable<Parameters<GoalAgentLegacyModelClient['callWithTools']>[0]['toolChoice']>,
+  requestedOutputTokens: number,
+): ContextCandidateV1 {
+  return Object.freeze({
+    segments: Object.freeze([...segments]),
+    tools: Object.freeze(tools.map(tool => Object.freeze({
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: structuredClone(tool.function.parameters),
+    }))),
+    toolChoice: typeof toolChoice === 'object' ? { name: toolChoice.function.name } : toolChoice,
+    temperature: 0.1,
+    requestedOutputTokens,
+  });
+}
+
+function finalizeCompaction(
+  draft: GoalAgentCompactionDraftV2,
+  receipt: GovernanceReceiptV1,
+): GoalAgentCompactionProposalV2 {
+  return {
+    ...structuredClone(draft),
+    profileRef: receipt.profileId,
+    policyRevision: receipt.policyRevision,
+    tokensBefore: receipt.measureBefore.upperBoundTokens,
+    tokensAfter: receipt.measureAfter?.upperBoundTokens ?? receipt.measureBefore.upperBoundTokens,
+  };
+}
+
+function isGovernedClient(client: GoalAgentModelClient | GoalAgentLegacyModelClient): client is GoalAgentModelClient {
+  const value = client as Partial<GoalAgentModelClient>;
+  return typeof value.contextProfile === 'function'
+    && typeof value.prepareGovernedToolCall === 'function'
+    && typeof value.dispatchPreparedGovernedToolCall === 'function';
+}
+
+/** Explicit test adapter; production composition must inject LLMClient directly. */
+export function createGoalAgentTestModelClient(client: GoalAgentLegacyModelClient): GoalAgentModelClient {
+  return {
+    callWithTools: args => client.callWithTools(args),
+    contextProfile: legacyTestProfile,
+    prepareGovernedToolCall(args) {
+      const detached = { ...args, messages: structuredClone(args.messages), tools: structuredClone(args.tools) };
+      return Object.freeze({ exact: Object.freeze(legacyExactRequest(detached)), args: detached });
+    },
+    dispatchPreparedGovernedToolCall(prepared) { return client.callWithTools(prepared.args); },
+  };
+}
+
+function legacyTestProfile(): ModelContextProfileResolution {
+  return { kind: 'resolved', profile: Object.freeze({
+    schema: 'mineclaw.model-context-profile/v1', profileId: 'goalagent-legacy-test-double/v1',
+    routeId: 'goalagent-test', model: 'goalagent-test-double', api: 'openai-completions',
+    contextWindowTokens: 1_048_576, maxOutputTokens: 65_536,
+    windowAccounting: 'input_plus_output', tokenizerRef: 'wire-json-utf8-upper-bound/v1',
+    source: { kind: 'explicit_config' as const, version: 'test-only/v1', verifiedAt: '2026-09-06T00:00:00.000Z' },
+  }) };
+}
+
+function legacyExactRequest(args: Parameters<GoalAgentLegacyModelClient['callWithTools']>[0]): ExactModelRequest {
+  return {
+    path: '/v1/chat/completions',
+    body: {
+      model: 'goalagent-test-double', messages: structuredClone(args.messages), tools: structuredClone(args.tools),
+      tool_choice: structuredClone(args.toolChoice), temperature: args.temperature, max_tokens: args.maxTokens,
+    },
+  };
+}
+
+function canonicalMessagesToLegacy(messages: readonly import('../../cognitive/llm/types.js').CanonicalLlmMessage[]): LLMChatMessage[] {
+  return messages.map(message => {
+    const toolResult = message.content.length === 1 && message.content[0].kind === 'tool-result'
+      ? message.content[0] : undefined;
+    if (toolResult?.kind === 'tool-result') {
+      return { role: 'tool', content: toolResult.output, tool_call_id: toolResult.callId, canonical: structuredClone(message) };
+    }
+    const text = message.content.filter(block => block.kind === 'text' || block.kind === 'reasoning')
+      .map(block => block.kind === 'text' || block.kind === 'reasoning' ? block.text : '').join('\n');
+    const calls = message.content.filter(block => block.kind === 'tool-call');
+    return {
+      role: message.role,
+      content: text,
+      canonical: structuredClone(message),
+      ...(calls.length ? { tool_calls: calls.map(block => {
+        if (block.kind !== 'tool-call') throw new Error('unreachable');
+        return { id: block.id, type: 'function' as const, function: { name: block.name, arguments: JSON.stringify(block.arguments) } };
+      }) } : {}),
+    };
+  });
+}
+
+function contextSourcesForSegments(
+  segments: readonly import('../../cognitive/llm/contextGovernance.js').ContextSegmentV1[],
+  original: readonly import('../../cognitive/llm/contextGovernance.js').ContextSegmentV1[],
+) {
+  let offset = 0;
+  const selectedIds = new Set(segments.map(segment => segment.id));
+  return {
+    selected: segments.map(segment => {
+      const messageIndexes = segment.messages.map(() => offset++);
+      return { kind: segment.kind, ref: segment.sourceRefs.join(','), messageIndexes };
+    }),
+    omitted: original.filter(segment => !selectedIds.has(segment.id)).map(segment => ({
+      kind: segment.kind,
+      ref: segment.sourceRefs.join(','),
+      reason: 'context_budget_reduced/v1',
+    })),
+  };
+}
+
+function shortDigest(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 function assertInvocation<T>(invocation: GoalAgentModelInvocation<T>): void {
@@ -439,6 +671,20 @@ function assistantMessage(result: LLMToolCallResult): LLMChatMessage {
         }
       : {}),
   };
+}
+
+export class GoalAgentContextGovernanceError extends Error {
+  constructor(readonly reason: string, detail?: string) {
+    super(`GoalAgent context governance rejected the call: ${reason}${detail ? ` (${detail})` : ''}`);
+    this.name = 'GoalAgentContextGovernanceError';
+  }
+}
+
+/** Production GoalAgent clients must expose exact preparation and a frozen model profile. */
+export interface GoalAgentModelClient extends GoalAgentLegacyModelClient {
+  contextProfile(): ModelContextProfileResolution;
+  prepareGovernedToolCall(args: Parameters<GoalAgentLegacyModelClient['callWithTools']>[0]): PreparedGovernedToolCall;
+  dispatchPreparedGovernedToolCall(prepared: PreparedGovernedToolCall): Promise<LLMToolCallResult | null>;
 }
 
 function selectTokenUsage(

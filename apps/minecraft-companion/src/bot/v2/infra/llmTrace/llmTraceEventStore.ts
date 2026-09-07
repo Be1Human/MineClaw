@@ -71,10 +71,11 @@ export class LlmTraceEventStore {
       ? undefined
       : positiveInteger(options.maxDatabaseBytes, undefined, 'maxDatabaseBytes');
     this.db = openSqliteDatabase(options.filename);
-    if (options.filename !== ':memory:') this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
-    this.db.pragma('busy_timeout = 5000');
-    this.db.exec(`
+    try {
+      if (options.filename !== ':memory:') this.db.pragma('journal_mode = WAL');
+      this.db.pragma('foreign_keys = ON');
+      this.db.pragma('busy_timeout = 5000');
+      this.db.exec(`
       CREATE TABLE IF NOT EXISTS llm_trace_metadata (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -142,9 +143,15 @@ export class LlmTraceEventStore {
         ON llm_trace_events(profile_id, goal_session_id, seq);
       CREATE INDEX IF NOT EXISTS idx_trace_type
         ON llm_trace_events(profile_id, type, seq);
-    `);
-    this.ensureMetadata();
-    this.validateIntegrity();
+      `);
+      this.ensureMetadata();
+      this.validateIntegrity();
+    } catch (error) {
+      // A constructor that rejects ownership/corruption must not leave its WAL
+      // handles open. Callers have no instance on which they could call close().
+      this.db.close();
+      throw error;
+    }
   }
 
   append(input: LlmTraceEventInputV1): LlmTraceEventV1 {

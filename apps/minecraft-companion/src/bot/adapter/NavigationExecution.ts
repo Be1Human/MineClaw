@@ -20,8 +20,12 @@ export interface NavigationView {
 /** A navigation session is subordinate to one body operation, including door/recovery work. */
 export interface NavigationActions extends NavigationView {
   goto(goal: NavGoal, options?: GotoOptions): Promise<NavResult>;
-  /** Remains pending while following, including when the entity is currently within range. */
-  follow(entityId: number, range: number): Promise<NavResult>;
+  /**
+   * Track a live entity for one bounded body slice. Arrival and slice expiry
+   * are successful progress; a missing target is a failure. Callers repeat
+   * slices while their own policy still requires following.
+   */
+  follow(entityId: number, range: number, options?: GotoOptions): Promise<NavResult>;
   guideThroughDoor(request: DoorPassageRequest): Promise<NavResult>;
   /** Discard the current plan without ending the owned operation. Maintenance may request this. */
   replan(): void;

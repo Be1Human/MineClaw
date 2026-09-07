@@ -39,6 +39,7 @@ export function candidateBinding(candidate: GoalAgentActionCandidate): Record<st
     fixedArgs: candidate.fixedArgs, argumentSchema: candidate.argumentSchema ?? null,
     mutableArgumentPaths: [...(candidate.mutableArgumentPaths ?? [])].sort(),
     authorization: candidate.authorization ?? { status: 'ready', reasons: [] },
+    prerequisites: candidate.prerequisites ?? [],
     operationRef: candidate.operationRef ?? null,
   };
 }

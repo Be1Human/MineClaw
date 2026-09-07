@@ -65,7 +65,7 @@ test('one Event Log carries every committed Step into the next model request', a
   const traces: GoalAgentModelTrace[] = [];
   const runtime = new GoalAgentModelRuntime({
     async callWithTools(args) { prompts.push(structuredClone(args.messages)); return response('{"ok":true}'); },
-  }, { eventLog: store, trace: value => traces.push(value) });
+  }, { eventLog: store, trace: value => traces.push(value), allowLegacyTestClient: true });
   let shared = state();
   store.create(shared);
   const first = await runtime.invoke({
@@ -98,12 +98,12 @@ test('uncommitted model output remains audit-only and cannot become ghost contex
       return response('{"attempt":"answer"}');
     },
   };
-  await new GoalAgentModelRuntime(client, { eventLog: store }).invoke({
+  await new GoalAgentModelRuntime(client, { eventLog: store, allowLegacyTestClient: true }).invoke({
     sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'uncommitted secret',
     state: shared, parse: JSON.parse, signal: new AbortController().signal,
   });
   const restored = store.getActive(shared.sessionId)!;
-  await new GoalAgentModelRuntime(client, { eventLog: store }).invoke({
+  await new GoalAgentModelRuntime(client, { eventLog: store, allowLegacyTestClient: true }).invoke({
     sessionId: restored.sessionId, expectedRevision: 0, node: 'round', instruction: 'fresh retry',
     state: restored, parse: JSON.parse, signal: new AbortController().signal,
   });
@@ -117,7 +117,7 @@ test('frozen request keeps exact input while committed history keeps only semant
   const store = new GoalAgentSessionStore(':memory:');
   let shared = state();
   store.create(shared);
-  const runtime = new GoalAgentModelRuntime({ async callWithTools() { return response('{"ok":true}'); } }, { eventLog: store });
+  const runtime = new GoalAgentModelRuntime({ async callWithTools() { return response('{"ok":true}'); } }, { eventLog: store, allowLegacyTestClient: true });
   const result = await runtime.invoke({
     sessionId: shared.sessionId, expectedRevision: 0, node: 'round',
     instruction: 'Large current-only catalog: SECRET-CATALOG', historyInstruction: 'Search the target catalog.',
@@ -178,9 +178,9 @@ test('BUG-CROSS-81 · default system identity starts with Minecraft world cognit
   assert.match(system.content, /two or more materially different valid interpretations remain/);
   assert.match(system.content, /Never invent Minecraft items, recipes, world state, actions, or completion/);
   assert.match(system.content, /Controlled catalogs, tool receipts, machine observations, safety gates, and success criteria override linguistic inference/);
-  assert.deepEqual(compiled.contextSources.selected[0], {
-    kind: 'system_identity', ref: 'goalagent:identity/v1', messageIndexes: [0],
-  });
+  assert.equal(compiled.contextSources.selected[0].kind, 'stable_system');
+  assert.equal(compiled.contextSources.selected[0].ref, 'goalagent:identity/v1');
+  assert.deepEqual(compiled.contextSources.selected[0].messageIndexes, [0]);
 });
 
 test('BUG-CROSS-81 · explicit system identity remains an exact override', () => {
@@ -226,7 +226,7 @@ test('BUG-CROSS-82 · default identity reads current body and player-observation
   assert.match(embodied.messages[0].content, /owner=null does not prove the player is offline/);
 });
 
-test('compaction replaces only model surface and retains every raw event', () => {
+test('compiler emits all committed history and delegates capacity decisions to governance', () => {
   const store = new GoalAgentSessionStore(':memory:');
   const shared = state();
   store.create(shared);
@@ -237,19 +237,16 @@ test('compaction replaces only model surface and retains every raw event', () =>
     });
   }
   const rawBefore = store.deriveMessages(shared.sessionId);
-  const compiled = new GoalAgentContextCompiler({ maxHistoryCharacters: 2_000 }).compile({
-    state: shared, node: 'round', instruction: 'Continue.', historyMessages: rawBefore,
-  });
-  assert.ok(compiled.compaction);
-  store.recordCompaction({
-    sessionId: shared.sessionId, node: 'round', stateRevision: 0, epoch: 1,
-    occurredAt: shared.updatedAt, ...compiled.compaction!,
-  });
   const projection = store.projectMessages(shared.sessionId);
+  const compiled = new GoalAgentContextCompiler().compile({
+    state: shared, node: 'round', instruction: 'Continue.', historyMessages: rawBefore,
+    historyRefs: projection.messageRefs,
+  });
+  assert.equal(compiled.projectedHistoryMessages, rawBefore.length);
+  assert.equal(compiled.segments.filter(segment => segment.kind === 'history_round').length, 4);
+  assert.deepEqual(compiled.contextSources.omitted, []);
   assert.equal(store.deriveMessages(shared.sessionId).length, rawBefore.length);
-  assert.equal(projection.compactedThroughMessageIndex, compiled.compaction!.throughMessageIndex);
-  assert.equal(projection.messages.length, rawBefore.length - compiled.compaction!.throughMessageIndex);
-  assert.match(projection.compactionSummary ?? '', /GoalAgent compaction/);
+  assert.equal(store.projectMessages(shared.sessionId).compactedThroughMessageIndex, 0);
   store.close();
 });
 
@@ -260,7 +257,7 @@ test('trace context identifies exact GoalAgent Step and its manifest', async () 
   let captured: LlmTraceCallContext | undefined;
   const runtime = new GoalAgentModelRuntime({
     async callWithTools(args) { captured = structuredClone(args.traceContext); return response('{}'); },
-  }, { eventLog: store });
+  }, { eventLog: store, allowLegacyTestClient: true });
   await runtime.invoke({
     sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Continue.',
     state: shared, parse: JSON.parse, signal: new AbortController().signal,
@@ -284,7 +281,7 @@ test('main loop model access is fenced by identity, terminal and budget', async 
   let calls = 0;
   const runtime = new GoalAgentModelRuntime(
     { async callWithTools() { calls += 1; return response('{}'); } },
-    { eventLog: new InMemoryGoalAgentSessionEventLog() },
+    { eventLog: new InMemoryGoalAgentSessionEventLog(), allowLegacyTestClient: true },
   );
   const shared = state();
   await assert.rejects(() => runtime.invoke({
@@ -311,7 +308,7 @@ test('BUG-CROSS-77 · null token limit keeps telemetry without terminating the s
   let calls = 0;
   const runtime = new GoalAgentModelRuntime(
     { async callWithTools() { calls += 1; return response('{}'); } },
-    { eventLog: new InMemoryGoalAgentSessionEventLog() },
+    { eventLog: new InMemoryGoalAgentSessionEventLog(), allowLegacyTestClient: true },
   );
   const unlimited = createGoalAgentState({
     sessionId: 'goal-unlimited-token', interactionSessionId: 'interaction-unlimited-token', request: request(),
@@ -357,7 +354,7 @@ test('terminal reflection uses a read-only frozen request outside the main messa
   const beforeMessages = store.deriveMessages(initial.sessionId);
   const runtime = new GoalAgentModelRuntime({
     async callWithTools() { return response('{"summary":"reuse only verified evidence"}'); },
-  }, { eventLog: store });
+  }, { eventLog: store, allowLegacyTestClient: true });
   const reflected = await runtime.reflectTerminal(store.get(initial.sessionId)!, new AbortController().signal);
   assert.equal(reflected.summary, 'reuse only verified evidence');
   assert.deepEqual(store.deriveMessages(initial.sessionId), beforeMessages);
@@ -371,7 +368,7 @@ test('terminal reflection uses a read-only frozen request outside the main messa
 test('assistant tool calls are preserved for atomic call/result commit', async () => {
   const runtime = new GoalAgentModelRuntime({
     async callWithTools() { return response('', [{ id: 'call-1', name: 'world_observe', arguments: {} }]); },
-  }, { eventLog: new InMemoryGoalAgentSessionEventLog() });
+  }, { eventLog: new InMemoryGoalAgentSessionEventLog(), allowLegacyTestClient: true });
   const shared = state();
   const result = await runtime.invoke({
     sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Observe.', state: shared,
@@ -386,7 +383,7 @@ test('explicit tool choice and abort signal pass through unified runtime', async
   let calls = 0;
   const runtime = new GoalAgentModelRuntime({
     async callWithTools(args) { calls += 1; choice = structuredClone(args.toolChoice); return response('{}'); },
-  }, { eventLog: new InMemoryGoalAgentSessionEventLog() });
+  }, { eventLog: new InMemoryGoalAgentSessionEventLog(), allowLegacyTestClient: true });
   const shared = state();
   await runtime.invoke({
     sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Observe.', state: shared,
@@ -440,7 +437,7 @@ test('FEAT-CROSS-22 · durable Responses replay survives GoalAgent restart and a
           canonical,
         };
       },
-    }, { eventLog: store });
+    }, { eventLog: store, allowLegacyTestClient: true });
     const result = await runtime.invoke({
       sessionId: shared.sessionId, expectedRevision: 0, node: 'round', instruction: 'Observe.', state: shared,
       parse: (_content, calls) => calls, signal: new AbortController().signal,

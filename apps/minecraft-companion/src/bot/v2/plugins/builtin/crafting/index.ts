@@ -13,7 +13,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.crafting';
-const SERVICE_BODY = 'body.submit';
 const CRAFT_GOAL = 'mineclaw.crafting.goal.craft-item';
 const CRAFT_CANDIDATE = 'mineclaw.crafting.planning.craft-candidates';
 const CRAFT_PREDICATE = 'mineclaw.crafting.verification.crafted';
@@ -37,8 +36,6 @@ export function createMineclawCraftingPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: CRAFT_GOAL,
         list: async () => ({
@@ -54,7 +51,7 @@ export function createMineclawCraftingPlugin(): PluginFactory {
           if (!item) return { status: 'unavailable', candidates: [], reason: 'item_required' };
           return {
             status: 'complete',
-            candidates: [{ candidateId: `craft:${item}`, operationContribution: ref(CRAFT_OPERATION), params: { item }, evidenceRefs: [], contribution: ref(CRAFT_CANDIDATE) }],
+            candidates: [{ candidateId: `craft:${item}`, operationContribution: ref(CRAFT_EXECUTOR), params: { item }, evidenceRefs: [], contribution: ref(CRAFT_CANDIDATE) }],
           };
         },
       };
@@ -74,7 +71,7 @@ export function createMineclawCraftingPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: CRAFT_PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const item = String(input.args?.item ?? '');
           const done = inventoryHas(input.facts, item);
           return { verdict: done ? 'satisfied' : 'unknown', evidenceRefs: [], reason: done ? undefined : 'inventory_fact_missing', contribution: ref(CRAFT_PREDICATE) };
@@ -87,15 +84,12 @@ export function createMineclawCraftingPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `craft-${lease.goalId}`,
           contribution: ref(CRAFT_EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const item = String((ctx.facts[0]?.payload as { item?: string } | undefined)?.item ?? '');
-            if (!item) return { ok: false, cancelled: false, error: 'item_required' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const receipt = await bodySubmit({ action: 'minecraft-system:use_item', item });
-            return (receipt as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'craft_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const item = String(ctx.params.item ?? '');
+            return item
+              ? { ok: true, steps: [{ atomicId: 'craft', args: { itemName: item, count: 1 } }] }
+              : { ok: false, error: 'item_required' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -143,6 +137,7 @@ export function createMineclawCraftingPlugin(): PluginFactory {
             progressContributionId: CRAFT_PROGRESS,
             resultContributionId: CRAFT_RESULT,
             cancellable: true,
+            applicability: { outcomes: ['obtain'], targetKinds: ['item'], taskFamilies: ['crafting'], criterionTypes: ['inventory', 'predicate'] },
           },
           behaviorFactory,
         },

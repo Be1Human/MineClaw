@@ -184,6 +184,12 @@ export interface MovementOptions {
   canOpenDoors?: boolean;
   allowParkour?: boolean;
   allowSprinting?: boolean;
+  /**
+   * Permit the pathfinder's free-motion recovery edges.  This is deliberately
+   * opt-in: routine navigation stays conservative, while a behavior may use
+   * it to escape water/shoreline geometry that has no normal ground route.
+   */
+  allowFreeMotion?: boolean;
   /** 允许踩在哪些方块上 */
   scafoldingBlocks?: string[];
   /** 视为可破坏的方块（白名单） */

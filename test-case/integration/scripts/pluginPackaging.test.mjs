@@ -48,7 +48,7 @@ contributions:
     });
     const outJson = join(root, 'out.json');
     const outTs = join(root, 'out.ts');
-    const result = buildPluginIndex({ scanRoot: root, outManifest: outJson, outIndex: outTs });
+    const result = buildPluginIndex({ scanRoot: root, contentRoot: root, outManifest: outJson, outIndex: outTs });
 
     assert.equal(result.plugins.length, 1);
     const [plugin] = result.plugins;
@@ -69,7 +69,7 @@ contributions:
     // Idempotent regeneration (same output bytes apart from the timestamp).
     const secondJson = join(root, 'out2.json');
     const secondTs = join(root, 'out2.ts');
-    buildPluginIndex({ scanRoot: root, outManifest: secondJson, outIndex: secondTs });
+    buildPluginIndex({ scanRoot: root, contentRoot: root, outManifest: secondJson, outIndex: secondTs });
     const firstParsed = JSON.parse(readFileSync(outJson, 'utf8'));
     const secondParsed = JSON.parse(readFileSync(secondJson, 'utf8'));
     delete firstParsed.generatedAt;
@@ -95,11 +95,11 @@ contributions:
   - kind: knowledge
     id: mineclaw.facts.knowledge.crops
     version: 1.0.0
-    contentRef: crops.yaml
+    contentRef: mineclaw.facts/crops.yaml
 `, { 'crops.yaml': 'crops:\n  - wheat\n' });
     const outJson = join(root, 'out.json');
     const outTs = join(root, 'out.ts');
-    const result = buildPluginIndex({ scanRoot: root, outManifest: outJson, outIndex: outTs });
+    const result = buildPluginIndex({ scanRoot: root, contentRoot: root, outManifest: outJson, outIndex: outTs });
     assert.equal(result.plugins.length, 1);
     assert.equal(result.plugins[0].kind, 'data');
     assert.equal(result.plugins[0].entryFile, null);
@@ -117,9 +117,9 @@ contributions:
   - kind: knowledge
     id: mineclaw.bad.knowledge.x
     version: 1.0.0
-    contentRef: x.yaml
+    contentRef: mineclaw.bad/x.yaml
 `);
-    assert.throws(() => buildPluginIndex({ scanRoot: root, outManifest: join(root, 'out-bad.json'), outIndex: join(root, 'out-bad.ts') }), PluginIndexError);
+    assert.throws(() => buildPluginIndex({ scanRoot: root, contentRoot: root, outManifest: join(root, 'out-bad.json'), outIndex: join(root, 'out-bad.ts') }), PluginIndexError);
     assert.equal(existsSync(join(root, 'out-bad.json')), false, 'fail-closed generation must not write output');
     assert.equal(existsSync(join(root, 'out-bad.ts')), false);
   } finally {
@@ -143,11 +143,11 @@ contributions:
   - kind: skill
     id: mineclaw.agriculture.skill.harvest
     version: 1.0.0
-    entryRef: harvest.md
+    entryRef: mineclaw.agriculture/harvest.md
 `, { 'index.ts': 'export const createAgriculturePlugin = { entryKey: "x", create: () => [] };\n', 'harvest.md': '# harvest\n' });
     const outJson = join(root, 'out.json');
     const outTs = join(root, 'out.ts');
-    buildPluginIndex({ scanRoot: root, outManifest: outJson, outIndex: outTs });
+    buildPluginIndex({ scanRoot: root, contentRoot: root, outManifest: outJson, outIndex: outTs });
     const json = JSON.parse(readFileSync(outJson, 'utf8'));
     const ids = json.plugins.map((plugin) => plugin.pluginId);
     assert.ok(ids.includes('mineclaw.agriculture'));

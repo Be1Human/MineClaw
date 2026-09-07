@@ -1,8 +1,11 @@
-import type { PredicateRef } from './goalDraft.js';
+import type { ContributionRef } from '../../plugin-sdk/identity.js';
+import type { GoalSuccessCriterion } from './goalTypes.js';
+
+/** Baseline-free, serializable criterion identity used in causal edges. */
+export type GoalCriterionRef = Omit<GoalSuccessCriterion, 'since'>;
 
 export interface GoalOperationRequest {
-  id: string;
-  version: number;
+  contribution: ContributionRef;
   args: Record<string, unknown>;
 }
 
@@ -15,8 +18,8 @@ export interface GoalOperationAccess {
 
 /** Serializable resolution data, independent of the service that produced it. */
 export interface GoalOperationResolution {
-  requires: PredicateRef[];
-  satisfies: PredicateRef[];
+  requires: GoalCriterionRef[];
+  satisfies: GoalCriterionRef[];
   accesses: GoalOperationAccess[];
   estimatedActions: number;
 }
@@ -30,6 +33,6 @@ export interface BoundGoalPlanOperation extends GoalOperationResolution {
 export interface GoalPlanNodeProposal {
   id: string;
   operation?: GoalOperationRequest;
-  requires?: PredicateRef[];
-  satisfies?: PredicateRef[];
+  requires?: GoalCriterionRef[];
+  satisfies?: GoalCriterionRef[];
 }

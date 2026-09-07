@@ -85,10 +85,10 @@ export function renderKnowledgeAnswer(answer: KnowledgeAnswerV1): string {
   return `无法回答（${answer.outcome}）。`;
 }
 
-function summarizeFact(fact: { factKind: string; payload: Readonly<Record<string, unknown>> }): string {
+function summarizeFact(fact: { factKind: string; payload: Readonly<Record<string, unknown>>; observedAt?: string; requestedBounds?: Readonly<Record<string, unknown>> }): string {
   const payload = fact.payload as Record<string, unknown>;
   switch (fact.factKind) {
-    case 'nearby_crops': return `附近${String(payload.crops ?? '作物')}：${describeEntries(payload) || '未发现'}。`;
+    case 'nearby_crops': return `附近的作物：${describeCrops(payload) || '未发现'}${describeObservationScope(fact)}。`;
     case 'nearby_blocks': return `附近的方块：${describeEntries(payload) || '未发现'}。`;
     case 'nearby_entities': return `附近的实体：${describeEntries(payload) || '未发现'}。`;
     case 'inventory': return `背包：${describeEntries(payload) || '空'}。`;
@@ -100,11 +100,44 @@ function summarizeFact(fact: { factKind: string; payload: Readonly<Record<string
   }
 }
 
+function describeObservationScope(fact: { observedAt?: string; requestedBounds?: Readonly<Record<string, unknown>> }): string {
+  const radius = fact.requestedBounds?.radius;
+  const scope = typeof radius === 'number' ? `；观察半径 ${radius} 格` : '';
+  const time = fact.observedAt ? `；观察时间 ${fact.observedAt}` : '';
+  return `${scope}${time}`;
+}
+
 function describeEntries(payload: Record<string, unknown>): string {
   const entries = payload.entries;
   if (Array.isArray(entries) && entries.length > 0) return String(entries.join('、'));
   if (typeof payload.count === 'number') return `${payload.count} 项`;
   return '';
+}
+
+function describeCrops(payload: Record<string, unknown>): string {
+  const crops = payload.crops;
+  if (typeof crops === 'string' && crops.trim()) return crops;
+  if (!Array.isArray(crops) || crops.length === 0) return '';
+  const counts = new Map<string, { mature: number; growing: number }>();
+  for (const value of crops) {
+    if (!value || typeof value !== 'object') continue;
+    const crop = value as Record<string, unknown>;
+    const name = String(crop.block ?? crop.name ?? '作物').replace(/^minecraft:/, '');
+    const current = counts.get(name) ?? { mature: 0, growing: 0 };
+    if (crop.state === 'mature') current.mature += 1;
+    else current.growing += 1;
+    counts.set(name, current);
+  }
+  const summary = [...counts.entries()].map(([name, count]) => {
+    const states = [count.mature > 0 ? `成熟 ${count.mature}` : '', count.growing > 0 ? `生长中 ${count.growing}` : ''].filter(Boolean).join('、');
+    return `${name}（${states}）`;
+  }).join('；');
+  const positioned = crops.find(value => value && typeof value === 'object' && 'position' in (value as Record<string, unknown>)) as Record<string, unknown> | undefined;
+  const position = positioned?.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+  const nearest = position && [position.x, position.y, position.z].every(value => typeof value === 'number')
+    ? `；最近位置 (${position.x}, ${position.y}, ${position.z})`
+    : '';
+  return `${summary}${nearest}`;
 }
 
 function normalizePeriod(text: string): string {

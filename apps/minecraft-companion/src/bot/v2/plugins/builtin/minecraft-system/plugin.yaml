@@ -9,6 +9,402 @@ permissions:
   - system.adapter
   - system.atomic
 contributions:
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-01
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-01
+      goalKind: item
+      aliases:
+        - catalog-01
+      successCriteria:
+        - type: inventory
+          item: catalog-01
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-02
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-02
+      goalKind: item
+      aliases:
+        - catalog-02
+      successCriteria:
+        - type: inventory
+          item: catalog-02
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-03
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-03
+      goalKind: item
+      aliases:
+        - catalog-03
+      successCriteria:
+        - type: inventory
+          item: catalog-03
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-04
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-04
+      goalKind: item
+      aliases:
+        - catalog-04
+      successCriteria:
+        - type: inventory
+          item: catalog-04
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-05
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-05
+      goalKind: item
+      aliases:
+        - catalog-05
+      successCriteria:
+        - type: inventory
+          item: catalog-05
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-06
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-06
+      goalKind: item
+      aliases:
+        - catalog-06
+      successCriteria:
+        - type: inventory
+          item: catalog-06
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-07
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-07
+      goalKind: item
+      aliases:
+        - catalog-07
+      successCriteria:
+        - type: inventory
+          item: catalog-07
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-08
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-08
+      goalKind: item
+      aliases:
+        - catalog-08
+      successCriteria:
+        - type: inventory
+          item: catalog-08
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-09
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-09
+      goalKind: item
+      aliases:
+        - catalog-09
+      successCriteria:
+        - type: inventory
+          item: catalog-09
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-10
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-10
+      goalKind: item
+      aliases:
+        - catalog-10
+      successCriteria:
+        - type: inventory
+          item: catalog-10
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-11
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-11
+      goalKind: item
+      aliases:
+        - catalog-11
+      successCriteria:
+        - type: inventory
+          item: catalog-11
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-12
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-12
+      goalKind: item
+      aliases:
+        - catalog-12
+      successCriteria:
+        - type: inventory
+          item: catalog-12
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-13
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-13
+      goalKind: item
+      aliases:
+        - catalog-13
+      successCriteria:
+        - type: inventory
+          item: catalog-13
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-14
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-14
+      goalKind: item
+      aliases:
+        - catalog-14
+      successCriteria:
+        - type: inventory
+          item: catalog-14
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-15
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-15
+      goalKind: item
+      aliases:
+        - catalog-15
+      successCriteria:
+        - type: inventory
+          item: catalog-15
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-16
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-16
+      goalKind: item
+      aliases:
+        - catalog-16
+      successCriteria:
+        - type: inventory
+          item: catalog-16
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-17
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-17
+      goalKind: item
+      aliases:
+        - catalog-17
+      successCriteria:
+        - type: inventory
+          item: catalog-17
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-18
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-18
+      goalKind: item
+      aliases:
+        - catalog-18
+      successCriteria:
+        - type: inventory
+          item: catalog-18
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-19
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-19
+      goalKind: item
+      aliases:
+        - catalog-19
+      successCriteria:
+        - type: inventory
+          item: catalog-19
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-20
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-20
+      goalKind: item
+      aliases:
+        - catalog-20
+      successCriteria:
+        - type: inventory
+          item: catalog-20
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-21
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-21
+      goalKind: item
+      aliases:
+        - catalog-21
+      successCriteria:
+        - type: inventory
+          item: catalog-21
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-22
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-22
+      goalKind: item
+      aliases:
+        - catalog-22
+      successCriteria:
+        - type: inventory
+          item: catalog-22
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-23
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-23
+      goalKind: item
+      aliases:
+        - catalog-23
+      successCriteria:
+        - type: inventory
+          item: catalog-23
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-24
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-24
+      goalKind: item
+      aliases:
+        - catalog-24
+      successCriteria:
+        - type: inventory
+          item: catalog-24
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-25
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-25
+      goalKind: item
+      aliases:
+        - catalog-25
+      successCriteria:
+        - type: inventory
+          item: catalog-25
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-26
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-26
+      goalKind: item
+      aliases:
+        - catalog-26
+      successCriteria:
+        - type: inventory
+          item: catalog-26
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-27
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-27
+      goalKind: item
+      aliases:
+        - catalog-27
+      successCriteria:
+        - type: inventory
+          item: catalog-27
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-28
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-28
+      goalKind: item
+      aliases:
+        - catalog-28
+      successCriteria:
+        - type: inventory
+          item: catalog-28
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-29
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-29
+      goalKind: item
+      aliases:
+        - catalog-29
+      successCriteria:
+        - type: inventory
+          item: catalog-29
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-30
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-30
+      goalKind: item
+      aliases:
+        - catalog-30
+      successCriteria:
+        - type: inventory
+          item: catalog-30
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-31
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-31
+      goalKind: item
+      aliases:
+        - catalog-31
+      successCriteria:
+        - type: inventory
+          item: catalog-31
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-32
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-32
+      goalKind: item
+      aliases:
+        - catalog-32
+      successCriteria:
+        - type: inventory
+          item: catalog-32
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-33
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-33
+      goalKind: item
+      aliases:
+        - catalog-33
+      successCriteria:
+        - type: inventory
+          item: catalog-33
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-34
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-34
+      goalKind: item
+      aliases:
+        - catalog-34
+      successCriteria:
+        - type: inventory
+          item: catalog-34
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-35
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-35
+      goalKind: item
+      aliases:
+        - catalog-35
+      successCriteria:
+        - type: inventory
+          item: catalog-35
+  - kind: goal
+    id: mineclaw.minecraft-system.goal.catalog-36
+    version: 1.0.0
+    target:
+      registryId: mineclaw.minecraft-system.goal.catalog-36
+      goalKind: item
+      aliases:
+        - catalog-36
+      successCriteria:
+        - type: inventory
+          item: catalog-36
   - kind: execution
     id: mineclaw.minecraft-system.execution.atomics
     version: 1.0.0

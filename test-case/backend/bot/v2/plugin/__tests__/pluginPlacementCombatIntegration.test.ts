@@ -46,10 +46,11 @@ test('P2-9 placement/combat 注册；combat 无实体观察时候选显式 unava
   assert.equal(listed.status, 'unavailable');
   assert.match(listed.reason ?? '', /entity_observation_unavailable/);
 
-  // 无 body 服务：placement 执行器显式失败。
+  // Sequence 只编译原子步骤，不直接持有 Host body 端口。
   const placementContributions = createMineclawPlacementPlugin().create({ host: { version: '2.0.0', buildId: 'b' }, plugin: { pluginId: 'mineclaw.placement', pluginVersion: '1.0.0' } });
-  const placementExec = (placementContributions.find(c => c.kind === 'execution') as { behaviorFactory: { create: (l: Record<string, unknown>) => { run: (ctx: { signal: AbortSignal; facts: Record<string, unknown>[] }) => Promise<{ ok: boolean; error?: string }> } } }).behaviorFactory;
-  const outcome = await placementExec.create({ goalId: 'g' } as never).run({ signal: new AbortController().signal, facts: [] } as never);
-  assert.equal(outcome.ok, false);
-  assert.match(outcome.error ?? '', /body_submit_service_missing/);
+  const placementExec = (placementContributions.find(c => c.kind === 'execution') as any).behaviorFactory;
+  const instance = placementExec.create({ goalId: 'g' } as never);
+  const compiled = instance.compile({ goal: { goalId: 'g' }, facts: [], params: { position: { x: 1, y: 2, z: 3 } } });
+  assert.equal(instance.kind, 'sequence');
+  assert.deepEqual(compiled.steps, [{ atomicId: 'place_block', args: { position: { x: 1, y: 2, z: 3 } } }]);
 });

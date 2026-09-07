@@ -52,6 +52,7 @@ contributions:
       progressContributionId: mineclaw.delivery.progress.deliver
       resultContributionId: mineclaw.delivery.result.deliver
       cancellable: true
+      applicability: { outcomes: [deliver], targetKinds: [item], taskFamilies: [delivery], criterionTypes: [item_delivered, predicate] }
   - kind: planning
     id: mineclaw.delivery.progress.deliver
     version: 1.0.0

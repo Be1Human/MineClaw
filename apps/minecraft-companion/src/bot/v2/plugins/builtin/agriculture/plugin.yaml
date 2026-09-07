@@ -26,6 +26,60 @@ permissions:
   - body.submit:mineclaw.storage-system.atomic.withdraw
 contributions:
   - kind: goal
+    id: mineclaw.agriculture.goal.sow-field
+    version: 1.0.0
+    target:
+      registryId: mineclaw.agriculture.goal.sow-field
+      goalKind: composite
+      aliases: [种田, 播种, 种一下, 把这个田种一下, 种小麦, 种胡萝卜, 种土豆, 种甜菜]
+      taskFamilies: [agriculture]
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.agriculture.verification.field-sown
+  - kind: goal
+    id: mineclaw.agriculture.binding.sow-request
+    version: 1.0.0
+    target:
+      registryId: mineclaw.agriculture.binding.sow-request
+      goalKind: location
+      aliases: [这个田, 这块田, 已有农田]
+      taskFamilies: [agriculture]
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.agriculture.verification.field-sown
+  - kind: observation
+    id: mineclaw.agriculture.observation.field-state
+    version: 1.0.0
+    factKinds: [agriculture_fields]
+  - kind: planning
+    id: mineclaw.agriculture.planning.sow-candidates
+    version: 1.0.0
+    operationIds: [mineclaw.agriculture.operation.sow-field]
+  - kind: verification
+    id: mineclaw.agriculture.verification.field-sown
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.agriculture.execution.sow-field
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.agriculture.operation.sow-field
+      goalContributionId: mineclaw.agriculture.goal.sow-field
+      bindingContributionId: mineclaw.agriculture.binding.sow-request
+      factKinds: [agriculture_fields, inventory]
+      candidateContributionId: mineclaw.agriculture.planning.sow-candidates
+      predicateContributionId: mineclaw.agriculture.verification.field-sown
+      progressContributionId: mineclaw.agriculture.progress.sow-field
+      resultContributionId: mineclaw.agriculture.result.sow
+      cancellable: true
+      applicability: { outcomes: [composed], targetKinds: [state], taskFamilies: [agriculture], criterionTypes: [predicate] }
+  - kind: planning
+    id: mineclaw.agriculture.progress.sow-field
+    version: 1.0.0
+    operationIds: [mineclaw.agriculture.operation.sow-field]
+  - kind: result
+    id: mineclaw.agriculture.result.sow
+    version: 1.0.0
+  - kind: goal
     id: mineclaw.agriculture.goal.harvest-mature-crops-to-chest
     version: 1.0.0
     target:
@@ -78,6 +132,7 @@ contributions:
       progressContributionId: mineclaw.agriculture.progress.harvest-to-chest
       resultContributionId: mineclaw.agriculture.result.harvest-to-chest
       cancellable: true
+      applicability: { outcomes: [obtain, composed], targetKinds: [item, state], taskFamilies: [agriculture], criterionTypes: [inventory, predicate] }
   - kind: planning
     id: mineclaw.agriculture.progress.harvest-to-chest
     version: 1.0.0

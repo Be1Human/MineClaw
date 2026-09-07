@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { LLMChatMessage } from '../../cognitive/llm/types.js';
 import type { GoalAgentEventSource, GoalAgentStateV1 } from './goalAgentState.js';
+import {
+  GOAL_AGENT_COMPACTION_SCHEMA_V2,
+  renderGoalAgentCompactionSummary,
+  type GoalAgentCompactionProposalV2,
+} from './goalAgentContextReducer.js';
 
 export const GOAL_AGENT_SESSION_EVENT_SCHEMA_V1 = 'mineclaw.goal-agent-session-event/v1' as const;
 
@@ -50,22 +55,27 @@ export interface GoalAgentMessageAppendInput {
   messageIndex?: number;
 }
 
-export interface GoalAgentCompactionCheckpointInput {
+export interface GoalAgentCompactionCheckpointInput extends GoalAgentCompactionProposalV2 {
   sessionId: string;
   node: GoalAgentEventSource;
   stateRevision: number;
   epoch: number;
-  summary: string;
-  omittedMessages: number;
-  /** Exclusive raw message index replaced by this summary. */
-  throughMessageIndex: number;
   occurredAt?: string;
+}
+
+export interface GoalAgentProjectedCompaction {
+  schema: 'mineclaw.goalagent-compaction/v1' | typeof GOAL_AGENT_COMPACTION_SCHEMA_V2;
+  summarySurface: string;
+  throughMessageIndex: number;
+  coveredEventSeq?: { from: number; through: number };
 }
 
 export interface GoalAgentMessageProjection {
   /** Raw committed messages after the latest compaction boundary. */
   messages: LLMChatMessage[];
+  messageRefs: Array<{ messageIndex: number; eventSeq: number }>;
   compactionSummary?: string;
+  compaction?: GoalAgentProjectedCompaction;
   compactedThroughMessageIndex: number;
   rawMessageCount: number;
 }
@@ -183,9 +193,11 @@ export class InMemoryGoalAgentSessionEventLog implements GoalAgentSessionEventLo
   }
 
   recordCompaction(input: GoalAgentCompactionCheckpointInput): GoalAgentSessionEventV1 | null {
+    assertGoalAgentCompactionCheckpointV2(input, this.messageCount(input.sessionId), this.listSessionEvents(input.sessionId).at(-1)?.seq ?? 0);
     const latest = [...this.listSessionEvents(input.sessionId)].reverse()
       .find(event => event.type === 'compaction.checkpoint');
-    if (latest?.payload.summary === input.summary
+    if (latest?.payload.schema === input.schema
+      && latest.payload.sourceDigest === input.sourceDigest
       && latest.payload.throughMessageIndex === input.throughMessageIndex) return null;
     if (!Number.isInteger(input.throughMessageIndex) || input.throughMessageIndex < 1
       || input.throughMessageIndex > this.messageCount(input.sessionId)) {
@@ -199,9 +211,16 @@ export class InMemoryGoalAgentSessionEventLog implements GoalAgentSessionEventLo
       stateRevision: input.stateRevision,
       epoch: input.epoch,
       payload: {
-        summary: input.summary,
+        schema: input.schema,
+        summary: structuredClone(input.summary),
         omittedMessages: input.omittedMessages,
         throughMessageIndex: input.throughMessageIndex,
+        coveredEventSeq: structuredClone(input.coveredEventSeq),
+        profileRef: input.profileRef,
+        policyRevision: input.policyRevision,
+        tokensBefore: input.tokensBefore,
+        tokensAfter: input.tokensAfter,
+        sourceDigest: input.sourceDigest,
         rawMessagesRetained: this.messageCount(input.sessionId),
       },
     });
@@ -221,22 +240,66 @@ export function deriveGoalAgentMessages(events: readonly GoalAgentSessionEventV1
 
 /** Applies the latest compaction checkpoint without deleting any raw event. */
 export function projectGoalAgentMessages(events: readonly GoalAgentSessionEventV1[]): GoalAgentMessageProjection {
-  const messages = deriveGoalAgentMessages(events);
+  const messageEvents = events
+    .filter(event => event.type === 'message.appended')
+    .sort((left, right) => left.seq - right.seq);
+  const messages = messageEvents.map(event => structuredClone(event.payload.message as LLMChatMessage));
   const checkpoint = [...events]
     .filter(event => event.type === 'compaction.checkpoint')
     .sort((left, right) => right.seq - left.seq)[0];
   const through = checkpoint && Number.isInteger(checkpoint.payload.throughMessageIndex)
     ? Math.min(messages.length, Math.max(0, Number(checkpoint.payload.throughMessageIndex)))
     : 0;
-  const summary = checkpoint && typeof checkpoint.payload.summary === 'string'
-    ? checkpoint.payload.summary
-    : undefined;
+  const isV2 = checkpoint?.payload.schema === GOAL_AGENT_COMPACTION_SCHEMA_V2
+    && checkpoint.payload.summary && typeof checkpoint.payload.summary === 'object';
+  const summary = isV2
+    ? renderGoalAgentCompactionSummary(checkpoint.payload.summary as never)
+    : checkpoint && typeof checkpoint.payload.summary === 'string' ? checkpoint.payload.summary : undefined;
+  const coveredEventSeq = isV2 && isEventRange(checkpoint.payload.coveredEventSeq)
+    ? structuredClone(checkpoint.payload.coveredEventSeq) : undefined;
   return {
     messages: messages.slice(through).map(message => structuredClone(message)),
+    messageRefs: messageEvents.slice(through).map((event, offset) => ({ messageIndex: through + offset, eventSeq: event.seq })),
     ...(summary && through > 0 ? { compactionSummary: summary } : {}),
+    ...(summary && through > 0 ? { compaction: {
+      schema: isV2 ? GOAL_AGENT_COMPACTION_SCHEMA_V2 : 'mineclaw.goalagent-compaction/v1',
+      summarySurface: summary,
+      throughMessageIndex: through,
+      ...(coveredEventSeq ? { coveredEventSeq } : {}),
+    } } : {}),
     compactedThroughMessageIndex: through,
     rawMessageCount: messages.length,
   };
+}
+
+export function assertGoalAgentCompactionCheckpointV2(
+  input: GoalAgentCompactionCheckpointInput,
+  rawMessageCount: number,
+  lastEventSeq: number,
+): void {
+  if (input.schema !== GOAL_AGENT_COMPACTION_SCHEMA_V2) throw new Error('GoalAgent only writes Compaction V2 checkpoints');
+  if (!input.profileRef.trim() || !input.policyRevision.trim() || !input.sourceDigest.trim()) {
+    throw new Error('GoalAgent Compaction V2 requires profile, policy and source digest');
+  }
+  if (!input.summary || typeof input.summary !== 'object') throw new Error('GoalAgent Compaction V2 requires structured summary');
+  if (!Number.isInteger(input.throughMessageIndex) || input.throughMessageIndex < 1 || input.throughMessageIndex > rawMessageCount) {
+    throw new Error('GoalAgent compaction boundary must reference committed raw messages');
+  }
+  if (!Number.isInteger(input.coveredEventSeq.from) || !Number.isInteger(input.coveredEventSeq.through)
+    || input.coveredEventSeq.from < 1 || input.coveredEventSeq.from > input.coveredEventSeq.through
+    || input.coveredEventSeq.through > lastEventSeq) {
+    throw new Error('GoalAgent Compaction V2 event range must reference committed events');
+  }
+  if (![input.tokensBefore, input.tokensAfter].every(value => Number.isSafeInteger(value) && value >= 0)
+    || input.tokensAfter > input.tokensBefore) {
+    throw new Error('GoalAgent Compaction V2 token counts are invalid');
+  }
+}
+
+function isEventRange(value: unknown): value is { from: number; through: number } {
+  if (!value || typeof value !== 'object') return false;
+  const range = value as Record<string, unknown>;
+  return Number.isInteger(range.from) && Number.isInteger(range.through);
 }
 
 export function latestGoalAgentCheckpoint(

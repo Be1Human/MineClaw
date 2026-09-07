@@ -2,6 +2,10 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path';
 import { v4 as uuid } from 'uuid';
 import { DEFAULT_LLM_API, isLlmApi, type LlmApi } from '../llm/api.js';
+import {
+  isModelContextProfileBindingV1,
+  type ModelContextProfileBindingV1,
+} from '../llm/modelContextProfile.js';
 import { resolveProfileLlmConfig, type LlmConfig } from './llmConfig.js';
 import type { ProfileStore } from './profileStore.js';
 
@@ -12,6 +16,7 @@ export interface LlmAgentConfig {
   baseUrl: string;
   model: string;
   api: LlmApi;
+  contextProfile?: ModelContextProfileBindingV1;
   createdAt: number;
   updatedAt: number;
 }
@@ -22,6 +27,7 @@ export interface LlmAgentConfigInput {
   baseUrl: string;
   model: string;
   api?: LlmApi;
+  contextProfile?: ModelContextProfileBindingV1;
 }
 
 export interface LlmAgentConfigPatch {
@@ -31,6 +37,8 @@ export interface LlmAgentConfigPatch {
   baseUrl?: string;
   model?: string;
   api?: LlmApi;
+  contextProfile?: ModelContextProfileBindingV1;
+  clearContextProfile?: boolean;
 }
 
 export interface PublicLlmAgentConfig {
@@ -39,6 +47,7 @@ export interface PublicLlmAgentConfig {
   baseUrl: string;
   model: string;
   api: LlmApi;
+  contextProfile?: ModelContextProfileBindingV1;
   apiKeyConfigured: boolean;
   profileCount: number;
   createdAt: number;
@@ -76,6 +85,7 @@ export class LlmAgentConfigStore {
       baseUrl: input.baseUrl.trim(),
       model: input.model.trim(),
       api: input.api ?? DEFAULT_LLM_API,
+      ...(input.contextProfile ? { contextProfile: cloneContextProfile(input.contextProfile) } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -94,6 +104,11 @@ export class LlmAgentConfigStore {
       ...(patch.baseUrl !== undefined ? { baseUrl: patch.baseUrl.trim() } : {}),
       ...(patch.model !== undefined ? { model: patch.model.trim() } : {}),
       ...(patch.api !== undefined ? { api: patch.api } : {}),
+      ...(patch.clearContextProfile
+        ? { contextProfile: undefined }
+        : patch.contextProfile !== undefined
+          ? { contextProfile: cloneContextProfile(patch.contextProfile) }
+          : {}),
       ...(patch.clearApiKey ? { apiKey: undefined } : patch.apiKey !== undefined ? { apiKey: clean(patch.apiKey) } : {}),
       updatedAt: Date.now(),
     };
@@ -115,6 +130,7 @@ export class LlmAgentConfigStore {
       baseUrl: config.baseUrl,
       model: config.model,
       api: config.api,
+      ...(config.contextProfile ? { contextProfile: cloneContextProfile(config.contextProfile) } : {}),
       apiKeyConfigured: Boolean(config.apiKey?.trim()),
       profileCount,
       createdAt: config.createdAt,
@@ -157,6 +173,7 @@ export class LlmAgentConfigStore {
         this.configs.set(candidate.id, {
           ...candidate,
           api: candidate.api ?? DEFAULT_LLM_API,
+          ...(candidate.contextProfile ? { contextProfile: cloneContextProfile(candidate.contextProfile) } : {}),
         });
       }
     } catch {
@@ -184,6 +201,12 @@ function isStoredConfig(value: unknown): value is Omit<LlmAgentConfig, 'api'> & 
     && typeof config.baseUrl === 'string'
     && typeof config.model === 'string'
     && (config.api === undefined || isLlmApi(config.api))
+    && (config.contextProfile === undefined || isModelContextProfileBindingV1(config.contextProfile))
     && typeof config.createdAt === 'number'
     && typeof config.updatedAt === 'number';
+}
+
+function cloneContextProfile(profile: ModelContextProfileBindingV1): ModelContextProfileBindingV1 {
+  if (!isModelContextProfileBindingV1(profile)) throw new Error('invalid_model_context_profile');
+  return { ...profile };
 }

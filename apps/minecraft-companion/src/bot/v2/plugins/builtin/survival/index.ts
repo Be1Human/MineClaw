@@ -10,7 +10,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.survival';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.survival.goal.survive';
 const CANDIDATE = 'mineclaw.survival.planning.survive-candidates';
 const PREDICATE = 'mineclaw.survival.verification.survived';
@@ -27,8 +26,6 @@ export function createMineclawSurvivalPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -43,7 +40,7 @@ export function createMineclawSurvivalPlugin(): PluginFactory {
         list: async (input) => {
           const action = String(input.params?.action ?? '');
           if (!action) return { status: 'unavailable', candidates: [], reason: 'action_required' };
-          return { status: 'complete', candidates: [{ candidateId: `survive:${action}`, operationContribution: ref(OPERATION), params: { action }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
+          return { status: 'complete', candidates: [{ candidateId: `survive:${action}`, operationContribution: ref(EXECUTOR), params: { action }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
         },
       };
 
@@ -55,7 +52,7 @@ export function createMineclawSurvivalPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const done = (input.evidence?.restored as boolean | undefined) === true;
           return { verdict: done ? 'satisfied' : 'unknown', evidenceRefs: [], reason: done ? undefined : 'restore_unverified', contribution: ref(PREDICATE) };
         },
@@ -67,14 +64,12 @@ export function createMineclawSurvivalPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `survive-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const action = String((ctx.facts[0]?.payload as { action?: string } | undefined)?.action ?? '');
-            if (!action) return { ok: false, cancelled: false, error: 'action_required' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const receipt = await bodySubmit({ action: `minecraft-system:${action === 'sleep' ? 'sleep' : 'use_item'}` });            return (receipt as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'survive_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const action = String(ctx.params.action ?? '');
+            return action
+              ? { ok: true, steps: [{ atomicId: action === 'sleep' ? 'sleep' : 'use_item', args: {} }] }
+              : { ok: false, error: 'action_required' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -122,6 +117,7 @@ export function createMineclawSurvivalPlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['survive'], targetKinds: ['state'], taskFamilies: ['survival'], criterionTypes: ['predicate'] },
           },
           behaviorFactory,
         },

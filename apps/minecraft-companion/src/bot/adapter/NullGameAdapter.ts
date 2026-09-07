@@ -1,4 +1,4 @@
-import type { GameAdapter } from './GameAdapter.js';
+import type { FoodSelectionOptions, GameAdapter } from './GameAdapter.js';
 import type { BoundGameActions, DeviceExecutionScope } from './GameActions.js';
 import type {
   ChestOpResult,
@@ -63,7 +63,7 @@ export class NullGameAdapter implements GameAdapter {
   getOxygen(): number { return 20; }
   chat(_message: string): void {}
   getBlockProperties(_pos: Vec3): Record<string, string> | null { return null; }
-  findBestFood(): string | null { return null; }
+  findBestFood(_options?: Readonly<FoodSelectionOptions>): string | null { return null; }
   findNearbyBed(_maxDistance: number): Vec3 | null { return null; }
   getCraftRecipes(_itemName: string, _withTable: boolean): RecipeInfo[] { return []; }
   getItemSource(_itemName: string): ItemSource | null { return null; }

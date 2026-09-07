@@ -1,3 +1,4 @@
+import type { ContributionRef, RegistrySnapshotRef } from '../../../plugin-sdk/identity.js';
 import type { GoalAgentStateV1 } from '../goalAgentState.js';
 
 /** Domain code, not a model claim, decides whether a missing condition can be waited for. */
@@ -6,14 +7,21 @@ export type GoalProgressGuidance =
   | { kind: 'unsupported'; reason: string; evidenceRefs: string[] }
   | { kind: 'wait'; key: string; reason: string; observedAt: number; evidenceRefs: string[] };
 
-export interface GoalProgressPolicyPort {
-  assess(state: Readonly<GoalAgentStateV1>): GoalProgressGuidance | null;
-  /** Only semantically relevant facts; never clocks, IDs of receipts or plan revisions. */
-  project(state: Readonly<GoalAgentStateV1>): unknown;
+/** One immutable, generation-pinned progress reading. */
+export interface GoalProgressReading {
+  readonly snapshot: RegistrySnapshotRef;
+  readonly contribution: ContributionRef;
+  readonly observedAt: number;
+  readonly semanticState: unknown;
+  readonly evidenceRefs: readonly string[];
+  readonly guidance: GoalProgressGuidance | null;
 }
 
-export interface CapabilityProgressProvider {
-  id: string;
-  assess(state: Readonly<GoalAgentStateV1>): GoalProgressGuidance | null;
-  project(state: Readonly<GoalAgentStateV1>): unknown;
+/**
+ * Sole progress evidence boundary. It resolves a Progress Contribution from
+ * state.snapshotRef; querying the latest generation or inferring legacy state
+ * is outside this contract.
+ */
+export interface GoalProgressContributionPort {
+  read(state: Readonly<GoalAgentStateV1>, signal: AbortSignal): Promise<GoalProgressReading> | GoalProgressReading;
 }

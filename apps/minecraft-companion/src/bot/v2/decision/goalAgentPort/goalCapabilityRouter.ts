@@ -1,5 +1,25 @@
 import type { GoalRequestV2 } from './contracts.js';
-import type { CapabilityCatalogEntry } from '../../capabilities/capabilityCatalog.js';
+
+export interface GoalCapabilityCatalogEntry {
+  readonly id: string;
+  readonly entryKind: 'contribution';
+  readonly version: string;
+  readonly catalogVersion: string;
+  readonly layer: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly aliases: readonly string[];
+  readonly discovery: readonly string[];
+  readonly invocation: readonly string[];
+  readonly availability: {
+    readonly state: 'needs_observation' | 'unavailable';
+    readonly reasons: readonly string[];
+  };
+  readonly packageId: string;
+  readonly packageVersion: string;
+  readonly contributionVersion: string;
+  readonly contributionKind: string;
+}
 
 export type GoalCapabilityMode = 'planned_goal' | 'persistent_behavior' | 'query' | 'cancel';
 
@@ -13,9 +33,9 @@ export interface GoalCapabilityDefinition {
 }
 
 export interface GoalCapabilityKnowledgePort {
-  list(): Array<GoalCapabilityDefinition | CapabilityCatalogEntry>;
-  search(input: { query: string; limit?: number }): Array<GoalCapabilityDefinition | CapabilityCatalogEntry>;
-  get(id: string): GoalCapabilityDefinition | CapabilityCatalogEntry | null;
+  list(): Array<GoalCapabilityDefinition | GoalCapabilityCatalogEntry>;
+  search(input: { query: string; limit?: number }): Array<GoalCapabilityDefinition | GoalCapabilityCatalogEntry>;
+  get(id: string): GoalCapabilityDefinition | GoalCapabilityCatalogEntry | null;
 }
 
 export interface GoalCapabilityMatch {

@@ -56,6 +56,7 @@ contributions:
       progressContributionId: mineclaw.container.progress.chest
       resultContributionId: mineclaw.container.result.chest
       cancellable: true
+      applicability: { outcomes: [deposit], targetKinds: [item], taskFamilies: [storage], criterionTypes: [item_deposited, predicate] }
   - kind: planning
     id: mineclaw.container.progress.chest
     version: 1.0.0

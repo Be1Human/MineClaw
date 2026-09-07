@@ -16,7 +16,7 @@ import vec3pkg from 'vec3';
 const Vec3Ctor = (vec3pkg as unknown as { Vec3: new (x: number, y: number, z: number) => MFVec3 }).Vec3
   ?? (vec3pkg as unknown as new (x: number, y: number, z: number) => MFVec3);
 
-import type { GameAdapter } from '../adapter/GameAdapter.js';
+import type { FoodSelectionOptions, GameAdapter } from '../adapter/GameAdapter.js';
 import type { BoundGameActions, DeviceExecutionScope } from '../adapter/GameActions.js';
 import { MineflayerActionSession } from './MineflayerActionSession.js';
 import { toMinecraftChatLine } from './minecraftChat.js';
@@ -44,6 +44,12 @@ import type {
 type BotGetter = () => Bot | null;
 
 const ZERO_VEC: Vec3 = { x: 0, y: 0, z: 0 };
+
+/** Minecraft lets golden apples be consumed even while the hunger bar is full. */
+const FULL_FOOD_LEVEL = 20;
+const EMERGENCY_FOOD_PRIORITY = ['enchanted_golden_apple', 'golden_apple'] as const;
+const UNSAFE_FOOD = new Set(['rotten_flesh', 'spider_eye', 'poisonous_potato', 'pufferfish', 'chicken', 'chorus_fruit']);
+const RESERVED_EMERGENCY_FOOD = new Set<string>(EMERGENCY_FOOD_PRIORITY);
 
 export class MineflayerGameAdapter implements GameAdapter {
   private readonly subscriptions = new BotSubscriptionRegistry<Bot>();
@@ -249,19 +255,29 @@ export class MineflayerGameAdapter implements GameAdapter {
     } catch { return null; }
   }
 
-  findBestFood(): string | null {
+  findBestFood(options: Readonly<FoodSelectionOptions> = {}): string | null {
     const bot = this.getBot();
     if (!bot) return null;
     try {
+      const inventory = bot.inventory?.items?.() ?? [];
+      if (options.emergency) {
+        for (const itemName of EMERGENCY_FOOD_PRIORITY) {
+          if (inventory.some(item => item.name === itemName && item.count > 0)) return itemName;
+        }
+        // Mineflayer rejects ordinary food at full hunger.  Returning no
+        // candidate keeps an emergency recovery attempt factual instead of
+        // pretending a normal food can heal the player in this state.
+        if (bot.food >= FULL_FOOD_LEVEL) return null;
+      }
       const foods = (bot.registry as unknown as {
         foodsByName?: Record<string, { foodPoints: number; saturation: number }>;
       }).foodsByName;
       if (!foods) return null;
-      // 不主动吃的"坏食物"（有副作用 / 低收益）
-      const BAD = new Set(['rotten_flesh', 'spider_eye', 'poisonous_potato', 'pufferfish', 'chicken', 'chorus_fruit']);
       let best: { name: string; score: number } | null = null;
-      for (const it of bot.inventory.items()) {
-        if (BAD.has(it.name)) continue;
+      for (const it of inventory) {
+        // Golden apples are reserved for the emergency path.  Ordinary eating
+        // selects the best normal food and does not spend a recovery item.
+        if (UNSAFE_FOOD.has(it.name) || RESERVED_EMERGENCY_FOOD.has(it.name)) continue;
         const f = foods[it.name];
         if (!f) continue;
         const score = f.foodPoints + f.saturation;

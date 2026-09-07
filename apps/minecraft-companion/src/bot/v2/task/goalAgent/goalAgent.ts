@@ -52,8 +52,8 @@ export interface GoalAgentOptions {
   onState?: (state: Readonly<GoalAgentStateV1>, event: GoalAgentLoopEvent) => void;
   disposeTools?: () => void;
   log?: (message: string) => void;
-  /** P1-3 · 组合根注入的插件代快照；新 Goal 固定该代（旧记录缺失时 needs_rebind）。 */
-  snapshotRef?: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
+  /** Composition-root snapshot selector. Called exactly once when a session is created. */
+  getSnapshotRef(): import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
 }
 
 export interface GoalAgentSubmission {
@@ -159,7 +159,7 @@ export class GoalAgent {
       request,
       mode: 'persistent_monitor',
       budget: this.options.budget,
-      ...(this.options.snapshotRef ? { snapshotRef: this.options.snapshotRef } : {}),
+      snapshotRef: this.options.getSnapshotRef(),
     });
     state.world = {
       latest: structuredClone(input.world),
@@ -190,7 +190,7 @@ export class GoalAgent {
       const perception = this.options.tools.perception;
       if (!perception) throw new Error('GoalAgent persistent monitor requires perception');
       const controller = new AbortController();
-      const world = await perception.observe(controller.signal);
+      const world = await perception.observe(controller.signal, [], current.snapshotRef);
       await this.loop.refreshPersistentObservation(
         signal.sessionId,
         world,
@@ -264,7 +264,7 @@ export class GoalAgent {
       interactionSessionId: request.meta.sessionId,
       request,
       budget: this.options.budget,
-      ...(this.options.snapshotRef ? { snapshotRef: this.options.snapshotRef } : {}),
+      snapshotRef: this.options.getSnapshotRef(),
     });
     this.sessionByInteraction.set(state.interactionSessionId, sessionId);
     this.reportRequestBySession.set(sessionId, request);
@@ -290,7 +290,7 @@ export class GoalAgent {
       this.sessionByInteraction.set(state.interactionSessionId, state.sessionId);
       this.reportRequestBySession.set(state.sessionId, state.request);
       this.latestSessionId = state.sessionId;
-      if (state.mode === 'planned_goal' && state.phase !== 'paused_owner') void this.pump(state.sessionId);
+      if (state.mode === 'planned_goal' && state.phase !== 'paused_owner' && state.phase !== 'needs_rebind') void this.pump(state.sessionId);
     }
     return active.length;
   }
@@ -393,7 +393,7 @@ export class GoalAgent {
     try {
       let state = this.store.get(sessionId);
       if (state?.mode === 'persistent_monitor') return;
-      while (!this.closed && state && !isGoalAgentTerminalPhase(state.phase) && state.phase !== 'paused_owner') {
+      while (!this.closed && state && !isGoalAgentTerminalPhase(state.phase) && state.phase !== 'paused_owner' && state.phase !== 'needs_rebind') {
         state = await this.loop.run(sessionId);
         if (state.progress?.waiting && !state.terminal && state.phase !== 'paused_owner') {
           this.scheduleWakeup(state);
@@ -434,7 +434,7 @@ export class GoalAgent {
     this.options.publishEvent?.(event);
     const state = this.store.get(event.sessionId);
     if (!state) return;
-    if (state.terminal || state.phase === 'paused_owner') {
+    if (state.terminal || state.phase === 'paused_owner' || state.phase === 'needs_rebind') {
       const timer = this.wakeups.get(state.sessionId);
       if (timer) clearTimeout(timer);
       this.wakeups.delete(state.sessionId);

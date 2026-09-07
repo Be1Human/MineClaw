@@ -61,11 +61,18 @@ export class GenerationResolvers {
     return this.resolve(snapshot, contributionId, null);
   }
 
-  private resolve(snapshot: RegistrySnapshotRef, contributionId: string, expected: ContributionRef | null): GenerationResolveResult {
+  resolveGeneration(snapshot: RegistrySnapshotRef): { readonly status: 'resolved' | 'needs_rebind'; readonly record: ActiveGenerationRecord | null; readonly reason?: string } {
     const current = this.slot.read();
     const record = current.active.generationId === snapshot.generationId
       ? current.active
       : current.drainingById.get(snapshot.generationId) ?? null;
+    return record
+      ? { status: 'resolved', record }
+      : { status: 'needs_rebind', record: null, reason: `generation ${snapshot.generationId} is no longer published` };
+  }
+
+  private resolve(snapshot: RegistrySnapshotRef, contributionId: string, expected: ContributionRef | null): GenerationResolveResult {
+    const record = this.resolveGeneration(snapshot).record;
     if (!record) {
       return { status: 'needs_rebind', record: null, entry: null, reason: `generation ${snapshot.generationId} is no longer published` };
     }

@@ -17,7 +17,7 @@ export interface KnowledgeAnswerSinkPort {
 }
 
 export interface KnowledgeQueryPortV1 {
-  submitKnowledgeQuery(query: KnowledgeQueryV1): Promise<QueryReceipt>;
+  submitKnowledgeQuery(query: KnowledgeQueryV1, signal?: AbortSignal): Promise<QueryReceipt>;
   deliverKnowledgeAnswer(query: KnowledgeQueryV1, answer: KnowledgeAnswerV1): Promise<DeliveryReceipt>;
   acknowledgePlayerReply(replyKey: string): Promise<{ readonly sessionId: string; readonly deduplicated: boolean }>;
   check(requestId: string): ReturnType<KnowledgeQuerySessionStore['get']>;
@@ -56,10 +56,10 @@ export class KnowledgeQueryPort implements KnowledgeQueryPortV1 {
     },
   ) {}
 
-  async submitKnowledgeQuery(query: KnowledgeQueryV1): Promise<QueryReceipt> {
+  async submitKnowledgeQuery(query: KnowledgeQueryV1, signal: AbortSignal = new AbortController().signal): Promise<QueryReceipt> {
     const receipt = this.sessions.create(query);
     this.sessions.markRunning(query.requestId);
-    const answer = await this.options.runner.run(query, new AbortController().signal);
+    const answer = await this.options.runner.run(query, signal);
     this.sessions.recordAnswer(query.requestId, answer);
     this.sessions.markDeliveryPending(query.requestId);
     await this.deliverAnswer(query.requestId);

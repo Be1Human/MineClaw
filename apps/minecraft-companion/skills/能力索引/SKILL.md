@@ -21,7 +21,6 @@ uses: [submit_goals, get_world_state, say, ask_master]
 | 采集材料 | "采10个橡木" / "挖些石头" | gather / gather_material |
 | 合成造物 | "做把铁镐" / "做个工作台" | craft / craft_item |
 | 种田 | "种3亩小麦" | farm |
-| 守卫驻防 | "守住这里" | guard |
 | 跟随主人 | "跟着我" | follow_owner |
 | 去地标/坐标 | "去金块那里" / "到 (10,-60,10)" | goto_position |
 | 探索找路 | "去附近转转找铁矿" | explore |

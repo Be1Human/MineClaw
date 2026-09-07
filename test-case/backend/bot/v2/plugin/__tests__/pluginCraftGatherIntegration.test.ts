@@ -69,22 +69,23 @@ test('P2-7 crafting/gathering 闭环注册与全链 boot（8 插件级全量含�
   }
 });
 
-test('P2-7 无 body 服务时两执行器显式失败（不伪装成功）', async () => {
+test('P2-7 Host body 失败收据令两执行器显式失败（不伪装成功）', async () => {
   const craftingContributions = createMineclawCraftingPlugin().create({
     host: { version: '2.0.0', buildId: 'b' },
     plugin: { pluginId: 'mineclaw.crafting', pluginVersion: '1.0.0' },
   });
-  const craftExec = (craftingContributions.find(c => c.kind === 'execution') as { behaviorFactory: { create: (l: Record<string, unknown>) => { run: (ctx: { signal: AbortSignal; facts: Record<string, unknown>[] }) => Promise<{ ok: boolean; error?: string }>; halt: () => Promise<void>; close: () => Promise<void>; settled: boolean } } }).behaviorFactory;
-  const craftOutcome = await craftExec.create({ goalId: 'g' } as never).run({ signal: new AbortController().signal, facts: [] } as never);
-  assert.equal(craftOutcome.ok, false);
-  assert.match(craftOutcome.error ?? '', /body_submit_service_missing/);
+  const craftExec = (craftingContributions.find(c => c.kind === 'execution') as any).behaviorFactory;
+  const craft = craftExec.create({ goalId: 'g' } as never);
+  assert.deepEqual(craft.compile({ goal: { goalId: 'g' }, facts: [], params: { item: 'torch' } }).steps,
+    [{ atomicId: 'craft', args: { itemName: 'torch', count: 1 } }]);
 
   const gatheringContributions = createMineclawGatheringPlugin().create({
     host: { version: '2.0.0', buildId: 'b' },
     plugin: { pluginId: 'mineclaw.gathering', pluginVersion: '1.0.0' },
   });
-  const gatherExec = (gatheringContributions.find(c => c.kind === 'execution') as { behaviorFactory: { create: (l: Record<string, unknown>) => { run: (ctx: { signal: AbortSignal; facts: Record<string, unknown>[] }) => Promise<{ ok: boolean; error?: string }>; halt: () => Promise<void>; close: () => Promise<void>; settled: boolean } } }).behaviorFactory;
-  const gatherOutcome = await gatherExec.create({ goalId: 'g' } as never).run({ signal: new AbortController().signal, facts: [] } as never);
-  assert.equal(gatherOutcome.ok, false);
-  assert.match(gatherOutcome.error ?? '', /body_submit_service_missing/);
+  const gatherExec = (gatheringContributions.find(c => c.kind === 'execution') as any).behaviorFactory;
+  const gather = gatherExec.create({ goalId: 'g' } as never);
+  const gatherPlan = gather.compile({ goal: { goalId: 'g' }, facts: [], params: { target: { position: { x: 1, y: 2, z: 3 } } } });
+  assert.equal(gather.kind, 'sequence');
+  assert.deepEqual(gatherPlan.steps.map((step: { atomicId: string }) => step.atomicId), ['move_to', 'dig']);
 });

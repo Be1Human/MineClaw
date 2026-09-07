@@ -55,6 +55,24 @@ export class MainBrainProactiveInbox {
     return true;
   }
 
+  /** Called by the activity/task terminal bridge only after body cleanup reached StopAck. */
+  confirmRelease(requestId: string, reason: string): boolean {
+    const lease = this.options.leases.snapshot().releasing;
+    if (!lease || lease.requestId !== requestId) return false;
+    this.options.leases.confirmReleased(lease.activationId);
+    this.options.stateStore.recordReleased(lease.capabilityId, reason);
+    this.options.stateStore.recordResult(lease.capabilityId, { ok: true, reason });
+    this.options.publish?.('proactive.released', {
+      capabilityId: lease.capabilityId,
+      activationId: lease.activationId,
+      requestId,
+      reason,
+      cancelAccepted: true,
+      stopConfirmed: true,
+    });
+    return true;
+  }
+
   private applyReleaseSignals(evaluations: ReadonlyMap<string, ProactiveTickEvaluation>): void {
     const active = this.options.leases.snapshot().active;
     if (!active) return;
@@ -111,15 +129,18 @@ export class MainBrainProactiveInbox {
     const cancelAccepted = lease.requestId
       ? this.options.goalAgentPort.cancelRequest(lease.requestId, `proactive:${reason}`)
       : true;
-    this.options.leases.confirmReleased(lease.activationId);
-    this.options.stateStore.recordReleased(lease.capabilityId, reason);
-    this.options.stateStore.recordResult(lease.capabilityId, { ok: cancelAccepted, reason });
-    this.options.publish?.('proactive.released', {
+    if (!cancelAccepted) {
+      this.options.leases.confirmReleased(lease.activationId);
+      this.options.stateStore.recordReleased(lease.capabilityId, reason);
+      this.options.stateStore.recordResult(lease.capabilityId, { ok: false, reason });
+    }
+    this.options.publish?.(cancelAccepted ? 'proactive.release_requested' : 'proactive.released', {
       capabilityId: lease.capabilityId,
       activationId: lease.activationId,
       requestId: lease.requestId ?? '',
       reason,
       cancelAccepted,
+      stopConfirmed: false,
     });
   }
 }

@@ -60,6 +60,13 @@ test('QI-04 任务指令判定 task；取消判定 cancel；待答上下文行�
   assert.equal(gate.classify('继续做', { conversationMode: 'awaiting_player' }).intent, 'chat');
 });
 
+test('QI-07 已注册任务能力优先于“这里”等词法查询标记', () => {
+  const decision = new FactIntentGate().classify('保护我', { registeredTask: true });
+  assert.equal(decision.intent, 'task');
+  assert.equal(decision.leaning, 'task');
+  assert.equal(decision.evidence[0]?.rule, 'registered_task_capability');
+});
+
 test('QI-05 查询工厂产出闭合 query（request/idempotency/reply key 域）', () => {
   const factory = new KnowledgeQueryFactory({
     factKinds: ['nearby_crops'], anchor: { kind: 'bot_self' }, scope: { radius: 8 }, freshness: { maxAgeMs: 5000 },

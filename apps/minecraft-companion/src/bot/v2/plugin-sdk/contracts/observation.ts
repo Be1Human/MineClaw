@@ -12,6 +12,7 @@ export const FACT_KINDS = [
   'nearby_entities',
   'nearby_blocks',
   'nearby_crops',
+  'agriculture_fields',
   'inventory',
   'container_contents',
   'task_status',

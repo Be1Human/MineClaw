@@ -4,6 +4,7 @@ import { GoalAgentCandidateAuthority, prepareCandidateArguments } from '../../..
 import { GoalAgentRoundToolRuntime } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundTools.js';
 import { createGoalAgentState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
 import type { GoalAgentActionCandidate } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/ports/executionPort.js';
+import { formalizeState, permissiveTestPlans, testContribution } from './goalTestFixtures.js';
 
 function state() {
   const value = createGoalAgentState({ sessionId: 'authority', interactionSessionId: 'interaction', request: {
@@ -11,9 +12,7 @@ function state() {
       sequence: 1, emittedAt: '2026-08-31T00:00:00.000Z', idempotencyKey: 'request' },
     origin: 'player_message', originalText: '做一把斧头', requestText: '做一把斧头', requestKind: 'task', constraints: [],
   } });
-  value.rootGoal = { schema: 'mineclaw.goal/v1', goalId: 'root', profileId: 'test', goalText: '做一把斧头',
-    createdAt: '2026-08-31T00:00:00.000Z', successCriteria: [{ type: 'inventory', item: 'stone_axe', count: 1 }] };
-  return value;
+  return formalizeState(value);
 }
 
 function craft(): GoalAgentActionCandidate {
@@ -67,7 +66,7 @@ test('U13: final merged arguments are validated, including malformed fixed argum
 
 test('U14: grants bind session, epoch, plan, node, catalog, operation version and runtime incarnation', () => {
   const authority = new GoalAgentCandidateAuthority(), initial = state(), candidate = craft();
-  candidate.operationRef = { id: 'craft.item', version: 1 };
+  candidate.operationRef = testContribution('mineclaw.test.execution.craft-v1');
   const handle = authority.issue(candidate, initial, 'catalog-1');
   assert.equal(authority.candidateId(handle), candidate.id);
   assert.equal(authority.matches(handle, candidate, initial, 'catalog-1'), true);
@@ -79,7 +78,7 @@ test('U14: grants bind session, epoch, plan, node, catalog, operation version an
     (s: ReturnType<typeof state>) => { s.budget.actions += 1; },
   ]) { const changed = structuredClone(initial); mutate(changed); assert.equal(authority.matches(handle, candidate, changed, 'catalog-1'), false); }
   assert.equal(authority.matches(handle, candidate, initial, 'catalog-2'), false);
-  assert.equal(authority.matches(handle, { ...candidate, operationRef: { id: 'craft.item', version: 2 } }, initial, 'catalog-1'), false);
+  assert.equal(authority.matches(handle, { ...candidate, operationRef: testContribution('mineclaw.test.execution.craft-v2') }, initial, 'catalog-1'), false);
   assert.equal(new GoalAgentCandidateAuthority().matches(handle, candidate, initial, 'catalog-1'), false);
   assert.equal(authority.matches(`${handle.slice(0, -1)}!`, candidate, initial, 'catalog-1'), false);
 });
@@ -87,7 +86,7 @@ test('U14: grants bind session, epoch, plan, node, catalog, operation version an
 function harness() {
   let candidate = craft();
   const shared = state(); let executions = 0; let dispatched: unknown;
-  const runtime = new GoalAgentRoundToolRuntime({ profileId: 'test', tools: { execution: {
+  const runtime = new GoalAgentRoundToolRuntime({ profileId: 'test', tools: { plans: permissiveTestPlans, execution: {
     listCandidates: () => [candidate],
     async execute(input) { executions += 1; dispatched = input.proposal; return {
       executionSessionId: 'execution', idempotencyKey: input.idempotencyKey, ok: true, detail: 'crafted',

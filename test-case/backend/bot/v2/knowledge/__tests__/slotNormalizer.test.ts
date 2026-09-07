@@ -13,10 +13,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeTaskParams, mergePatchForReuse } from '../../../../../../apps/minecraft-companion/src/bot/v2/knowledge/slotNormalizer.js';
 import type { NormalizableTaskDef, NormalizeContext } from '../../../../../../apps/minecraft-companion/src/bot/v2/knowledge/slotNormalizer.js';
+import { InMemoryGoalKnowledgePort } from '../../../../../../apps/minecraft-companion/src/bot/v2/knowledge/goalTargetKnowledge.js';
+import { minecraftGoalContributions } from '../../../../../../apps/minecraft-companion/src/bot/v2/plugins/builtin/minecraft-system/goalTargets.js';
+
+const goalKnowledge = new InMemoryGoalKnowledgePort(minecraftGoalContributions().map(entry => ({
+  contribution: { pluginId: 'mineclaw.minecraft-system', pluginVersion: '1.0.0', contributionId: entry.id, contributionVersion: entry.version },
+  target: entry.target,
+})).map(({ target, contribution }) => ({
+  contribution,
+  kind: target.goalKind,
+  registryId: target.registryId,
+  aliases: target.aliases,
+  taskFamilies: target.taskFamilies ?? [],
+  successCriteria: target.successCriteria as any,
+})));
 
 const ctx = (ownerText = '', ownerName = 'CloudBoy'): NormalizeContext => ({
   recentOwnerText: () => ownerText,
   ownerName,
+  goalKnowledge,
 });
 
 const GATHER_DEF: NormalizableTaskDef = {

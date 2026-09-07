@@ -1,11 +1,6 @@
 import type { ActionRequest, ExecutionResult } from '../../types.js';
-import {
-  createDefaultAtomicContractRegistry,
-  preparedTarget,
-} from '../../atomic/contracts/defaultContracts.js';
 import type {
   ActionProposal,
-  AtomicContractRegistry,
   PreparedAction,
 } from '../../atomic/contracts/atomicContractRegistry.js';
 import type { RegistrySnapshotRef } from '../../plugin-sdk/identity.js';
@@ -32,23 +27,10 @@ export type ActionPrepareResult =
  * the removal of that path lands with the switch commit.
  */
 export class ActionPreparer {
-  constructor(
-    private readonly registry: AtomicContractRegistry,
-    private readonly generation?: GenerationContractResolverPort,
-  ) {}
+  constructor(private readonly generation: GenerationContractResolverPort) {}
 
   prepare(proposal: ActionProposal, context: ActionPreparationContext): ActionPrepareResult {
-    if (this.generation) return this.prepareFromGeneration(proposal, context);
-    const definition = this.registry.get(proposal.action);
-    if (!definition) {
-      return {
-        kind: 'invalid',
-        failure: contractFailure('contract.unknown_action', `unknown action: ${proposal.action}`),
-      };
-    }
-    const prepared = definition.prepare(proposal, { now: Date.now() });
-    if (prepared.kind !== 'ready') return prepared;
-    return this.toReady(proposal, context, prepared.action);
+    return this.prepareFromGeneration(proposal, context);
   }
 
   private prepareFromGeneration(proposal: ActionProposal, context: ActionPreparationContext): ActionPrepareResult {
@@ -66,10 +48,6 @@ export class ActionPreparer {
     }
     const target = (prepared && 'prepared' in prepared ? prepared.prepared : proposal.args) as Record<string, unknown>;
     return this.toRawReady(proposal, context, target, derivedFieldsOf(prepared));
-  }
-
-  private toReady(proposal: ActionProposal, context: ActionPreparationContext, prepared: PreparedAction): ActionPrepareResult {
-    return this.toRawReady(proposal, context, prepared.target as Record<string, unknown>, prepared.derivedFields);
   }
 
   private toRawReady(proposal: ActionProposal, context: ActionPreparationContext, target: Record<string, unknown>, derivedFields: readonly string[]): ActionPrepareResult {
@@ -91,27 +69,21 @@ export class ActionPreparer {
     };
   }
 
-  normalize(action: string, result: ExecutionResult): FailureEnvelope | null {
-    const definition = this.registry.get(action);
-    return definition
-      ? definition.normalize(result)
-      : contractFailure('contract.unknown_action', `unknown action: ${action}`);
-  }
-
-  schemas(): ReturnType<AtomicContractRegistry['schemas']> {
-    return this.registry.schemas();
+  normalize(snapshot: RegistrySnapshotRef, action: string, result: ExecutionResult): FailureEnvelope | null {
+    const resolved = this.generation.resolve(snapshot, action);
+    if (resolved.status !== 'resolved') return contractFailure('contract.unknown_action', resolved.reason);
+    const failure = resolved.value.normalize?.(result as unknown as Readonly<Record<string, unknown>>);
+    return failure ? contractFailure(failure.code, failure.message) : null;
   }
 
   /** P3-4 · Generation 模式契约解析（供 goalAgentProductionPorts 展示 schema）。 */
   resolveContract(snapshot: RegistrySnapshotRef, action: string): PluginAtomicContract | null {
-    if (!this.generation) return null;
     const resolved = this.generation.resolve(snapshot, action);
     return resolved.status === 'resolved' ? resolved.value : null;
   }
 
   /** P3-4 · Generation 模式契约列表（供候选枚举）。 */
   listContracts(snapshot: RegistrySnapshotRef): readonly PluginAtomicContract[] {
-    if (!this.generation) return [];
     const resolved = this.generation.list(snapshot);
     return resolved.status === 'resolved' ? resolved.value : [];
   }
@@ -124,5 +96,3 @@ function derivedFieldsOf(prepared: unknown): readonly string[] {
   }
   return [];
 }
-
-export const defaultActionPreparer = new ActionPreparer(createDefaultAtomicContractRegistry());

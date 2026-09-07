@@ -12,7 +12,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.gathering';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.gathering.goal.gather-material';
 const CANDIDATE = 'mineclaw.gathering.planning.gather-candidates';
 const PREDICATE = 'mineclaw.gathering.verification.gathered';
@@ -38,8 +37,6 @@ export function createMineclawGatheringPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -57,7 +54,7 @@ export function createMineclawGatheringPlugin(): PluginFactory {
           if (!item) return { status: 'unavailable', candidates: [], reason: 'item_required' };
           return {
             status: 'complete',
-            candidates: [{ candidateId: `gather:${item}`, operationContribution: ref(OPERATION), params: { item, count }, evidenceRefs: [], contribution: ref(CANDIDATE) }],
+            candidates: [{ candidateId: `gather:${item}`, operationContribution: ref(EXECUTOR), params: { item, count }, evidenceRefs: [], contribution: ref(CANDIDATE) }],
           };
         },
       };
@@ -78,7 +75,7 @@ export function createMineclawGatheringPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const item = String(input.args?.item ?? '');
           const count = Number(input.args?.count ?? 1);
           const have = inventorySlotCount(input.facts, item);
@@ -92,18 +89,15 @@ export function createMineclawGatheringPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `gather-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const payload = ctx.facts[0]?.payload as { target?: Record<string, unknown>; item?: string } | undefined;
-            const target = payload?.target;
-            if (!target) return { ok: false, cancelled: false, error: 'target_required' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const move = await bodySubmit({ action: 'minecraft-system:move-to', target });
-            if ((move as { ok?: boolean }).ok === false) return { ok: false, cancelled: false, error: 'move_failed' };
-            const dig = await bodySubmit({ action: 'minecraft-system:dig', target });
-            return (dig as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'dig_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const target = ctx.params.target as Record<string, unknown> | undefined;
+            return target
+              ? { ok: true, steps: [
+                  { atomicId: 'move_to', args: { position: target } },
+                  { atomicId: 'dig', args: { position: target } },
+                ] }
+              : { ok: false, error: 'target_required' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -151,6 +145,7 @@ export function createMineclawGatheringPlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['obtain'], targetKinds: ['item'], taskFamilies: ['gathering', 'mining'], criterionTypes: ['inventory', 'predicate'] },
           },
           behaviorFactory,
         },

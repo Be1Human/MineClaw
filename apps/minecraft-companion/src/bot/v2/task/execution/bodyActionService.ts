@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { GameAdapter } from '../../../adapter/GameAdapter.js';
 import type { NavigationAdapter } from '../../../adapter/NavigationAdapter.js';
-import type { IBehaviorRegistry } from '../../behavior/types.js';
 import type { EventBusV2 } from '../../infra/eventBus.js';
 import { tuning } from '../../infra/tuning.js';
 import type { ActionRequest, ExecutionResult, WorldStateView } from '../../types.js';
@@ -17,7 +16,8 @@ import { ExecutionAuthority } from './executionAuthority.js';
 import { GameBodyDriver } from './gameBodyDriver.js';
 import { actionCommand } from './actionCommand.js';
 import { failureDetail } from './failureEnvelope.js';
-import type { GenerationAtomicEntryPort } from './generationResolversPorts.js';
+import type { GenerationAtomicEntryPort, GenerationBehaviorResolverPort } from './generationResolversPorts.js';
+import type { OperationLedgerPort } from './operationLedger.js';
 
 export type BodyActionResult =
   | (ExecutionResult & {kind:'operation';receipt:OperationReceipt})
@@ -29,6 +29,16 @@ export interface GoalBodyExecutionPort {
   executeGoal(request:ActionRequest,input:GoalBodyRequest):Promise<BodyActionResult>;
   drainTask(taskId:string,reason:string):Promise<void>;
 }
+export interface ActivityBodyRequest {
+  readonly taskId: string;
+  readonly operationId: string;
+  readonly snapshot: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
+  readonly atomicId: string;
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly timeoutMs?: number;
+  readonly priority: number;
+  readonly signal: AbortSignal;
+}
 interface RunningAction { request: ActionRequest; intent: OperationIntent; handle: OperationHandle }
 
 /** Trusted activity boundary. Request metadata never mints an owner or a physical lease. */
@@ -39,18 +49,20 @@ export class BodyActionService {
   private readonly ownerEpochs = new Map<string, number>();
   private readonly operations = new Map<string, RunningAction>();
   private readonly unsubs: Array<() => void> = [];
-  private safetyOwnerEpoch = 1;
   constructor(private readonly deps: {
-    game: GameAdapter; nav: NavigationAdapter; registry: IBehaviorRegistry; bus: EventBusV2;
+    game: GameAdapter; nav: NavigationAdapter; bus: EventBusV2;
     tasks: TaskRuntime; getWorld(): WorldStateView; isEmbodied(): boolean;
     getGoalState(sessionId: string): GoalAgentStateV1 | null;
     /** P3-4 · 当前已发布插件代快照（Task/Safety 命令的代际来源；Goal 命令固定自身 snapshotRef）。 */
     getSnapshot(): import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
     /** P3-4 · 原子存在性经固定代解析（Driver accepts 用，不建立第二执行中枢）。 */
     atomicResolver: GenerationAtomicEntryPort;
+    behaviorResolver: GenerationBehaviorResolverPort;
+    hostApiVersion: string;
+    ledger: OperationLedgerPort;
   }) {
     this.driver = new GameBodyDriver({ ...deps, atomicResolver: deps.atomicResolver });
-    this.runtime = new BodyExecutionRuntime({driver:this.driver,authority:this.authority});
+    this.runtime = new BodyExecutionRuntime({driver:this.driver,authority:this.authority,ledger:deps.ledger});
     for (const task of deps.tasks.list()) if (task.state==='running') this.ownerEpochs.set(task.id,1);
     for (const type of ['task.started','task.resumed','task.paused','task.completed','task.failed','task.cancelled']) {
       this.unsubs.push(deps.bus.on(type,event => {
@@ -58,7 +70,7 @@ export class BodyActionService {
         if (!id) return;
         this.ownerEpochs.set(id,(this.ownerEpochs.get(id) ?? 0)+1);
         for (const operation of this.operations.values()) {
-          if (operation.intent.owner.kind!=='safety' && operation.intent.owner.taskId===id) operation.handle.cancel(type);
+          if (operation.intent.owner.taskId===id) operation.handle.cancel(type);
         }
       }));
     }
@@ -79,16 +91,7 @@ export class BodyActionService {
     if (request.type==='stop' || request.type==='stop_follow') return this.stopTask(request,id);
     const owner: ExecutionOwner = {kind:'task',taskId:id,ownerEpoch};
     return this.execute(request,{owner,operationId:`task-action:${randomUUID()}`,scope:this.worldScope(),
-      isCurrent:()=>this.deps.tasks.isRunning(id) && this.ownerEpochs.get(id)===ownerEpoch});
-  }
-
-  /** Only the heartbeat's registered reflex/defense producers receive this method. */
-  async executeSafety(request: ActionRequest, policyId: string): Promise<BodyActionResult> {
-    if (request.type==='say') return this.speech(request);
-    if (request.type==='stop' || request.type==='stop_follow') return this.rejected(request,'safety_stop_requires_owned_operation');
-    const ownerEpoch = this.safetyOwnerEpoch;
-    return this.execute(request,{owner:{kind:'safety',policyId,ownerEpoch},operationId:`safety-action:${randomUUID()}`,
-      scope:this.worldScope(),isCurrent:()=>this.safetyOwnerEpoch===ownerEpoch && tuning().defense.automaticEnabled});
+      expectedEffects:[],isCurrent:()=>this.deps.tasks.isRunning(id) && this.ownerEpochs.get(id)===ownerEpoch});
   }
 
   async executeGoal(request: ActionRequest, input: GoalBodyRequest): Promise<BodyActionResult> {
@@ -99,14 +102,33 @@ export class BodyActionService {
       return !signal.aborted && this.deps.tasks.isRunning(taskId) && !!live
         && live.epoch===owner.epoch && live.plan.revision===owner.planRevision && live.phase==='running';
     };
-    return this.execute(request,{owner,operationId:input.operationId,scope:state.rootGoal?.schema==='mineclaw.goal/v2'
-      ? state.rootGoal.scope : this.worldScope(),isCurrent,signal,
+    if (state.rootGoal?.schema !== 'mineclaw.goal/v2') return this.rejected(request, 'needs_rebind:formal_goal_required');
+    const active = state.plan.graph?.nodes.find(node => node.id === state.plan.activeNodeId);
+    const expectedEffects = active?.causal?.satisfies ?? state.rootGoal.successCriteria.map(({ since: _since, ...criterion }) => criterion);
+    return this.execute(request,{owner,operationId:input.operationId,scope:state.rootGoal.scope,expectedEffects,isCurrent,signal,
       // P3-4 · 固定编译快照；旧记录（无 snapshotRef）→ needs_rebind fail-closed。
       snapshot: state.snapshotRef});
   }
 
+  /** Persistent plugin activities submit finite atomics under one task owner and pinned Generation. */
+  async executeActivity(input: ActivityBodyRequest): Promise<BodyActionResult> {
+    const ownerEpoch = this.ownerEpochs.get(input.taskId);
+    const request = activityAction(input);
+    if (!ownerEpoch || !this.deps.tasks.isRunning(input.taskId)) {
+      return this.rejected(request, 'body_activity_owner_not_running');
+    }
+    return this.execute(request, {
+      owner: { kind: 'task', taskId: input.taskId, ownerEpoch },
+      operationId: input.operationId,
+      scope: this.worldScope(),
+      expectedEffects: [],
+      isCurrent: () => !input.signal.aborted && this.deps.tasks.isRunning(input.taskId) && this.ownerEpochs.get(input.taskId) === ownerEpoch,
+      signal: input.signal,
+      snapshot: input.snapshot,
+    });
+  }
+
   cancelAll(reason: string): void {
-    this.safetyOwnerEpoch++;
     for (const operation of this.operations.values()) operation.handle.cancel(reason);
   }
 
@@ -118,16 +140,22 @@ export class BodyActionService {
   }
 
   async drainTask(taskId: string, reason: string): Promise<void> {
-    const matching = [...this.operations.values()].filter(value=>value.intent.owner.kind!=='safety' && value.intent.owner.taskId===taskId);
+    const matching = [...this.operations.values()].filter(value=>value.intent.owner.taskId===taskId);
     for (const value of matching) value.handle.cancel(reason);
     const receipts = await Promise.all(matching.map(value=>value.handle.result));
     if (receipts.some(value=>!value.stop)) throw new Error('body_stop_unconfirmed');
   }
 
-  close(): void { this.cancelAll('runtime_closed'); for (const unsubscribe of this.unsubs) unsubscribe(); }
+  close(): Promise<void> {
+    const pending = [...this.operations.values()].map(value => value.handle.result);
+    this.cancelAll('runtime_closed');
+    for (const unsubscribe of this.unsubs) unsubscribe();
+    return Promise.allSettled(pending).then(() => undefined);
+  }
 
   private async execute(request: ActionRequest, policy: {
-    owner: ExecutionOwner; operationId: string; scope: BoundGoalScope; isCurrent(): boolean; signal?: AbortSignal;
+    owner: ExecutionOwner; operationId: string; scope: BoundGoalScope;
+    expectedEffects: OperationIntent['expectedEffects']; isCurrent(): boolean; signal?: AbortSignal;
     /** P3-4 · Goal 命令的代际快照（state.snapshotRef；缺失=旧记录 needs_rebind fail-closed）。 */
     snapshot?: import('../../plugin-sdk/identity.js').RegistrySnapshotRef;
   }): Promise<BodyActionResult> {
@@ -135,18 +163,16 @@ export class BodyActionService {
     try {
       if (!this.deps.isEmbodied()) throw new Error('game_body_unavailable');
       const dimension=policy.scope.dimension;
-      // Goal 命令锁定编译时快照；Task/Safety 用组合根注入的当前代快照。绝不回退 live registry。
-      const snapshot = policy.owner.kind === 'goal'
-        ? (policy.snapshot ?? failRebind('goal_snapshot_missing'))
-        : this.deps.getSnapshot();
-      // P3-4 · 原子命令的贡献引用经固定代解析（P08 同 ref；不再写死 legacy-builtin）。
-      // invoke_behavior/stop/stop_follow 是控制/行为命令：行为贡献仍处一次性迁移命名空间，
-      // 控制命令无设备贡献，二者保持 ownerContribution。
-      const contribution = request.type === 'invoke_behavior' || request.type === 'stop' || request.type === 'stop_follow'
-        ? ownerContribution(request)
+      // Goal 命令锁定编译时快照；Task 命令用组合根注入的当前代快照。绝不回退 live registry。
+      const snapshot = policy.snapshot ?? (policy.owner.kind === 'goal'
+        ? failRebind('goal_snapshot_missing')
+        : this.deps.getSnapshot());
+      const contribution = request.type === 'invoke_behavior'
+        ? resolveBehaviorContribution(this.deps.behaviorResolver, snapshot, String(request.target?.behavior ?? ''))
         : resolveAtomicContribution(this.deps.atomicResolver, snapshot, request.type);
       const intent: OperationIntent = {
-        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, contribution, snapshot),scope:policy.scope,
+        operationId:policy.operationId,owner:policy.owner,command:actionCommand(request, contribution, snapshot),
+        expectedEffects:policy.expectedEffects,scope:policy.scope,
         deadlineAt:start+Math.min(request.timeout_ms,tuning().controlledExecution.operationTimeoutMs),
         budget:{maxActions:tuning().controlledExecution.maxSubActions},priority:request.priority,
         preemption:request.interrupt_level==='hard' ? 'request':'none',
@@ -178,7 +204,9 @@ export class BodyActionService {
       } finally {
         policy.signal?.removeEventListener('abort',cancel);
         // Quarantine remains visible and retains ownership after a result timeout.
-        if (this.runtime.inspect(intent.operationId)?.state==='settled') this.operations.delete(intent.operationId);
+        const snapshot = this.runtime.inspect(intent.operationId);
+        const managed = this.runtime.active().some(value => value.operationId === intent.operationId);
+        if (!snapshot || snapshot.state === 'settled' || !managed) this.operations.delete(intent.operationId);
       }
     } catch (error) { return this.rejected(request,error instanceof Error ? error.message:String(error)); }
   }
@@ -197,26 +225,6 @@ export class BodyActionService {
       label:'执行层请求发言',detail:text,status:'info',wake:request.priority>=60,dedupeKey:`atomic_say:${request.source}:${text}`});
     return {kind:'control',receipt:null,ok:true,request,durationMs:0};
   }
-}
-
-/**
- * Explicit one-shot legacy mapping (kernel design §5.10): until the builtin
- * plugins take over (completion of -004), body commands carry a real
- * ContributionRef under the `mineclaw.legacy-builtin` namespace. The deletion
- * gate for -004 requires zero production references to this namespace.
- */
-const LEGACY_BUILTIN = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0' } as const;
-
-function ownerContribution(request: ActionRequest): ContributionRef {
-  const id = request.type === 'invoke_behavior'
-    ? `behavior:${String(request.target?.behavior ?? '')}`
-    : `atomic:${request.type}`;
-  return {
-    pluginId: LEGACY_BUILTIN.pluginId,
-    pluginVersion: LEGACY_BUILTIN.pluginVersion,
-    contributionId: id,
-    contributionVersion: '1.0.0',
-  };
 }
 
 /** P3-4 · Goal 命令没有固定快照 = 旧持久记录；fail-closed needs_rebind，不转查最新代。 */
@@ -239,4 +247,30 @@ function resolveAtomicContribution(
     return resolveAtomicContributionFail(`atomic_contribution_missing:${actionType}:${entry.reason}`);
   }
   return entry.value.contribution;
+}
+
+function resolveBehaviorContribution(
+  resolver: GenerationBehaviorResolverPort,
+  snapshot: import('../../plugin-sdk/identity.js').RegistrySnapshotRef,
+  behaviorId: string,
+): ContributionRef {
+  if (!behaviorId) throw new Error('behavior_id_required');
+  const entry = resolver.resolveById(snapshot, behaviorId);
+  if (entry.status === 'in_doubt') throw new Error(`needs_rebind:behavior_contribution_missing:${behaviorId}:${entry.reason}`);
+  return entry.value.contribution;
+}
+
+function activityAction(input: ActivityBodyRequest): ActionRequest {
+  return {
+    id: input.operationId,
+    source: 'plugin_activity',
+    taskId: input.taskId,
+    type: input.atomicId as ActionRequest['type'],
+    priority: input.priority,
+    interrupt_level: 'soft',
+    resource: [],
+    target: structuredClone(input.args) as ActionRequest['target'],
+    preconditions: [],
+    timeout_ms: Math.max(1, Math.min(input.timeoutMs ?? tuning().controlledExecution.operationTimeoutMs, tuning().controlledExecution.operationTimeoutMs)),
+  };
 }

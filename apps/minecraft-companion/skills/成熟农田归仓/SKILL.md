@@ -14,9 +14,9 @@ uses: [goal_search_targets, goal_create, world_observe, plan_commit, action_list
 ## 目标接入
 
 1. 用 `goal_search_targets` 搜索玩家原话中的“农田 / 稻田 / 麦田 / 庄稼 / 收割”。
-2. 选择 `mineclaw:mature_crops_to_chest`。
+2. 选择 `mineclaw.agriculture.goal.harvest-mature-crops-to-chest`。
 3. 用 `goal_create` 创建 `outcome=obtain`、`quantity=1` 的根目标。这里的 quantity 只是目标协议必填字段，真正数量由首次有界作物事实建立机器基线。
-4. `plan_commit` 必须原样复制 `goal_create` 返回的 `predicate=agriculture.harvest_to_chest` 判据，不自行改写数量或 invent 新判据。
+4. `plan_commit` 必须原样复制 `goal_create` 返回的 `predicate=mineclaw.agriculture.verification.harvested-to-chest` 判据，不自行改写数量或 invent 新判据。
 
 ## 执行循环
 

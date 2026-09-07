@@ -34,16 +34,18 @@ export class GenerationCatalog {
     const current = this.slot.read();
     const result: CatalogEntry[] = [];
     for (const record of current.active.registry.byId.values()) {
-      result.push(toEntry(record.contribution, record.ref.pluginVersion, record.ref.contributionVersion, 'available'));
+      result.push(toEntry(record.contribution, record.ref.pluginId, record.ref.pluginVersion, record.ref.contributionVersion, 'available'));
     }
     for (const [generationId, record] of current.drainingById) {
       for (const contribution of record.registry.byId.values()) {
-        const entry = toEntry(contribution.contribution, contribution.ref.pluginVersion, contribution.ref.contributionVersion, 'draining');
+        const entry = toEntry(contribution.contribution, contribution.ref.pluginId, contribution.ref.pluginVersion, contribution.ref.contributionVersion, 'draining');
         result.push({ ...entry, reason: `generation ${generationId} is draining for new goals` });
       }
     }
     return result;
   }
+
+  list(): readonly CatalogEntry[] { return this.entries(); }
 
   search(query: string, limit = 10): readonly CatalogEntry[] {
     const normalized = query.trim().toLowerCase();
@@ -66,10 +68,10 @@ export class GenerationCatalog {
   }
 }
 
-function toEntry(contribution: PluginContribution, pluginVersion: string, contributionVersion: string, availability: ContributionAvailability): CatalogEntry {
+function toEntry(contribution: PluginContribution, pluginId: string, pluginVersion: string, contributionVersion: string, availability: ContributionAvailability): CatalogEntry {
   const base: CatalogEntry = {
     contributionId: contribution.id,
-    pluginId: contribution.id.split('.')[0] ?? 'unknown',
+    pluginId,
     pluginVersion,
     contributionVersion,
     kind: contribution.kind,

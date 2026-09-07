@@ -7,7 +7,7 @@
  */
 import { readFileSync } from 'node:fs';
 import type { BuiltinPluginIndex, PluginFactory } from './discovery.js';
-import { BUILTIN_PLUGIN_FACTORIES } from './builtin-index.generated.js';
+import { BUILTIN_PLUGIN_CONTENTS, BUILTIN_PLUGIN_FACTORIES } from './builtin-index.generated.js';
 import { pluginError } from '../plugin-sdk/errors.js';
 
 export interface ProductionIndexInput {
@@ -26,7 +26,7 @@ export function loadProductionBuiltinIndex(input: ProductionIndexInput): Builtin
     throw pluginError('manifest_invalid', `unexpected builtin index schema: ${String(parsed.schema)}`);
   }
   const factories = input.factories ?? BUILTIN_PLUGIN_FACTORIES;
-  const byEntryKey = new Map<string, { entryKey: string; manifest: Record<string, unknown>; factory: PluginFactory }>();
+  const byEntryKey = new Map<string, { entryKey: string; manifest: Record<string, unknown>; factory: PluginFactory; dataContents?: ReadonlyMap<string, string> }>();
   for (const plugin of parsed.plugins ?? []) {
     const factory = factories.get(plugin.entryKey);
     const manifestKind = (plugin.manifest as Record<string, unknown>).kind;
@@ -37,6 +37,7 @@ export function loadProductionBuiltinIndex(input: ProductionIndexInput): Builtin
       entryKey: plugin.entryKey,
       manifest: plugin.manifest,
       factory: factory as PluginFactory,
+      ...(BUILTIN_PLUGIN_CONTENTS.get(plugin.entryKey) ? { dataContents: BUILTIN_PLUGIN_CONTENTS.get(plugin.entryKey)! } : {}),
     });
   }
   return { byEntryKey };

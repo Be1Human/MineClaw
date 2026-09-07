@@ -724,7 +724,6 @@ export class BotRuntime {
       isEmbodied: () => this.embodied,
       ownerName,
       ownerAliases,
-      tickMs: 200,
       blockingExecute: false,
       llm: llmOk ? this.config.llm : undefined,
       dbPath,
@@ -774,7 +773,7 @@ export class BotRuntime {
     this.v2.start();
     this.log(
       'info',
-      `[v2] owner=${ownerName} · tick=200ms · mode=${llmOk ? 'LLM' : 'rule-only'} · body=${embodied ? 'game' : 'none'} · db=${dbPath}`,
+      `[v2] owner=${ownerName} · heartbeat=adaptive(50/100/250ms) · mode=${llmOk ? 'LLM' : 'rule-only'} · body=${embodied ? 'game' : 'none'} · db=${dbPath}`,
     );
 
     if (embodied) this.startV2WorldUiPush();
@@ -1043,7 +1042,6 @@ export class BotRuntime {
     if (!this.v2) return null;
     const insp = this.v2.supervisor.inspect();
     return {
-      suspendedByDanger: insp.suspendedByDanger,
       recentDiagnoses: insp.recentDiagnoses,
       narrationCooldowns: insp.narrationCooldowns,
     };
@@ -1058,10 +1056,8 @@ export class BotRuntime {
       strategies: [
         { id: 'survival_strategy', ...this.v2.survival.inspect() },
         { id: 'follow_strategy', ...this.v2.follow.inspect() },
-        { id: 'farm_strategy', ...this.v2.farm.inspect() },
         { id: 'gather_strategy', ...this.v2.gather.inspect() },
         { id: 'provision_strategy', ...this.v2.provision.inspect() },
-        { id: 'reflex_strategy', ...this.v2.reflex.inspect() },
       ],
       supervisor: this.v2.supervisor.inspect(),
       pendingDecision: null,

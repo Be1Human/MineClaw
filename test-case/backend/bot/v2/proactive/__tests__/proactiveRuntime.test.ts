@@ -235,7 +235,7 @@ test('MainBrain inbox is the only bridge that adds provenance and binds the requ
   assert.equal(stateStore.get('auto_follow')?.state, 'running');
 });
 
-test('player preemption cancels only the proactive request before clearing the lease', () => {
+test('player preemption keeps the lease releasing until the activity confirms StopAck', () => {
   const entry = capability('auto_follow', 20, () => ({ kind: 'idle', reason: 'unused' }));
   const stateStore = new ProactiveCapabilityStateStore();
   stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog([entry], { auto_follow: { enabled: true } }));
@@ -256,6 +256,9 @@ test('player preemption cancels only the proactive request before clearing the l
 
   assert.equal(inbox.preemptForPlayer(), true);
   assert.deepEqual(cancelled, ['request-proactive']);
+  assert.equal(leases.snapshot().active, null);
+  assert.equal(leases.snapshot().releasing?.requestId, 'request-proactive');
+  assert.equal(inbox.confirmRelease('request-proactive', 'task_cancelled'), true);
   assert.deepEqual(leases.snapshot(), { active: null, releasing: null });
-  assert.equal(stateStore.get('auto_follow')?.reason, 'player_preempted');
+  assert.equal(stateStore.get('auto_follow')?.reason, 'task_cancelled');
 });

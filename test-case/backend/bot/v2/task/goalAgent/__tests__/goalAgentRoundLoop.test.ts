@@ -3,16 +3,33 @@ import test from 'node:test';
 
 import type { LLMToolCallResult, LLMChatMessage } from '../../../../../../../apps/minecraft-companion/src/bot/v2/cognitive/llm/types.js';
 import type { GoalRequestV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
-import {
-  defaultGoalKnowledge,
-  InMemoryGoalKnowledgePort,
-} from '../../../../../../../apps/minecraft-companion/src/bot/v2/knowledge/goalTargetKnowledge.js';
+import { InMemoryGoalKnowledgePort } from '../../../../../../../apps/minecraft-companion/src/bot/v2/knowledge/goalTargetKnowledge.js';
 import type { WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 import { GoalAgentModelRuntime } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentModelRuntime.js';
 import { GoalAgentRoundLoop } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundLoop.js';
 import { GoalAgentRoundToolRuntime } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundTools.js';
 import { GoalAgentSessionStore } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionStore.js';
 import { createGoalAgentState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
+import { GoalCompiler } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalCompiler.js';
+import { TEST_SNAPSHOT, permissiveTestPlans, testGoalCompiler, testTarget, testContribution } from './goalTestFixtures.js';
+
+function progressPort(readCount: () => number) {
+  return {
+    read: () => ({
+      snapshot: TEST_SNAPSHOT,
+      contribution: testContribution('mineclaw.test.progress.inventory'),
+      observedAt: Date.now(),
+      semanticState: { cobblestone: readCount() },
+      evidenceRefs: [`inventory:cobblestone:${readCount()}`],
+      guidance: null,
+    }),
+  };
+}
+
+const defaultGoalKnowledge = new InMemoryGoalKnowledgePort([
+  testTarget({ kind: 'item', registryId: 'minecraft:cobblestone', aliases: ['石头', '圆石'], taskFamilies: ['gathering'], successCriteriaPolicy: 'fallback', successCriteria: [{ type: 'inventory', item: 'cobblestone', count: '$quantity' }] }),
+  testTarget({ kind: 'item', registryId: 'minecraft:crafting_table', aliases: ['工作台'], taskFamilies: ['crafting', 'building'], successCriteriaPolicy: 'fallback', successCriteria: [{ type: 'inventory', item: 'crafting_table', count: '$quantity' }] }),
+]);
 
 function request(): GoalRequestV2 {
   return {
@@ -37,9 +54,9 @@ function request(): GoalRequestV2 {
 function world(cobblestone: number): WorldStateView {
   return {
     tick: cobblestone ? 2 : 1,
-    timestamp: Date.parse(cobblestone ? '2026-08-23T00:00:02.000Z' : '2026-08-23T00:00:01.000Z'),
+    timestamp: Date.now(),
     self: { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0, health: 20, maxHealth: 20, food: 20, isOnGround: true },
-    owner: null,
+    owner: { entityId: 7, name: 'Owner', position: { x: 2, y: 64, z: 2 }, distance: 3, isVisible: true },
     environment: { dimension: 'overworld', timeOfDay: 1000, isDay: true, isRaining: false },
     entities: [],
     inventory: {
@@ -81,7 +98,7 @@ test('BUG-CROSS-77 · round slice yields and resumes the same non-terminal sessi
     publish: event => events.push(event.type),
     model: new GoalAgentModelRuntime({
       async callWithTools() { calls += 1; return { content: 'still working', toolCalls: [] }; },
-    }, { eventLog: store }),
+    }, { eventLog: store, allowLegacyTestClient: true }),
   });
   try {
     const initial = createGoalAgentState({
@@ -118,7 +135,7 @@ test('FEAT-CROSS-22 · replayed historical tool receipts are context only and ne
     maxRoundsPerRun: 1,
     model: new GoalAgentModelRuntime({
       async callWithTools() { return { content: 'continue without tools', toolCalls: [] }; },
-    }, { eventLog: store }),
+    }, { eventLog: store, allowLegacyTestClient: true }),
     tools: {
       perception: {
         async observe() {
@@ -161,6 +178,7 @@ test('continuous round loop keeps model, direct tools and receipts in one sessio
   let executions = 0;
   const responses: LLMToolCallResult[] = [
     { content: '', toolCalls: [{ id: 'search-1', name: 'goal_search_targets', arguments: { query: '石头', kind: 'item' } }] },
+    { content: '', toolCalls: [{ id: 'world-1', name: 'world_observe', arguments: {} }] },
     {
       content: '',
       toolCalls: [{
@@ -170,7 +188,6 @@ test('continuous round loop keeps model, direct tools and receipts in one sessio
         },
       }],
     },
-    { content: '', toolCalls: [{ id: 'world-1', name: 'world_observe', arguments: {} }] },
     {
       content: '',
       toolCalls: [{
@@ -193,14 +210,17 @@ test('continuous round loop keeps model, direct tools and receipts in one sessio
       if (!response) throw new Error('unexpected extra model round');
       return copyCandidateHandle(response, input.messages);
     },
-  }, { eventLog: store });
+  }, { eventLog: store, allowLegacyTestClient: true });
   const loop = new GoalAgentRoundLoop({
     store,
     model,
     profileId: 'round-test',
     tools: {
       knowledge: defaultGoalKnowledge,
+      goals: testGoalCompiler(),
+      plans: permissiveTestPlans,
       perception: { async observe() { return world(inventoryCount); } },
+      progress: progressPort(() => inventoryCount),
       execution: {
         listCandidates() {
           return [{
@@ -239,6 +259,7 @@ test('continuous round loop keeps model, direct tools and receipts in one sessio
       sessionId: 'goal-round-1',
       interactionSessionId: 'interaction-round-1',
       request: request(),
+      snapshotRef: TEST_SNAPSHOT,
     });
     loop.create(initial);
     const terminal = await loop.run(initial.sessionId, { maxRounds: 10 });
@@ -269,20 +290,23 @@ test('simple root goal executes directly without a mandatory planner Step', asyn
   let inventoryCount = 0;
   const responses: LLMToolCallResult[] = [
     { content: '', toolCalls: [{ id: 'search', name: 'goal_search_targets', arguments: { query: '石头', kind: 'item' } }] },
+    { content: '', toolCalls: [{ id: 'observe', name: 'world_observe', arguments: {} }] },
     { content: '', toolCalls: [{ id: 'goal', name: 'goal_create', arguments: {
       outcome: 'obtain', target: { kind: 'item', surface: '石头', registryId: 'minecraft:cobblestone', quantity: 1 },
     } }] },
-    { content: '', toolCalls: [{ id: 'observe', name: 'world_observe', arguments: {} }] },
     { content: '', toolCalls: [{ id: 'list', name: 'action_list', arguments: {} }] },
     { content: '', toolCalls: [{ id: 'execute', name: 'action_execute', arguments: { candidateId: 'direct:stone' } }] },
   ];
   const loop = new GoalAgentRoundLoop({
     store,
     profileId: 'direct-root-test',
-    model: new GoalAgentModelRuntime({ async callWithTools(input) { return copyCandidateHandle(responses.shift() ?? null, input.messages); } }, { eventLog: store }),
+    model: new GoalAgentModelRuntime({ async callWithTools(input) { return copyCandidateHandle(responses.shift() ?? null, input.messages); } }, { eventLog: store, allowLegacyTestClient: true }),
     tools: {
       knowledge: defaultGoalKnowledge,
+      goals: testGoalCompiler(),
+      plans: permissiveTestPlans,
       perception: { async observe() { return world(inventoryCount); } },
+      progress: progressPort(() => inventoryCount),
       execution: {
         listCandidates(input) {
           assert.equal(input.planNodeId, undefined);
@@ -315,7 +339,7 @@ test('simple root goal executes directly without a mandatory planner Step', asyn
   });
   try {
     const initial = createGoalAgentState({
-      sessionId: 'goal-direct-root', interactionSessionId: 'interaction-direct-root', request: request(),
+      sessionId: 'goal-direct-root', interactionSessionId: 'interaction-direct-root', request: request(), snapshotRef: TEST_SNAPSHOT,
     });
     loop.create(initial);
     const terminal = await loop.run(initial.sessionId, { maxRounds: 8 });
@@ -379,15 +403,17 @@ test('tool runtime propagates cancellation instead of converting it into a retry
 
 test('goal_create preserves an earlier world context and plan schema exposes exact criterion types', async () => {
   const shared = createGoalAgentState({
-    sessionId: 'goal-context-preserved', interactionSessionId: 'interaction-context-preserved', request: request(),
+    sessionId: 'goal-context-preserved', interactionSessionId: 'interaction-context-preserved', request: request(), snapshotRef: TEST_SNAPSHOT,
   });
   const runtime = new GoalAgentRoundToolRuntime({
     profileId: 'context-preserved-test',
     tools: {
       knowledge: defaultGoalKnowledge,
+      goals: testGoalCompiler(),
+      plans: permissiveTestPlans,
       perception: { async observe() { return world(0); } },
     },
-    now: () => '2026-08-23T00:00:03.000Z',
+    now: () => shared.createdAt,
   });
   const signal = new AbortController().signal;
   await runtime.execute({ id: 'search', name: 'goal_search_targets', arguments: { query: '石头', kind: 'item' } }, shared, signal);
@@ -414,7 +440,7 @@ test('goal_create preserves an earlier world context and plan schema exposes exa
   assert.ok(criterionType.enum.includes('block_placed'));
 
   const placement = createGoalAgentState({
-    sessionId: 'goal-placement-binding', interactionSessionId: 'interaction-placement-binding', request: request(),
+    sessionId: 'goal-placement-binding', interactionSessionId: 'interaction-placement-binding', request: request(), snapshotRef: TEST_SNAPSHOT,
   });
   await runtime.execute({ id: 'search-table', name: 'goal_search_targets', arguments: { query: '工作台', kind: 'item' } }, placement, signal);
   await runtime.execute({ id: 'observe-table', name: 'world_observe', arguments: {} }, placement, signal);
@@ -436,16 +462,21 @@ test('goal_create preserves an earlier world context and plan schema exposes exa
 
 test('FEAT-CROSS-19 · authoritative package target keeps its registered predicate instead of generic inventory semantics', async () => {
   const shared = createGoalAgentState({
-    sessionId: 'goal-agriculture-target', interactionSessionId: 'interaction-agriculture-target', request: request(),
+    sessionId: 'goal-agriculture-target', interactionSessionId: 'interaction-agriculture-target', request: request(), snapshotRef: TEST_SNAPSHOT,
   });
-  const knowledge = new InMemoryGoalKnowledgePort([{
+  shared.world.latest = world(0);
+  shared.world.latest.timestamp = Date.parse(shared.createdAt);
+  const predicateRef = testContribution('mineclaw.test.verification.harvest');
+  const knowledge = new InMemoryGoalKnowledgePort([testTarget({
     kind: 'item', registryId: 'mineclaw:mature_crops_to_chest', aliases: ['收田', '收割农田'],
     taskFamilies: ['agriculture'], successCriteriaPolicy: 'authoritative',
-    successCriteria: [{ type: 'predicate', predicate: 'agriculture.harvest_to_chest' }],
-  }]);
+    successCriteria: [{ type: 'predicate', predicate: 'agriculture.harvest_to_chest', predicateVersion: '1.0.0', args: {} }],
+  })]);
+  const compiler = new GoalCompiler({ predicates: () => [{ contribution: predicateRef, id: 'agriculture.harvest_to_chest', version: '1.0.0',
+    argumentSchema: { type: 'object', additionalProperties: false }, evaluate: () => ({ status: 'unknown', detail: 'pending' }) }], bindings: () => [] });
   const runtime = new GoalAgentRoundToolRuntime({
-    profileId: 'agriculture-target-test', tools: { knowledge },
-    now: () => '2026-08-23T12:00:00.000Z',
+    profileId: 'agriculture-target-test', tools: { knowledge, goals: compiler },
+    now: () => shared.createdAt,
   });
   const signal = new AbortController().signal;
   const searched = await runtime.execute({
@@ -459,18 +490,20 @@ test('FEAT-CROSS-19 · authoritative package target keeps its registered predica
   }, shared, signal);
   assert.equal(created.content.ok, true);
   assert.deepEqual(shared.rootGoal?.successCriteria, [{
-    type: 'predicate', predicate: 'agriculture.harvest_to_chest', since: Date.parse('2026-08-23T12:00:00.000Z'),
+    type: 'predicate', predicate: 'agriculture.harvest_to_chest', predicateVersion: '1.0.0', args: {}, since: Date.parse(shared.createdAt),
   }]);
 });
 
 test('plan guard rejects transient inventory and its consuming effect on the same task', async () => {
   const shared = createGoalAgentState({
-    sessionId: 'goal-transient-plan', interactionSessionId: 'interaction-transient-plan', request: request(),
+    sessionId: 'goal-transient-plan', interactionSessionId: 'interaction-transient-plan', request: request(), snapshotRef: TEST_SNAPSHOT,
   });
   const runtime = new GoalAgentRoundToolRuntime({
     profileId: 'transient-plan-test',
     tools: {
       knowledge: defaultGoalKnowledge,
+      goals: testGoalCompiler(),
+      plans: permissiveTestPlans,
       perception: { async observe() { return world(0); } },
     },
   });
@@ -517,19 +550,22 @@ test('failed physical actions consume recovery budget and fail closed', async ()
   const store = new GoalAgentSessionStore(':memory:');
   const responses: LLMToolCallResult[] = [
     { content: '', toolCalls: [{ id: 'search', name: 'goal_search_targets', arguments: { query: '石头', kind: 'item' } }] },
+    { content: '', toolCalls: [{ id: 'observe', name: 'world_observe', arguments: {} }] },
     { content: '', toolCalls: [{ id: 'goal', name: 'goal_create', arguments: {
       outcome: 'obtain', target: { kind: 'item', surface: '石头', registryId: 'minecraft:cobblestone', quantity: 1 },
     } }] },
-    { content: '', toolCalls: [{ id: 'observe', name: 'world_observe', arguments: {} }] },
     { content: '', toolCalls: [{ id: 'list', name: 'action_list', arguments: {} }] },
     { content: '', toolCalls: [{ id: 'execute', name: 'action_execute', arguments: { candidateId: 'direct:fail' } }] },
   ];
   const loop = new GoalAgentRoundLoop({
     store, profileId: 'recovery-budget-test',
-    model: new GoalAgentModelRuntime({ async callWithTools(input) { return copyCandidateHandle(responses.shift() ?? null, input.messages); } }, { eventLog: store }),
+    model: new GoalAgentModelRuntime({ async callWithTools(input) { return copyCandidateHandle(responses.shift() ?? null, input.messages); } }, { eventLog: store, allowLegacyTestClient: true }),
     tools: {
       knowledge: defaultGoalKnowledge,
+      goals: testGoalCompiler(),
+      plans: permissiveTestPlans,
       perception: { async observe() { return world(0); } },
+      progress: progressPort(() => 0),
       execution: {
         listCandidates() { return [{
           id: 'direct:fail', kind: 'atomic', source: 'slow_llm', action: 'test_fail',
@@ -554,6 +590,7 @@ test('failed physical actions consume recovery budget and fail closed', async ()
   try {
     const initial = createGoalAgentState({
       sessionId: 'goal-recovery-budget', interactionSessionId: 'interaction-recovery-budget', request: request(),
+      snapshotRef: TEST_SNAPSHOT,
       budget: { maxRecoveries: 1 },
     });
     loop.create(initial);

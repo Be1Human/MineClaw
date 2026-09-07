@@ -4,11 +4,10 @@ import type { GameActions } from '../../../../../../apps/minecraft-companion/src
 import type { NavigationActions } from '../../../../../../apps/minecraft-companion/src/bot/adapter/NavigationExecution.js';
 import type { EventBusV2 } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/eventBus.js';
 import type { ActionRequest, WorldStateView } from '../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
-import type { IBehaviorRegistry } from '../../../../../../apps/minecraft-companion/src/bot/v2/behavior/types.js';
-import { BehaviorRunner } from '../../../../../../apps/minecraft-companion/src/bot/v2/behavior/behaviorRunner.js';
 import { executeAtomic } from '../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
 import { BodyExecutionRuntime } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/bodyExecutionRuntime.js';
 import { ExecutionAuthority } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/executionAuthority.js';
+import { OperationLedger } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/operationLedger.js';
 import { failureFromLegacy, failureDetail } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/failureEnvelope.js';
 import type { OperationIntent } from '../../../../../../apps/minecraft-companion/src/bot/v2/task/contracts/bodyOperation.js';
 
@@ -18,13 +17,12 @@ export interface AtomicFixture {
   nav: NavigationActions;
   bus: EventBusV2;
   worldState?: WorldStateView;
-  behaviorRegistry?: IBehaviorRegistry;
 }
 
 export async function runControlledAtomic(request: ActionRequest, fixture: AtomicFixture) {
   const authority = new ExecutionAuthority();
   const start = Date.now();
-  const runtime = new BodyExecutionRuntime({authority,driver:{
+  const runtime = new BodyExecutionRuntime({authority,ledger:new OperationLedger(':memory:'),driver:{
     resources:()=>['test-body'],
     bind:(_identity,command)=>({
       run:async context=>{
@@ -32,15 +30,7 @@ export async function runControlledAtomic(request: ActionRequest, fixture: Atomi
           ...request,type:command.ref.id.slice(7) as ActionRequest['type'],
           target:command.args.target as ActionRequest['target'],source:String(command.args.source),
         };
-        if (req.type==='invoke_behavior') {
-          const behavior=fixture.behaviorRegistry?.get(String(req.target?.behavior));
-          if (!behavior) return {ok:false,failure:failureFromLegacy('behavior_not_found')};
-          return new BehaviorRunner({bus:fixture.bus,getWorld:()=>fixture.worldState!,atomicResolver:{
-            resolve:(_snapshot, atomicId)=>({status:'resolved' as const,value:{executor:{id:`a.${atomicId}`,version:'1.0.0',execute:async()=>({ok:true})},contract:null,contribution:{pluginId:'mineclaw.minecraft-system',pluginVersion:'1.0.0',contributionId:'mineclaw.minecraft-system.execution.atomics',contributionVersion:'1.0.0'}}}),
-          }}).run(behavior,{
-            ...context,command:{ref:{id:`behavior:${behavior.id}`,contribution:contribution(`behavior:${behavior.id}`)},snapshot:context.command.snapshot,args:req.target?.behaviorParams ?? {}},
-          });
-        }
+        if (req.type==='invoke_behavior') return {ok:false,failure:failureFromLegacy('plugin_behavior_fixture_required')};
         // No fake no-op Context: each simulated write is effect-gated by OperationLifetime.
         const actions = new Proxy({} as GameActions,{get:(_target,key)=> (...args:unknown[])=>context.effect(()=>{
           const method=fixture.game[key as keyof GameActions] as (...a:unknown[])=>unknown;
@@ -56,7 +46,7 @@ export async function runControlledAtomic(request: ActionRequest, fixture: Atomi
   const contribution = (id: string) => ({ pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: id, contributionVersion: '1.0.0' });
   const snapshot = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
   const intent: OperationIntent={operationId:randomUUID(),owner:{kind:'task',taskId:'atomic-unit',ownerEpoch:1},
-    command:{ref:{id:'fixture:root',contribution:contribution('fixture:root')},snapshot,args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
+    command:{ref:{id:'fixture:root',contribution:contribution('fixture:root')},snapshot,args:{}},expectedEffects:[],scope:{dimension:'overworld',targetRefs:[],bindings:[]},
     deadlineAt:Date.now()+10000,budget:{maxActions:256},priority:1,preemption:'none'};
   const receipt=await runtime.submit({intent,grant:authority.issue(intent,{isCurrent:()=>true,allowsChild:()=>true})}).result;
   return {ok:receipt.status==='succeeded',request,durationMs:Date.now()-start,

@@ -8,7 +8,7 @@
 import type { PluginObservationProviderFactory, PluginObservationProvider, PluginObservationResult } from '../contracts/observation.js';
 import type { PluginPredicateEvaluator, PluginPredicateResult } from '../contracts/verification.js';
 import type { PluginBindingProvider, PluginCandidateProvider, PluginProgressProvider, PluginPlanningInput, PluginBindingResult, PluginCandidateResult, PluginProgressResult } from '../contracts/planning.js';
-import type { PluginBehaviorFactory, PluginBehaviorInstance, PluginBehaviorResult, PluginBehaviorContext } from '../contracts/execution.js';
+import type { PluginBehaviorFactory, PluginBehaviorContext } from '../contracts/execution.js';
 import type { PluginResultProjection, PluginResultProjectionResult, PluginResultProjectionInput } from '../contracts/result.js';
 import type { PluginSystemIntegration, PluginSystemIntegrationStatus } from '../contracts/integration.js';
 import type { ScopedHostContext } from '../contracts/scopedContext.js';
@@ -232,6 +232,7 @@ export async function behaviorFactoryContract(label: string, factory: PluginBeha
   const ctx = (): PluginBehaviorContext => ({
     goal: defaultLease(),
     signal: new AbortController().signal,
+    params: {},
     facts: [],
     submitBody: async () => Object.freeze({ ok: true, receipt: 'receipt-1' }),
     publish: (): void => undefined,
@@ -247,8 +248,13 @@ export async function behaviorFactoryContract(label: string, factory: PluginBeha
 
   await probe(label, failures, async () => {
     const instance = factory.create(defaultLease(), defaultScopedContext());
-    const out = await instance.run(ctx());
-    if (typeof out.ok !== 'boolean' || typeof out.cancelled !== 'boolean') throw new Error('behavior result must be a bounded ok/cancelled report');
+    if (instance.kind === 'sequence') {
+      const out = instance.compile({ goal: defaultLease(), params: {}, facts: [] });
+      if (typeof out.ok !== 'boolean' || (out.ok && !Array.isArray(out.steps))) throw new Error('sequence compilation must be a bounded plan');
+    } else {
+      const out = await instance.run(ctx());
+      if (typeof out.ok !== 'boolean' || typeof out.cancelled !== 'boolean') throw new Error('adaptive result must be a bounded ok/cancelled report');
+    }
     await instance.close();
     passed += 1;
   });
@@ -261,8 +267,13 @@ export async function behaviorFactoryContract(label: string, factory: PluginBeha
     const signal = new AbortController().signal;
     const spyCtx = { ...controlled, signal, submitBody: async () => { submits += 1; return Object.freeze({ ok: true }); } };
     await instance.halt();
-    const out = await instance.run(spyCtx);
-    if (out.ok && submits > 1) throw new Error('halted behavior started children after halt');
+    if (instance.kind === 'adaptive') {
+      const out = await instance.run(spyCtx);
+      if (out.ok && submits > 1) throw new Error('halted adaptive behavior started children after halt');
+    } else {
+      const out = instance.compile({ goal: defaultLease(), params: {}, facts: [] });
+      if (typeof out.ok !== 'boolean' || submits !== 0) throw new Error('sequence compile attempted a side effect');
+    }
     await instance.close();
     passed += 1;
   });

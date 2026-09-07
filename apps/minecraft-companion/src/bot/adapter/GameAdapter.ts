@@ -4,6 +4,16 @@ import type {
   RawPlayer, FindBlocksOptions, Unsubscribe, RecipeInfo, ItemSource,
 } from './types.js';
 
+/**
+ * A food selector is an observation-only policy.  It deliberately does not
+ * grant an item-use capability: the caller must still go through a bound
+ * GameActions.consume() operation.
+ */
+export interface FoodSelectionOptions {
+  /** Prefer food that Minecraft permits the player to consume even at full hunger. */
+  readonly emergency?: boolean;
+}
+
 /** Read-only game observations. A snapshot can never confer permission to move the body. */
 export interface GameView {
   readonly username: string;
@@ -36,7 +46,7 @@ export interface GameView {
   getEffects(): RawEffect[];
   getOxygen(): number;
   getBlockProperties(pos: Vec3): Record<string, string> | null;
-  findBestFood(): string | null;
+  findBestFood(options?: Readonly<FoodSelectionOptions>): string | null;
   findNearbyBed(maxDistance: number): Vec3 | null;
   getCraftRecipes(itemName: string, withTable: boolean): RecipeInfo[];
   getItemSource(itemName: string): ItemSource | null;

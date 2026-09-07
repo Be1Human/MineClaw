@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 
 /** skill 模式下永远暴露的元工具名（FEAT-L7-08） */
-const META_TOOL_NAMES = ['invoke_skill', 'say', 'ask_master', 'stay_silent', 'recall_memory'] as const;
+const META_TOOL_NAMES = ['say', 'ask_master', 'stay_silent', 'recall_memory'] as const;
 
 /**
  * FEAT-CROSS-08 v2 · 身体感知过滤配置。

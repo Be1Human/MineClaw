@@ -51,6 +51,7 @@ contributions:
       progressContributionId: mineclaw.follow.progress.follow
       resultContributionId: mineclaw.follow.result.follow
       cancellable: true
+      applicability: { outcomes: [reach], targetKinds: [location], taskFamilies: [movement, follow], criterionTypes: [reached, predicate] }
   - kind: planning
     id: mineclaw.follow.progress.follow
     version: 1.0.0

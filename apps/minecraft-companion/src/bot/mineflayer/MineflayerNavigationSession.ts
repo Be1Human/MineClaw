@@ -54,7 +54,7 @@ export class MineflayerNavigationSession implements BoundNavigation {
     this.physics = new Physics(bot);
     this.actions = {
       goto: (goal, options) => this.start(goal, options),
-      follow: (entityId, range) => this.start({ type: 'follow_entity', entityId, range }),
+      follow: (entityId, range, options) => this.start({ type: 'follow_entity', entityId, range }, options),
       guideThroughDoor: request => this.passDoor(request),
       replan: () => { this.check(); this.setPath([]); },
       stop: () => this.stopMovement(),
@@ -124,7 +124,12 @@ export class MineflayerNavigationSession implements BoundNavigation {
 
   private async navigate(run: MovementRun, options?: GotoOptions): Promise<NavResult> {
     const dynamic = run.goal.type === 'follow_entity';
-    const deadline = dynamic ? Infinity : Date.now() + (options?.totalTimeout ?? tuning().navigationExecution.gotoTimeoutMs);
+    // Dynamic targets are still finite body operations. An earlier version
+    // used Infinity here, which kept the body lease forever and made the
+    // primitive unusable by activities that must re-observe threats.
+    const deadline = Date.now() + (options?.totalTimeout ?? (dynamic
+      ? tuning().follow.followSliceMs
+      : tuning().navigationExecution.gotoTimeoutMs));
     let lastProgress = Date.now();
     try {
       let goal = this.goal(run.goal);
@@ -137,13 +142,12 @@ export class MineflayerNavigationSession implements BoundNavigation {
         if (!goal.isValid()) return { ok: false, reason: 'invalid_goal' };
         if (goal.hasChanged()) { this.setPath([]); goal = this.goal(run.goal)!; }
         if (this.atGoal(goal)) {
-          if (!dynamic) { this.emit('goal_reached'); return { ok: true }; }
           if (this.path.length) {
             await this.step(run, () => this.input.game.actions.clearControlStates());
             this.setPath([]);
           }
-          await this.step(run, () => this.input.scope.wait(tuning().navigationExecution.controlTickMs));
-          continue;
+          this.emit('goal_reached');
+          return { ok: true, ...(dynamic ? { reason: 'follow_in_range' } : {}) };
         }
         const movements = this.movements();
         if (!this.path.length) {
@@ -177,7 +181,10 @@ export class MineflayerNavigationSession implements BoundNavigation {
         await this.steer(run, movements);
         await this.step(run, () => this.input.scope.wait(tuning().navigationExecution.controlTickMs));
       }
-      return { ok: false, reason: 'nav_timeout' };
+      // A live target may have moved throughout the slice. Reaching the slice
+      // boundary is controlled progress, not a navigation failure; the caller
+      // re-observes before choosing whether to submit another slice.
+      return dynamic ? { ok: true, reason: 'follow_slice_complete' } : { ok: false, reason: 'nav_timeout' };
     } catch (error) {
       return { ok: false, reason: this.closed || run.cancelled || this.input.scope.signal.aborted ? 'cancelled' : String(error) };
     }
@@ -315,6 +322,7 @@ export class MineflayerNavigationSession implements BoundNavigation {
     if (options.canDig !== undefined) movements.canDig = options.canDig;
     if (options.allowParkour !== undefined) movements.allowParkour = options.allowParkour;
     if (options.allowSprinting !== undefined) movements.allowSprinting = options.allowSprinting;
+    if (options.allowFreeMotion !== undefined) movements.allowFreeMotion = options.allowFreeMotion;
     if (options.canPlace === false) movements.scafoldingBlocks = [];
     else if (options.scafoldingBlocks) movements.scafoldingBlocks = this.blockIds(options.scafoldingBlocks);
     for (const id of this.blockIds(options.blocksToAvoid ?? [])) movements.blocksToAvoid.add(id);

@@ -1,13 +1,13 @@
 import { parseWorldFactRequests } from '../goalAgentFactRequests.js';
 import { jsonSnapshot } from '../../../infra/jsonSnapshot.js';
-import type { CapabilityWorldFactProvider } from '../../../capabilities/types.js';
+import type { RuntimeWorldFactProvider } from '../../../plugin-kernel/runtimeProjection.js';
 import { assertSchemaSupported, validateClosedArguments } from '../../../infra/closedJsonSchema.js';
 import { tuning } from '../../../infra/tuning.js';
 import type { WorldStateView } from '../../../types.js';
 import type { WorldFact, WorldFactRequest } from '../../contracts/worldFact.js';
 
 export async function observeRequestedWorldFacts(
-  world: WorldStateView, requests: readonly WorldFactRequest[], providers: readonly CapabilityWorldFactProvider[], signal: AbortSignal,
+  world: WorldStateView, requests: readonly WorldFactRequest[], providers: readonly RuntimeWorldFactProvider[], signal: AbortSignal,
 ): Promise<readonly WorldFact[]> {
   const parsed = parseWorldFactRequests(requests);
   // Validate the entire batch before starting even a read-only scan.

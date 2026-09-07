@@ -9,7 +9,7 @@
 
 /** SKILL.md 头部的 frontmatter（YAML） */
 export interface AgentSkillFrontmatter {
-  /** 唯一名 · 中文短语 · LLM 调 invoke_skill 时用这个名字 */
+  /** 唯一名 · 中文短语 · 由固定 Generation 的 Skill 查询使用 */
   name: string;
   /** 一行说明 · 注入 system 段做"发现"阶段，LLM 据此判定何时激活 */
   description: string;

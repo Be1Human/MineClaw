@@ -39,7 +39,8 @@ test('P3-3 行为解析经固定 snapshot：agriculture 行为工厂同代解析
   const resolved = behaviorResolver.resolve(snapshot, ref);
   assert.equal(resolved.status, 'resolved');
   if (resolved.status === 'resolved') {
-    assert.equal(typeof resolved.value.create, 'function');
+    assert.equal(typeof resolved.value.factory.create, 'function');
+    assert.deepEqual(resolved.value.contribution, ref);
   }
   const missing = behaviorResolver.resolve(snapshot, { ...ref, contributionId: 'mineclaw.agriculture.execution.none' });
   assert.equal(missing.status, 'in_doubt');
@@ -62,16 +63,23 @@ test('P3-3 原子解析同代精确 SemVer；晚代查询 in_doubt', async () =>
 test('P3-3 受控上下文适配器：assertCurrent/wait/deadline 原样转发', async () => {
   let asserts = 0;
   let waited = 0;
+  let registered = 0;
   const adapter = atomicExecutionContextAdapter({
+    operationId: 'operation', operationEpoch: 2, leaseRef: 'lease', stepId: 'step',
     deadlineAt: 999,
+    signal: new AbortController().signal,
     assertCurrent: (reason: string) => { asserts += 1; void reason; },
+    effect: async <T>(run: () => T | PromiseLike<T>) => await run(),
     wait: async (ms: number) => { waited += ms; },
-  } as unknown as Parameters<typeof atomicExecutionContextAdapter>[0]);
+  } as unknown as Parameters<typeof atomicExecutionContextAdapter>[0], () => { registered += 1; });
   adapter.assertCurrent('x');
   await adapter.wait(50);
   assert.equal(asserts, 1);
   assert.equal(waited, 50);
   assert.equal(adapter.deadlineAt, 999);
+  adapter.registerCleanup(async () => undefined);
+  assert.equal(registered, 1);
+  assert.equal(adapter.operationId, 'operation');
 });
 
 test('P3-4 F12 contract 承载：entry 解析返回 executor+contract；contract 解析返回元数据；无 contract 原子 in_doubt', async () => {

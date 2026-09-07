@@ -12,6 +12,7 @@ import type { WorldStateView } from '../../../../../../../apps/minecraft-compani
 const now = Date.now();
 const region = { min: { x: 0, y: 64, z: 0 }, max: { x: 3, y: 64, z: 3 } };
 const requirement: WorldFactRequirement = { providerId: 'test.field', version: '1', dimension: 'overworld', region };
+const contribution = { pluginId: 'mineclaw.test', pluginVersion: '1.0.0', contributionId: 'mineclaw.test.verification.field', contributionVersion: '1.0.0' } as const;
 function world(): WorldStateView {
   return { tick: 1, timestamp: now, self: { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0, health: 20, maxHealth: 20, food: 20, isOnGround: true },
     owner: null, environment: { dimension: 'overworld', timeOfDay: 1000, isDay: true, isRaining: false },
@@ -22,7 +23,7 @@ function fact(): WorldFact {
     bounds: { dimension: 'overworld', region }, value: { present: true }, evidenceRefs: ['fact:test.field@1:bounded'] };
 }
 function predicate(): GoalPredicateEvaluator {
-  return { id: 'test.crop_present', version: '1',
+  return { contribution, id: 'test.crop_present', version: '1',
     argumentSchema: { type: 'object', additionalProperties: false, required: ['count'], properties: { count: { type: 'integer', minimum: 1 } } },
     factRequirements: () => [requirement],
     evaluate: ({ facts }) => ({ status: (facts?.[0]?.value as { present: boolean })?.present ? 'satisfied' : 'unsatisfied', detail: 'crop state checked' }),
@@ -87,7 +88,7 @@ test('U07: allOf implements three-state logic independent of condition ordering'
   for (const first of statuses) for (const second of statuses) {
     const criteria = ['a', 'b'].map(id => ({ type: 'predicate' as const, predicate: id, predicateVersion: '1', args: {} }));
     const evaluators: GoalPredicateEvaluator[] = [first, second].map((status, index) => ({
-      id: index ? 'b' : 'a', version: '1', argumentSchema: { type: 'object', properties: {}, additionalProperties: false },
+      contribution, id: index ? 'b' : 'a', version: '1', argumentSchema: { type: 'object', properties: {}, additionalProperties: false },
       evaluate: () => ({ status, detail: status }),
     }));
     const expected = [first, second].includes('unsatisfied') ? 'unsatisfied' : [first, second].includes('unknown') ? 'unknown' : 'satisfied';
@@ -105,13 +106,13 @@ test('U07: versioned evaluators cannot use bool-only success, exceptions or dupl
   assert.equal(evaluateGoalCriteriaState({ goalText: 'empty', successCriteria: [] }, world(), evidence()).status, 'unknown');
 });
 
-test('I02: production verification exposes unknown and cannot complete from missing facts or no-op receipts', () => {
+test('I02: production verification exposes unknown and cannot complete from missing facts or no-op receipts', async () => {
   const verifier = new GoalAgentProductionVerificationPort(() => [], () => [], () => [], () => [predicate()]);
   const state = { rootGoal: { schema: 'mineclaw.goal/v1', goalId: 'g', profileId: 'p', createdAt: new Date(now).toISOString(),
     goalText: goal().goalText, successCriteria: goal().successCriteria }, world: { latest: world() } } as never;
-  const result = verifier.verifyRoot({ state });
+  const result = await verifier.verifyRoot({ state });
   assert.equal(result.status, 'unknown'); assert.equal(result.ok, false);
   assert.equal(evaluateGoalCriteria({ goalText: 'legacy', successCriteria: [{ type: 'predicate', predicate: 'legacy' }] }, world(), {
-    predicateEvaluators: [{ id: 'legacy', evaluate: () => ({ ok: true, detail: 'legacy preserved' }) }],
+    predicateEvaluators: [{ contribution, id: 'legacy', evaluate: () => ({ ok: true, detail: 'legacy preserved' }) }],
   }).ok, true);
 });

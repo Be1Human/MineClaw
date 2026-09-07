@@ -50,6 +50,7 @@ contributions:
       progressContributionId: mineclaw.combat.progress.combat
       resultContributionId: mineclaw.combat.result.combat
       cancellable: true
+      applicability: { outcomes: [defeat], targetKinds: [entity], taskFamilies: [combat], criterionTypes: [entity_dead, predicate] }
   - kind: planning
     id: mineclaw.combat.progress.combat
     version: 1.0.0

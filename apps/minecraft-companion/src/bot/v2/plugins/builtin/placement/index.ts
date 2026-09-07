@@ -12,7 +12,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.placement';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.placement.goal.place-relative';
 const CANDIDATE = 'mineclaw.placement.planning.place-candidates';
 const PREDICATE = 'mineclaw.placement.verification.placed';
@@ -29,8 +28,6 @@ export function createMineclawPlacementPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -46,7 +43,7 @@ export function createMineclawPlacementPlugin(): PluginFactory {
         list: async (input) => {
           const position = input.params?.position;
           if (!position) return { status: 'unavailable', candidates: [], reason: 'position_required' };
-          return { status: 'complete', candidates: [{ candidateId: 'place:block', operationContribution: ref(OPERATION), params: { position }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
+          return { status: 'complete', candidates: [{ candidateId: 'place:block', operationContribution: ref(EXECUTOR), params: { position }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
         },
       };
 
@@ -58,7 +55,7 @@ export function createMineclawPlacementPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const confirmed = (input.evidence?.blocked as boolean | undefined) === true;
           return { verdict: confirmed ? 'satisfied' : 'unknown', evidenceRefs: [], reason: confirmed ? undefined : 'world_not_verified', contribution: ref(PREDICATE) };
         },
@@ -70,15 +67,12 @@ export function createMineclawPlacementPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `place-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const position = (ctx.facts[0]?.payload as { position?: Record<string, unknown> } | undefined)?.position;
-            if (!position) return { ok: false, cancelled: false, error: 'position_required' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const receipt = await bodySubmit({ action: 'minecraft-system:place-block', position });
-            return (receipt as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'place_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const position = ctx.params.position as Record<string, unknown> | undefined;
+            return position
+              ? { ok: true, steps: [{ atomicId: 'place_block', args: { position } }] }
+              : { ok: false, error: 'position_required' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -126,6 +120,7 @@ export function createMineclawPlacementPlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['place', 'build'], targetKinds: ['item', 'structure'], taskFamilies: ['building', 'placement'], criterionTypes: ['block_placed', 'predicate'] },
           },
           behaviorFactory,
         },

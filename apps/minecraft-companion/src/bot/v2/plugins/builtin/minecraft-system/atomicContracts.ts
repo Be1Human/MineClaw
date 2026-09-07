@@ -19,7 +19,8 @@ const CONTRACT_SCHEMA = { type: 'object', additionalProperties: false } as const
 const TARGET_FIELDS = [
   'entityId', 'position', 'text', 'itemName', 'behavior', 'behaviorParams', 'faceVector',
   'referencePosition', 'count', 'inventoryTargetCount', 'needTable', 'tablePos', 'fuelName',
-  'durationMs', 'backDurationMs', 'drawMs', 'forceRepath', 'range',
+  'durationMs', 'backDurationMs', 'drawMs', 'range', 'emergency',
+  'navigationGoal', 'navigationProfile',
 ] as const;
 
 type TargetField = typeof TARGET_FIELDS[number];
@@ -34,7 +35,7 @@ interface ContractSpec {
 const SPECS: Partial<Record<string, ContractSpec>> = {
   move_to: { anyOf: [['position'], ['entityId']] },
   goto_position: { anyOf: [['position'], ['entityId']] },
-  follow_entity: { required: ['entityId'] },
+  follow_entity: { required: ['entityId'], positive: ['durationMs'] },
   attack: { required: ['entityId'] },
   say: { required: ['text'] },
   equip: { required: ['itemName'] },
@@ -55,7 +56,7 @@ const SPECS: Partial<Record<string, ContractSpec>> = {
   place_scaffold: { required: ['itemName'] },
   mount: { required: ['entityId'] },
   vehicle_goto: { anyOf: [['position'], ['entityId']] },
-  kite: { required: ['entityId'] },
+  combat_round: { required: ['entityId'] },
   block_with_shield: { required: ['entityId'] },
   bow_shoot: { required: ['entityId'] },
   crit_jump_attack: { required: ['entityId'] },
@@ -67,8 +68,15 @@ function buildContract(atomicId: string, spec: ContractSpec): PluginAtomicContra
     version: '1.0.0',
     schema: schemaFor(spec),
     prepare: request => {
-      const normalized = normalizeTarget(request);
+      const normalized = normalizeTarget(atomicId, request);
       if ('failure' in normalized) return { invalid: normalized.failure };
+      if (normalized.target.range != null && (
+        typeof normalized.target.range !== 'number'
+        || !Number.isFinite(normalized.target.range)
+        || normalized.target.range < 0
+      )) {
+        return { invalid: { code: 'contract.invalid_parameter', message: `${atomicId}.range must be a finite non-negative number` } };
+      }
       for (const field of spec.required ?? []) {
         if (!hasValue(normalized.target[field])) {
           return { invalid: { code: 'contract.missing_parameter', message: `${atomicId} requires ${field}` } };
@@ -81,6 +89,10 @@ function buildContract(atomicId: string, spec: ContractSpec): PluginAtomicContra
         if (normalized.target[field] != null && (!(typeof normalized.target[field] === 'number') || Number(normalized.target[field]) <= 0)) {
           return { invalid: { code: 'contract.invalid_parameter', message: `${atomicId}.${field} must be a positive number` } };
         }
+      }
+      if (atomicId === 'climb_up') {
+        const position = normalized.target.position as { y?: unknown };
+        if (typeof position.y !== 'number') return { invalid: { code: 'contract.missing_parameter', message: `${atomicId} requires position.y` } };
       }
       return { prepared: normalized.target, ...(normalized.derivedFields.length ? { derivedFields: normalized.derivedFields } : {}) };
     },
@@ -105,12 +117,14 @@ function propertySchema(field: TargetField): Record<string, unknown> {
   if (['entityId', 'count', 'inventoryTargetCount', 'durationMs', 'backDurationMs', 'drawMs'].includes(field)) {
     return { type: 'number' };
   }
-  if (['needTable', 'forceRepath'].includes(field)) return { type: 'boolean' };
+  if (['needTable', 'emergency'].includes(field)) return { type: 'boolean' };
+  if (field === 'navigationGoal') return { enum: ['precise', 'xz'] };
+  if (field === 'navigationProfile') return { enum: ['standard', 'recovery'] };
   if (field === 'behaviorParams') return { type: 'object' };
   return { type: 'string' };
 }
 
-function normalizeTarget(args: Readonly<Record<string, unknown>>):
+function normalizeTarget(atomicId: string, args: Readonly<Record<string, unknown>>):
   | { target: Record<string, unknown>; derivedFields: string[] }
   | { failure: { code: string; message: string } } {
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
@@ -138,8 +152,22 @@ function normalizeTarget(args: Readonly<Record<string, unknown>>):
     derivedFields.push('entityId');
   }
 
+  // Template placeholders are a distinct planning-contract failure. Detect
+  // them before structural vector validation so callers receive the actionable
+  // cause instead of a misleading generic type error.
+  const unresolved = findUnresolvedPlaceholder(target);
+  if (unresolved) {
+    return {
+      failure: {
+        code: 'contract.unresolved_placeholder',
+        message: `${(target as { $action?: string }).$action ?? 'args'}.${unresolved.path} contains unresolved placeholder ${unresolved.value}`,
+      },
+    };
+  }
+
   for (const field of ['position', 'faceVector', 'referencePosition', 'tablePos'] as const) {
-    if (target[field] !== undefined && !isPosition(target[field], true)) {
+    const requireAll = field !== 'position' || atomicId !== 'climb_up';
+    if (target[field] !== undefined && !isPosition(target[field], requireAll)) {
       return { failure: { code: 'contract.invalid_parameter', message: `${field} must contain finite x/y/z numbers` } };
     }
   }
@@ -154,16 +182,15 @@ function normalizeTarget(args: Readonly<Record<string, unknown>>):
   if (target.behaviorParams !== undefined && !isRecord(target.behaviorParams)) {
     return { failure: { code: 'contract.invalid_parameter', message: 'behaviorParams must be an object' } };
   }
-  const unresolved = findUnresolvedPlaceholder(target);
-  if (unresolved) {
-    return {
-      failure: {
-        code: 'contract.unresolved_placeholder',
-        message: `${(target as { $action?: string }).$action ?? 'args'}.${unresolved.path} contains unresolved placeholder ${unresolved.value}`,
-      },
-    };
+  if (target.emergency !== undefined && typeof target.emergency !== 'boolean') {
+    return { failure: { code: 'contract.invalid_parameter', message: 'emergency must be a boolean' } };
   }
-
+  if (target.navigationGoal !== undefined && target.navigationGoal !== 'precise' && target.navigationGoal !== 'xz') {
+    return { failure: { code: 'contract.invalid_parameter', message: 'navigationGoal must be precise or xz' } };
+  }
+  if (target.navigationProfile !== undefined && target.navigationProfile !== 'standard' && target.navigationProfile !== 'recovery') {
+    return { failure: { code: 'contract.invalid_parameter', message: 'navigationProfile must be standard or recovery' } };
+  }
   return { target, derivedFields };
 }
 

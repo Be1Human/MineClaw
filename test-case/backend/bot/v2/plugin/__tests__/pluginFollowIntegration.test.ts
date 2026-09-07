@@ -83,7 +83,7 @@ test('P2-6 follow 闭环注册：goal/candidate/predicate/execution/progress/res
   }
 });
 
-test('P2-6 无主人位置时候选/绑定 unavailable；无 body 服务执行器显式失败', async () => {
+test('P2-6 无主人位置时候选/绑定 unavailable；Host body 失败收据显式失败', async () => {
   const contributions = createMineclawFollowPlugin().create({
     host: { version: '2.0.0', buildId: 'b' },
     plugin: { pluginId: 'mineclaw.follow', pluginVersion: '1.0.0' },
@@ -93,8 +93,9 @@ test('P2-6 无主人位置时候选/绑定 unavailable；无 body 服务执行�
   assert.equal(empty.status, 'unavailable');
   assert.match(empty.reason ?? '', /owner_location_unavailable/);
 
-  const execution = contributions.find(c => c.kind === 'execution') as { behaviorFactory: { create: (lease: Record<string, unknown>) => { run: (ctx: { signal: AbortSignal; facts: Record<string, unknown>[] }) => Promise<{ ok: boolean; cancelled: boolean; error?: string }>; halt: () => Promise<void>; close: () => Promise<void>; settled: boolean } } };
-  const outcome = await execution.behaviorFactory.create({ goalId: 'g1' } as never).run({ signal: new AbortController().signal, facts: [] } as never);
-  assert.equal(outcome.ok, false);
-  assert.match(outcome.error ?? '', /body_submit_service_missing/);
+  const execution = contributions.find(c => c.kind === 'execution') as any;
+  const instance = execution.behaviorFactory.create({ goalId: 'g1' } as never);
+  const compiled = instance.compile({ goal: { goalId: 'g1' }, facts: [], params: { target: { x: 1, y: 2, z: 3 } } });
+  assert.equal(instance.kind, 'sequence');
+  assert.deepEqual(compiled.steps, [{ atomicId: 'move_to', args: { position: { x: 1, y: 2, z: 3 } } }]);
 });

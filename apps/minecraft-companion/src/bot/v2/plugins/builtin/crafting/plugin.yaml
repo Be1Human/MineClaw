@@ -52,6 +52,7 @@ contributions:
       progressContributionId: mineclaw.crafting.progress.craft
       resultContributionId: mineclaw.crafting.result.craft
       cancellable: true
+      applicability: { outcomes: [obtain], targetKinds: [item], taskFamilies: [crafting], criterionTypes: [inventory, predicate] }
   - kind: planning
     id: mineclaw.crafting.progress.craft
     version: 1.0.0

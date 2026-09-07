@@ -9,6 +9,39 @@
 import { readFileSync, existsSync } from 'node:fs';
 
 export interface TuningConfig {
+  /** FEAT-CROSS-29 · Agent 上下文软预算；模型物理容量不允许出现在这里。 */
+  agentContext: {
+    revision: string;
+    purposes: {
+      goalAgent: {
+        softInputLimitTokens: number;
+        minimumSafetyReserveTokens: number;
+        safetyReserveRatio: number;
+        compactionTriggerRatio: number;
+        compactionTargetRatio: number;
+        minimumRecentHistoryTokens: number;
+        maxSummaryTokens: number;
+      };
+      mainBrain: {
+        softInputLimitTokens: number;
+        minimumSafetyReserveTokens: number;
+        safetyReserveRatio: number;
+        compactionTriggerRatio: number;
+        compactionTargetRatio: number;
+        minimumRecentHistoryTokens: number;
+        maxSummaryTokens: number;
+      };
+      background: {
+        softInputLimitTokens: number;
+        minimumSafetyReserveTokens: number;
+        safetyReserveRatio: number;
+        compactionTriggerRatio: number;
+        compactionTargetRatio: number;
+        minimumRecentHistoryTokens: number;
+        maxSummaryTokens: number;
+      };
+    };
+  };
   navigationMaintenance: {
     doorCooldownMs: number;
     doorApproachRange: number;
@@ -53,6 +86,12 @@ export interface TuningConfig {
     maxSubActions: number;
     operationTimeoutMs: number;
     stopConfirmTimeoutMs: number;
+  };
+  heartbeat: {
+    idleIntervalMs: number;
+    ownerVisibleIntervalMs: number;
+    ownerThreatIntervalMs: number;
+    ownerThreatRadius: number;
   };
   goalProgress: {
     enabled: boolean;
@@ -150,6 +189,8 @@ export interface TuningConfig {
   follow: {
     /** GoalFollow 到达停止距离（格）· bot 进此范围自动停、owner 走远自动追 */
     followRange: number;
+    /** 单个动态跟随身体步骤的最长持续时间；结束后由上层重新观察再续发。 */
+    followSliceMs: number;
     /** 连续不可见 N tick 才判真失联（防一帧遮挡误触发 seeking） */
     invisibleStreakTicks: number;
     /** seeking 到达目标坐标的判定距离（格） */
@@ -162,12 +203,6 @@ export interface TuningConfig {
     seekExtrapolateTicks: number;
     /** 外推最大格数（防冲过头） */
     seekExtrapolateMax: number;
-    /** BUG-L5-02 · 主人移动触发强制重算总开关（true=跟手模式，false=纯 GoalFollow 懒重算） */
-    repathOnOwnerMove: boolean;
-    /** following 态主人位移超过此格数 → 强制重设 GoalFollow 打断懒重算 */
-    repathMoveThreshold: number;
-    /** 两次强制重算最小间隔 ms（防抖 pathfinder） */
-    repathMinIntervalMs: number;
     /** BUG-L5-02 诊断 · 打印 bot↔owner 实时距离日志（定位迟钝用，平时关） */
     diagLog: boolean;
   };
@@ -187,6 +222,59 @@ export interface TuningConfig {
     errorBackoffMs: number;
     /** 主动租约请求释放后的最大等待时间；超时由准入层强制收敛。 */
     releaseTimeoutMs: number;
+  };
+  pluginActivities: {
+    loopIntervalMs: number;
+    /** 与主人保持的最大距离；超出后护主活动主动靠近。 */
+    ownerProtectionFollowDistance: number;
+    /** 主人周围进入拦截范围的敌对实体半径。 */
+    ownerProtectionThreatRadius: number;
+    /** 接敌时保留的距离（格），避免路径直接撞到敌对实体脸上。 */
+    ownerProtectionEngagementRange: number;
+    /** 进入这个距离后才提交攻击，避免隔空挥击。 */
+    ownerProtectionAttackRange: number;
+    ownerProtectionMoveCooldownMs: number;
+    /** 护主接敌/跟随单次身体移动最长占用时间，超时后重新观察并选择目标。 */
+    ownerProtectionMovementSliceMs: number;
+    /** 护主的动态跟随步骤时长；必须小于身体操作预算，保证威胁可抢占。 */
+    ownerProtectionFollowSliceMs: number;
+    /** 护主活动在生命低于该阈值时先自救，避免无效送死。 */
+    ownerProtectionHealthThreshold: number;
+    /** 每次进食后的观察围栏，避免效果尚未同步时重复消耗食物。 */
+    ownerProtectionRecoveryCooldownMs: number;
+    ownerProtectionLoadoutPickupRadius: number;
+    ownerProtectionLoadoutRetryMs: number;
+  };
+  /** 受控近战回合；参数热加载，禁止在战术或原子中硬编码节奏。 */
+  combatRound: {
+    minSwings: number;
+    maxSwings: number;
+    retreatDurationMs: number;
+    weaponProfiles: Record<string, {
+      damage: number;
+      cooldownMs: number;
+    }>;
+  };
+  /** Generic fallback survival policy. It owns no task or body lease. */
+  survival: {
+    dangerRange: number;
+    criticalHealth: number;
+    eatHealth: number;
+    hungerEatFood: number;
+    safeEatDistance: number;
+    fightHealth: number;
+    fightRange: number;
+    fightCrowdRange: number;
+    corneredTicks: number;
+    corneredNoGain: number;
+    fleeDistance: number;
+    sayCooldownMs: number;
+    shelterBlockCount: number;
+    shelterHoldTicks: number;
+    fleeTimeoutMs: number;
+    attackTimeoutMs: number;
+    eatTimeoutMs: number;
+    shelterStepTimeoutMs: number;
   };
   proactiveCapabilities: {
     autoFollow: { startDistance: number; stopDistance: number };
@@ -304,6 +392,18 @@ export interface TuningConfig {
     verifyPollMs: number;
     /** 投递物品后等待拾取延迟结束再签发 success，防 Bot 回捡造成假交付。 */
     tossSettleMs: number;
+    /** 将实体/空中目标解析为可站立终点时，向上、下搜索的最大格数。 */
+    navigationTargetVerticalSearch: number;
+    /** 解析可站立终点时，围绕目标横向搜索的最大格数。 */
+    navigationTargetHorizontalSearch: number;
+    /** 位置移动成功时允许的额外水平误差，避免坐标小数造成假失败。 */
+    navigationArrivalHorizontalSlack: number;
+    /** 位置移动成功时允许的最大垂直误差。 */
+    navigationArrivalVerticalTolerance: number;
+    /** 无路径时允许调用垫高恢复的最大上升格数。 */
+    navigationVerticalRecoveryMaxHeight: number;
+    /** 垫高恢复仅在目标水平距离不超过此值时允许。 */
+    navigationVerticalRecoveryHorizontalRange: number;
     /** 每原子档位：off=不验 / observe=只告警不阻断 / enforce=判 fail 交 GoalAgent Recovery。未列入=off */
     verifyMode: Record<string, 'off' | 'observe' | 'enforce'>;
   };
@@ -414,6 +514,38 @@ export interface TuningConfig {
 }
 
 const DEFAULTS: TuningConfig = {
+  agentContext: {
+    revision: 'agent-context-policy/v1',
+    purposes: {
+      goalAgent: {
+        softInputLimitTokens: 131_072,
+        minimumSafetyReserveTokens: 4_096,
+        safetyReserveRatio: 0.05,
+        compactionTriggerRatio: 0.85,
+        compactionTargetRatio: 0.70,
+        minimumRecentHistoryTokens: 32_768,
+        maxSummaryTokens: 16_384,
+      },
+      mainBrain: {
+        softInputLimitTokens: 32_768,
+        minimumSafetyReserveTokens: 2_048,
+        safetyReserveRatio: 0.05,
+        compactionTriggerRatio: 0.85,
+        compactionTargetRatio: 0.70,
+        minimumRecentHistoryTokens: 8_192,
+        maxSummaryTokens: 4_096,
+      },
+      background: {
+        softInputLimitTokens: 16_384,
+        minimumSafetyReserveTokens: 2_048,
+        safetyReserveRatio: 0.05,
+        compactionTriggerRatio: 0.85,
+        compactionTargetRatio: 0.70,
+        minimumRecentHistoryTokens: 4_096,
+        maxSummaryTokens: 4_096,
+      },
+    },
+  },
   navigationMaintenance: {
     doorCooldownMs: 5000, doorApproachRange: 2.25, doorLookaheadNodes: 6,
     doorObserveWaitMs: 400, doorObserveRetryMs: 300,
@@ -430,6 +562,12 @@ const DEFAULTS: TuningConfig = {
   },
   deviceActions: { equipObserveTimeoutMs: 1500, equipObservePollMs: 100, smeltItemTimeoutMs: 11000, smeltOverheadMs: 6000, smeltPollMs: 1000 },
   controlledExecution: { maxSubActions: 256, operationTimeoutMs: 120_000, stopConfirmTimeoutMs: 2000 },
+  heartbeat: {
+    idleIntervalMs: 250,
+    ownerVisibleIntervalMs: 100,
+    ownerThreatIntervalMs: 50,
+    ownerThreatRadius: 12,
+  },
   goalProgress: { enabled: true, noProgressRounds: 12, recoveryRounds: 4, maxRecoveryAttempts: 2, maxFingerprints: 256, waitPollMs: 5000, maxWaitMs: 300_000, maxWaitChecks: 60, waitObservationTimeoutMs: 15_000 },
   capabilityCatalog: { searchLimit: 12 },
   goalEvidence: { maxWorldAgeMs: 5_000, maxFactAgeMs: 5_000, maxFutureSkewMs: 1_000, maxFactRequests: 8, maxFactPayloadBytes: 262_144 },
@@ -469,15 +607,13 @@ const DEFAULTS: TuningConfig = {
   },
   follow: {
     followRange: 2,
+    followSliceMs: 250,
     invisibleStreakTicks: 4,
     seekArriveDist: 5,
     seekArriveWaitTicks: 6,
     lostSayCooldownMs: 30_000,
     seekExtrapolateTicks: 10,
     seekExtrapolateMax: 8,
-    repathOnOwnerMove: true,
-    repathMoveThreshold: 2,
-    repathMinIntervalMs: 400,
     diagLog: false,
   },
   defense: {
@@ -490,6 +626,57 @@ const DEFAULTS: TuningConfig = {
     evaluationTimeoutMs: 1_000,
     errorBackoffMs: 30_000,
     releaseTimeoutMs: 2_000,
+  },
+  pluginActivities: {
+    loopIntervalMs: 200,
+    ownerProtectionFollowDistance: 4,
+    // Perception keeps hostiles bounded; use its complete visible window so a
+    // running owner does not turn protection into simple tail-following.
+    ownerProtectionThreatRadius: 64,
+    ownerProtectionEngagementRange: 2.5,
+    ownerProtectionAttackRange: 3,
+    ownerProtectionMoveCooldownMs: 1_000,
+    ownerProtectionMovementSliceMs: 350,
+    ownerProtectionFollowSliceMs: 250,
+    ownerProtectionHealthThreshold: 16,
+    ownerProtectionRecoveryCooldownMs: 5_000,
+    ownerProtectionLoadoutPickupRadius: 16,
+    ownerProtectionLoadoutRetryMs: 500,
+  },
+  combatRound: {
+    minSwings: 2,
+    maxSwings: 3,
+    retreatDurationMs: 160,
+    // Damage and full-charge cooldown are server-mechanics data, while their
+    // tuning remains live so a target server/version can be calibrated safely.
+    weaponProfiles: {
+      netherite_sword: { damage: 8, cooldownMs: 625 }, diamond_sword: { damage: 7, cooldownMs: 625 },
+      iron_sword: { damage: 6, cooldownMs: 625 }, stone_sword: { damage: 5, cooldownMs: 625 },
+      golden_sword: { damage: 4, cooldownMs: 625 }, wooden_sword: { damage: 4, cooldownMs: 625 },
+      netherite_axe: { damage: 10, cooldownMs: 1000 }, diamond_axe: { damage: 9, cooldownMs: 1000 },
+      iron_axe: { damage: 9, cooldownMs: 1000 }, stone_axe: { damage: 9, cooldownMs: 1000 },
+      golden_axe: { damage: 7, cooldownMs: 1000 }, wooden_axe: { damage: 7, cooldownMs: 1000 },
+    },
+  },
+  survival: {
+    dangerRange: 14,
+    criticalHealth: 8,
+    eatHealth: 16,
+    hungerEatFood: 17,
+    safeEatDistance: 6,
+    fightHealth: 12,
+    fightRange: 5,
+    fightCrowdRange: 12,
+    corneredTicks: 6,
+    corneredNoGain: 0.8,
+    fleeDistance: 22,
+    sayCooldownMs: 8_000,
+    shelterBlockCount: 4,
+    shelterHoldTicks: 200,
+    fleeTimeoutMs: 8_000,
+    attackTimeoutMs: 4_000,
+    eatTimeoutMs: 3_000,
+    shelterStepTimeoutMs: 2_000,
   },
   proactiveCapabilities: {
     autoFollow: { startDistance: 8, stopDistance: 4 },
@@ -554,6 +741,12 @@ const DEFAULTS: TuningConfig = {
     verifyTimeoutMs: 400,
     verifyPollMs: 80,
     tossSettleMs: 2_500,
+    navigationTargetVerticalSearch: 8,
+    navigationTargetHorizontalSearch: 2,
+    navigationArrivalHorizontalSlack: 0.75,
+    navigationArrivalVerticalTolerance: 1.5,
+    navigationVerticalRecoveryMaxHeight: 8,
+    navigationVerticalRecoveryHorizontalRange: 4,
     verifyMode: {
       // 高确信（物理事实清晰）→ enforce 判败
       place_block: 'enforce', place_scaffold: 'enforce', dig: 'enforce',

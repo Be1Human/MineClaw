@@ -4,6 +4,7 @@ import test from 'node:test';
 import { computeOwnerFeedback } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentOwnerFeedback.js';
 import { createGoalAgentState, type GoalAgentStateV1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
 import { __setTuningOverride } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
+import { formalizeState } from './goalTestFixtures.js';
 
 function baseState(): GoalAgentStateV1 {
   const state = createGoalAgentState({
@@ -27,14 +28,7 @@ function baseState(): GoalAgentStateV1 {
       constraints: [],
     },
   });
-  state.rootGoal = {
-    schema: 'mineclaw.goal/v1',
-    goalId: 'root-feedback',
-    profileId: 'profile-feedback',
-    goalText: '制作1个石斧',
-    successCriteria: [{ type: 'item_delivered', item: 'stone_axe', count: 1, since: 1 }],
-    createdAt: '2026-08-29T00:00:00.000Z',
-  };
+  formalizeState(state, [{ type: 'item_delivered', item: 'stone_axe', count: 1, since: 1 }]);
   state.budget = {
     llmCalls: 100,
     promptTokens: 0,

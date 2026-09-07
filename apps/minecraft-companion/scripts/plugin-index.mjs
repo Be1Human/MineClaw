@@ -13,7 +13,7 @@
  * diff (pluginPackaging.test.mjs).
  */
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
@@ -115,6 +115,7 @@ export class PluginIndexError extends Error {
  */
 export function buildPluginIndex({
   scanRoot = defaultPluginsRoot,
+  contentRoot = root,
   outManifest = defaultManifestOut,
   outIndex = defaultIndexOut,
   entryResolver = resolveEntry,
@@ -143,6 +144,23 @@ export function buildPluginIndex({
       if (!entryFile) { issues.push(`entry not found for ${manifest.id} (${manifest.entry})`); continue; }
     }
     const imports = entryFile ? importCollector(entryFile) : [];
+    const contents = [];
+    for (const contribution of manifest.contributions ?? []) {
+      const contentRef = contribution.kind === 'skill' ? contribution.entryRef
+        : contribution.kind === 'knowledge' ? contribution.contentRef : null;
+      if (!contentRef) continue;
+      const absolute = resolve(contentRoot, contentRef);
+      const rel = relative(contentRoot, absolute);
+      if (rel === '..' || rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)) {
+        issues.push(`${manifestPath}: contribution ${contribution.id} content escapes application root: ${contentRef}`);
+        continue;
+      }
+      if (!existsSync(absolute)) {
+        issues.push(`${manifestPath}: contribution ${contribution.id} content is missing: ${contentRef}`);
+        continue;
+      }
+      contents.push([contentRef, readFileSync(absolute, 'utf8')]);
+    }
     plugins.push({
       pluginId: manifest.id,
       kind: manifest.kind,
@@ -151,6 +169,7 @@ export function buildPluginIndex({
       manifest: rawManifest,
       manifestHash: createHash('sha256').update(rawManifest).digest('hex'),
       imports: Object.freeze(imports),
+      contents: Object.freeze(contents),
     });
   }
   if (issues.length > 0) {
@@ -183,6 +202,18 @@ export function buildPluginIndex({
   for (const plugin of plugins) {
     if (!plugin.entryFile) continue;
     lines.push(`  ['${plugin.entryKey}', ${exportName(plugin.pluginId)}()],`);
+  }
+  lines.push(']);');
+  lines.push('');
+  lines.push('/** Immutable package resources embedded into the release Generation. */');
+  lines.push('export const BUILTIN_PLUGIN_CONTENTS: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([');
+  for (const plugin of plugins) {
+    if (plugin.contents.length === 0) continue;
+    lines.push(`  [${JSON.stringify(plugin.entryKey)}, new Map([`);
+    for (const [ref, content] of plugin.contents) {
+      lines.push(`    [${JSON.stringify(ref)}, ${JSON.stringify(content)}],`);
+    }
+    lines.push('  ])],');
   }
   lines.push(']);');
   writeFileSync(outManifest, JSON.stringify(json, null, 2), 'utf8');

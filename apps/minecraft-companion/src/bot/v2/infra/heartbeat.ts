@@ -3,11 +3,11 @@
  *
  * 每 200ms 一个 tick · 10 步严格顺序：
  *   ① Perceive       · perception.perceive()
- *   ② DrainEvents    · bus.drain() + 喂给 Reflex
+ *   ② DrainEvents    · bus.drain()
  *   ③ Watchdog       · supervisor.watchdog(tick)
- *   ④ Reflex         · L5 ReflexStrategy.tick() → ActionRequest[]
+ *   ④ HazardRoute    · pure HazardDecisionService → managed / fallback / none
  *   ⑤ TaskSched      · L6 sched 推进 + 输出当前 active task
- *   ⑥ StrategyTick   · L5 任务驱动策略.tick() → ActionRequest[]
+ *   ⑥ StrategyTick   · L5 任务策略与允许的通用兜底策略.tick() → ActionRequest[]
  *   ⑦ Arbitrate ★    · ActionArbitrator.arbitrate(requests) → winner
  *   ⑧ Execute        · BodyActionService → BodyExecutionRuntime → Receipt
  *   ⑨ Critic / Emit  · 评测 + 广播 task.tick_done
@@ -22,18 +22,30 @@ import type { MemoryV2 } from './memory.js';
 import type { PerceptionPipeline } from '../perception/pipeline.js';
 import type { TaskRuntime } from '../task/taskRuntime.js';
 import type { RuntimeSupervisor } from '../decision/supervisor.js';
-import type { ReflexStrategy } from '../strategy/reflexStrategy.js';
+import {
+  HazardDecisionService,
+  type HazardHandlingQuery,
+} from '../decision/hazardDecisionService.js';
 import type { IStrategy, StrategyContext } from '../strategy/types.js';
 import type { ActionRequest, ArbitrationResult, WorldStateView } from '../types.js';
 import type { BodyActionService } from '../task/execution/bodyActionService.js';
 import type { AsyncTaskQueue } from './asyncTaskQueue.js';
 import { TickRate, type TickRegistry, type TickContext } from './tickRegistry.js';
 import type { ICriticRegistry } from '../task/critic/types.js';
+import type { HeartbeatCadencePolicy } from './heartbeatCadence.js';
 
 export interface HeartbeatConfig {
-  tickMs: number;
   /** 是否在 ⑧ Execute 时阻塞等 atomic 完（true）还是 fire-and-forget 多 tick 推进（false） */
   blockingExecute: boolean;
+  /** 下一轮心跳的纯节拍策略；必须返回有限正数。 */
+  cadence: HeartbeatCadencePolicy;
+  /** 测试时可注入时钟；生产使用全局 setTimeout。 */
+  clock?: HeartbeatClock;
+}
+
+export interface HeartbeatClock {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
 }
 
 export interface HeartbeatDeps {
@@ -42,12 +54,16 @@ export interface HeartbeatDeps {
   perception: PerceptionPipeline;
   tasks: TaskRuntime;
   supervisor: RuntimeSupervisor;
-  reflex: ReflexStrategy;
   /** 所有任务驱动策略 · Heartbeat 在 ⑥ StrategyTick 时按 isActive 过滤 + tick */
   taskStrategies: IStrategy[];
-  /** 自动防御策略（当前为 Survival）；与普通任务策略分开门控。 */
-  autoDefenseStrategies?: IStrategy[];
-  /** 生产调参热开关；未提供时保持兼容并视为开启。 */
+  /**
+   * 没有正在运行的 Activity 声明接管相应危险时才允许运行的通用兜底策略。
+   * 它们没有自己的任务或执行租约；Heartbeat 会像普通策略一样只给当前 running task 背书。
+   */
+  hazardFallbackStrategies?: IStrategy[];
+  /** 活动对危险类别的声明性接管查询；缺省时没有已接管的类别。 */
+  isHazardManaged?: HazardHandlingQuery;
+  /** 生产调参热开关；只门控通用兜底，不影响已注册 Activity 的自主安全闭环。 */
   isAutomaticDefenseEnabled?: () => boolean;
   body: BodyActionService;
   /** 可选 · AsyncTaskQueue · ② DrainEvents 时消费已完成结果 */
@@ -62,7 +78,11 @@ export interface HeartbeatDeps {
 
 export class Heartbeat {
   private tick = 0;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: unknown | null = null;
+  private running = false;
+  private generation = 0;
+  private lastWorld: WorldStateView | null = null;
+  private lastEmbodied = false;
   private arbitrator = new ActionArbitrator();
   /** FEAT-NARR-01 · 统一语言中枢 · 每 tick flushTick 一次（在 ⑦ Arbitrate 前）*/
   private narration: { flushTick(): void; narrate(intent: import('../narration/types.js').SpeechIntent): void } | null = null;
@@ -71,6 +91,7 @@ export class Heartbeat {
   /** ⑨ Critic 用：上一 SLOW tick 末的世界快照（作为下一次评测的 before）*/
   private criticSnapshot: WorldStateView | null = null;
   private automaticDefenseEnabled: boolean | null = null;
+  private readonly hazardDecisions = new HazardDecisionService();
 
   /** 外部模块（Supervisor / 其他）可调 · 提交一个 ActionRequest 进入下 tick 仲裁 */
   submitRequest(req: ActionRequest): void {
@@ -113,31 +134,64 @@ export class Heartbeat {
   }
 
   start(): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      void this.runTick();
-    }, this.cfg.tickMs);
+    if (this.timer !== null || this.running) return;
+    this.generation += 1;
+    this.schedule(0, this.generation);
   }
 
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
+    this.generation += 1;
+    if (this.timer !== null) {
+      this.clock().clearTimeout(this.timer);
       this.timer = null;
     }
+  }
+
+  private schedule(delayMs: number, generation: number): void {
+    this.timer = this.clock().setTimeout(() => {
+      this.timer = null;
+      void this.runScheduled(generation);
+    }, delayMs);
+  }
+
+  private async runScheduled(generation: number): Promise<void> {
+    if (generation !== this.generation || this.running) return;
+    this.running = true;
+    const startedAt = Date.now();
+    try {
+      await this.runTick();
+    } finally {
+      this.running = false;
+      if (generation === this.generation) {
+        const requestedIntervalMs = this.cfg.cadence.nextDelayMs({ embodied: this.lastEmbodied, world: this.lastWorld });
+        const targetIntervalMs = Number.isFinite(requestedIntervalMs) && requestedIntervalMs > 0
+          ? Math.max(1, Math.round(requestedIntervalMs))
+          : 250;
+        // Cadence is measured from the tick start. A slow tick never overlaps
+        // its successor, but it also does not add a second full delay afterward.
+        this.schedule(Math.max(0, targetIntervalMs - (Date.now() - startedAt)), generation);
+      }
+    }
+  }
+
+  private clock(): HeartbeatClock {
+    return this.cfg.clock ?? {
+      setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+      clearTimeout: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    };
   }
 
   // ─────────────── tick 主体 ───────────────
 
   private async runTick(): Promise<void> {
     this.tick += 1;
-    const { bus, memory, perception, tasks, supervisor, reflex, taskStrategies, autoDefenseStrategies, body } = this.deps;
+    const { bus, memory, perception, tasks, supervisor, taskStrategies, hazardFallbackStrategies, body } = this.deps;
     const automaticDefenseEnabled = this.deps.isAutomaticDefenseEnabled?.() ?? true;
     if (this.automaticDefenseEnabled !== automaticDefenseEnabled) {
       const wasEnabled = this.automaticDefenseEnabled;
       this.automaticDefenseEnabled = automaticDefenseEnabled;
       if (!automaticDefenseEnabled) {
-        reflex.suspend?.();
-        for (const strategy of autoDefenseStrategies ?? []) strategy.suspend?.();
+        for (const strategy of hazardFallbackStrategies ?? []) strategy.suspend?.();
         this.cancelBodyActions();
       }
       bus.publish('defense.mode_changed', 'info', {
@@ -147,6 +201,7 @@ export class Heartbeat {
       });
     }
     const embodied = this.deps.isEmbodied();
+    this.lastEmbodied = embodied;
 
     // BUG-CROSS-36 · 陪聊态不空跑游戏 10 步循环。仍以短 tick drain/commit，
     // 保证真实聊天事件及时落盘；只在 IDLE 节拍唤醒主动关怀判断。
@@ -157,18 +212,18 @@ export class Heartbeat {
 
     // BUG-L5-03 诊断 · 分阶段计时，定位同步阻塞事件循环 ~10s 的元凶
     const T0 = Date.now();
-    let tPerceive = 0, tReflex = 0, tRegistry = 0, tSched = 0, tStrat = 0, tExec = 0;
+    let tPerceive = 0, tHazard = 0, tRegistry = 0, tSched = 0, tStrat = 0, tExec = 0;
     const since = (m: number) => Date.now() - m;
 
     try {
       // ① Perceive
       let _m = Date.now();
       const world = perception.perceive();
+      this.lastWorld = world;
       tPerceive = since(_m);
 
       // ② DrainEvents
-      const events = bus.drain();
-      if (embodied && automaticDefenseEnabled) reflex.ingestCritical(events);
+      bus.drain();
       // 消费 AsyncTaskQueue 已完成的结果（LLM turn 等）· 结果已在 .then 里发布事件
       if (this.deps.asyncQueue) {
         const asyncResults = this.deps.asyncQueue.drainResults();
@@ -183,8 +238,27 @@ export class Heartbeat {
       // ③ Watchdog（Supervisor 收拢）
       if (embodied) supervisor.watchdog(this.tick);
 
-      // ⑤ 先推进 TaskSched 拿到 active task，再做 ④ Reflex tick 的 ctx（顺序无紧耦合）
-      // —— 但按规范严格 ④→⑤，先 reflex
+      // ④ HazardRoute：这里只产生纯路由判定，绝不暂停任务或提交身体动作。
+      _m = Date.now();
+      const hazardDecision = this.hazardDecisions.decide(
+        world,
+        this.deps.isHazardManaged ?? (() => false),
+      );
+      tHazard = since(_m);
+
+      // ④.5 TickRegistry · 按节拍等级分发注册模块（WorldMapCollector / WorldScan 等在此）
+      _m = Date.now();
+      if (this.deps.tickRegistry) {
+        this.dispatchTickRegistry(world);
+      }
+      tRegistry = since(_m);
+
+      // ⑤ TaskSched · 推进
+      _m = Date.now();
+      if (embodied) tasks.sched(this.tick, world);
+      tSched = since(_m);
+
+      // TaskSched 后读取 active task，保证兜底请求只可能由当前 running task 背书。
       const activeTask = tasks.active();
       const ctx: StrategyContext = {
         world,
@@ -199,39 +273,22 @@ export class Heartbeat {
         },
       };
 
-      // ④ Reflex
-      _m = Date.now();
-      const reflexRequests = embodied && automaticDefenseEnabled ? reflex.tick(ctx) : [];
-      tReflex = since(_m);
-
-      // ④.5 TickRegistry · 按节拍等级分发注册模块（WorldMapCollector / WorldScan 等在此）
-      _m = Date.now();
-      if (this.deps.tickRegistry) {
-        this.dispatchTickRegistry(world);
-      }
-      tRegistry = since(_m);
-
-      // ⑤ TaskSched · 推进
-      _m = Date.now();
-      if (embodied) tasks.sched(this.tick, world);
-      tSched = since(_m);
-
       // ⑥ StrategyTick · 任务驱动策略（按 active 过滤）
       _m = Date.now();
       const taskRequests: ActionRequest[] = [];
-      // BUG-CROSS-28：重动作执行期不为必然被 busy 拒绝的请求做昂贵规划。
-      // Reflex 已在上一步运行，紧急 hard 抢占不受影响；任务 Strategy 在动作结束后的下一 tick 恢复。
-      const safetyOrigins = new Map<ActionRequest,string>(reflexRequests.map(request=>[request,'reflex']));
       if (embodied) {
-        const strategies = automaticDefenseEnabled
-          ? [...(autoDefenseStrategies ?? []), ...taskStrategies]
-          : taskStrategies;
+        const fallbackStrategies = automaticDefenseEnabled && hazardDecision.kind !== 'managed'
+          ? (hazardFallbackStrategies ?? [])
+          : [];
+        const fallbackSet = new Set(fallbackStrategies);
+        const strategies = [...fallbackStrategies, ...taskStrategies];
         for (const s of strategies) {
-          if (!body.busy() && s.isActive(ctx) || (automaticDefenseEnabled && autoDefenseStrategies?.includes(s) && s.isActive(ctx))) {
+          // Normal task strategies avoid redundant work while a body operation is in flight.
+          // The explicit fallback lane can still propose a hard, current-task-backed recovery action.
+          if ((!body.busy() || fallbackSet.has(s)) && s.isActive(ctx)) {
             const rs = s.tick(ctx);
-            // FEAT-CROSS-05 · 任务驱动策略的请求自动用当前 active task 背书（reflex 类自带 taskId 不覆盖）
-            if (autoDefenseStrategies?.includes(s)) for (const r of rs) safetyOrigins.set(r,'automatic-defense');
-            else for (const r of rs) if (r.taskId == null && ctx.activeTaskId) r.taskId = ctx.activeTaskId;
+            // All producers—including generic fallback—run through the same active-task execution path.
+            for (const r of rs) if (r.taskId == null && ctx.activeTaskId) r.taskId = ctx.activeTaskId;
             taskRequests.push(...rs);
           }
         }
@@ -251,7 +308,7 @@ export class Heartbeat {
       // ⑦ Arbitrate ★
       const externalReq = this.externalRequests;
       this.externalRequests = [];
-      const allReq = [...reflexRequests, ...taskRequests, ...externalReq];
+      const allReq = [...taskRequests, ...externalReq];
 
       // FEAT-CROSS-05 / BUG-CROSS-04 · task 背书硬门：任务树是执行权唯一真相。
       // 只有当前 running task 才能占 movement；无 task、未知、paused、terminal 请求均在仲裁前剔除。
@@ -264,7 +321,7 @@ export class Heartbeat {
           });
           return false;
         }
-        if (safetyOrigins.has(r) || isLightAction(r.type)) return true;
+        if (isLightAction(r.type)) return true;
         if (r.taskId && tasks.isRunning(r.taskId)) return true;
         bus.publish('arbiter.orphan_request', 'recoverable', {
           source: r.source, type: r.type, taskId: r.taskId ?? null, tick: this.tick,
@@ -277,9 +334,8 @@ export class Heartbeat {
       this.publishArbitration(bus, arb);
 
       // The body runtime is the only busy/timeout/preemption authority.
-      // Dispatch producers carry their trusted origin separately from request.source.
       for (const request of arb.winners) {
-        const work = this.runExecute(request,safetyOrigins.get(request));
+        const work = this.runExecute(request);
         if (this.cfg.blockingExecute) await work;
         else void work;
       }
@@ -324,7 +380,7 @@ export class Heartbeat {
       if (total > 800) {
         console.log(
           `[TICK-SLOW ${new Date().toISOString().slice(11, 23)}] total=${total}ms ` +
-          `perceive=${tPerceive} reflex=${tReflex} registry=${tRegistry} sched=${tSched} strat=${tStrat} exec=${tExec}`,
+          `perceive=${tPerceive} hazard=${tHazard} registry=${tRegistry} sched=${tSched} strat=${tStrat} exec=${tExec}`,
         );
       }
     } catch (e) {
@@ -370,14 +426,9 @@ export class Heartbeat {
     if (committed > 0) bus.publish('memory.commit', 'info', { tick: this.tick, count: committed });
   }
 
-  private async runExecute(
-    req: ActionRequest,
-    safetyPolicy?: string,
-  ): Promise<void> {
+  private async runExecute(req: ActionRequest): Promise<void> {
     const start = Date.now();
-    const result = safetyPolicy
-      ? await this.deps.body.executeSafety(req,safetyPolicy)
-      : await this.deps.body.executeTask(req);
+    const result = await this.deps.body.executeTask(req);
     const elapsedMs = Date.now() - start;
     this.deps.bus.publish(result.ok ? 'exec.success' : 'exec.fail', 'info', {
       source: req.source,

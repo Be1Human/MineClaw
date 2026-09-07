@@ -43,9 +43,42 @@ test('P2-2 系统插件经 PluginHost 注册：atomic catalog 与 integration �
   assert.equal(execution!.contribution.kind, 'execution');
   const catalog = (execution!.contribution as { atomicCatalog?: unknown[] }).atomicCatalog;
   assert.ok(Array.isArray(catalog) && catalog!.length >= 10, `catalog size ${catalog?.length}`);
+  const behavior = (execution!.contribution as { behaviorFactory?: { id?: string } }).behaviorFactory;
+  assert.equal(behavior?.id, 'advanced_move_to');
   const integration = active.registry.byId.get('mineclaw.minecraft-system.integration.game');
   assert.ok(integration);
   assert.equal(integration!.contribution.kind, 'integration');
+});
+
+test('advanced_move_to retries noPath through recovery XZ before the exact destination', async () => {
+  const contributions = createMineclawMinecraftSystemPlugin().create({
+    host: { version: '2.0.0', buildId: 'test' },
+    plugin: { pluginId: 'mineclaw.minecraft-system', pluginVersion: '1.0.0' },
+  });
+  const execution = contributions.find(value => value.kind === 'execution' && value.id === 'mineclaw.minecraft-system.execution.atomics') as Extract<typeof contributions[number], { kind: 'execution' }>;
+  const behavior = execution.behaviorFactory!;
+  const instance = behavior.create({ goalId: 'move', operationEpoch: 1 } as never, {} as never);
+  assert.equal(instance.kind, 'adaptive');
+  const calls: Array<Record<string, unknown>> = [];
+  const result = await instance.run({
+    goal: {} as never,
+    signal: new AbortController().signal,
+    params: { position: { x: 10, y: 64, z: 12 }, range: 2.5 },
+    facts: [],
+    submitBody: async request => {
+      calls.push(request as Record<string, unknown>);
+      return calls.length <= 2 ? { ok: false, error: 'atomic.nopath: noPath' } : { ok: true };
+    },
+    publish: () => undefined,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    { atomicId: 'move_to', args: { position: { x: 10, y: 64, z: 12 }, range: 2.5 } },
+    { atomicId: 'move_to', args: { position: { x: 10, y: 64, z: 12 }, navigationGoal: 'xz', navigationProfile: 'recovery' } },
+    { atomicId: 'walk', args: { position: { x: 10, y: 64, z: 12 }, durationMs: 6000 } },
+    { atomicId: 'move_to', args: { position: { x: 10, y: 64, z: 12 }, navigationGoal: 'xz', navigationProfile: 'recovery' } },
+    { atomicId: 'move_to', args: { position: { x: 10, y: 64, z: 12 }, range: 2.5, navigationProfile: 'recovery' } },
+  ]);
 });
 
 test('P2-2 系统插件豁免静态依赖门（可引用 adapter 端口），域插件仍被拒', async () => {
@@ -80,8 +113,16 @@ test('P2-2 端口注入：executor 经注入的 game/nav 端口执行原语', as
       selectSlot: () => undefined,
       equip: () => undefined,
       chat: () => undefined,
+      bind(scope: { assertCurrent(stage?: string): void }) {
+        scope.assertCurrent('test-bind-game');
+        return { view: this, actions: this, stop: async () => undefined };
+      },
     },
-    nav: { goto: async (target: unknown) => { calls.push(`goto:${String((target as { position?: unknown }).position)}`); return { ok: true }; }, stop: async () => undefined },
+    nav: {
+      goto: async (target: unknown) => { calls.push(`goto:${String((target as { position?: unknown }).position)}`); return { ok: true }; },
+      stop: async () => undefined,
+      bind() { return { actions: this, stop: async () => undefined }; },
+    },
     bus: { publish: () => undefined },
     getWorld: () => ({ environment: { dimension: 'overworld' }, owner: null, blockAt: () => undefined }),
   };
@@ -98,7 +139,14 @@ test('P2-2 端口注入：executor 经注入的 game/nav 端口执行原语', as
   const executor = (execution.contribution as { atomicCatalog: Array<{ atomicId: string; executor: { execute: (cmd: { request: Record<string, unknown>; source: string }, ctx: { assertCurrent(r: string): void; wait(ms: number): Promise<void>; deadlineAt: number }) => Promise<Record<string, unknown>> } }> }).atomicCatalog.find(entry => entry.atomicId === 'move_to')!;
   const outcome = await executor.executor.execute(
     { request: { target: { position: { x: 1, y: 64, z: 1 } } }, source: 'test' },
-    { assertCurrent: () => undefined, wait: async () => undefined, deadlineAt: Date.now() + 5000 },
+    {
+      operationId: 'operation', operationEpoch: 1, leaseRef: 'lease', stepId: 'step',
+      assertCurrent: () => undefined, wait: async () => undefined,
+      effect: async <T>(run: () => T | PromiseLike<T>) => await run(),
+      signal: new AbortController().signal, deadlineAt: Date.now() + 5000,
+      registerCleanup: () => undefined,
+    },
+    new AbortController().signal,
   );
   assert.ok(calls.length >= 1, JSON.stringify(calls));
   assert.equal(outcome.ok, true);

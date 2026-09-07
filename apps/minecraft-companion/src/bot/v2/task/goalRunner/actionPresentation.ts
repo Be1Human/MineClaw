@@ -2,7 +2,7 @@
 const ATOM_ZH: Record<string, string> = {
   move_to: '移动到目标', goto_position: '走到坐标', walk: '行走', climb_up: '向上爬',
   pillar_up: '搭柱上升', dig_down: '向下挖', look_at: '转向',
-  attack: '攻击', crit_jump_attack: '跳劈', kite: '风筝走位', bow_shoot: '射箭', block_with_shield: '举盾格挡',
+  attack: '攻击', combat_round: '连续近战', crit_jump_attack: '跳劈', bow_shoot: '射箭', block_with_shield: '举盾格挡',
   dig: '挖方块', mine_to: '挖到目标', place_block: '放置方块', craft: '合成', smelt: '熔炼',
   use_tool: '使用工具', equip: '装备', equip_best_armor: '换上最好护甲',
   eat: '进食', sleep: '睡觉', wake: '起床', escape_pit: '脱困', fish: '钓鱼',

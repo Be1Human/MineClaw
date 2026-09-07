@@ -8,11 +8,9 @@ import type {
 } from '../../knowledge/goalTargetKnowledge.js';
 import type { GoalAgentDomainKnowledgePort } from '../../knowledge/domainKnowledge.js';
 import type { GoalAgentSkillKnowledgePort } from '../../skills/goalAgentSkillKnowledge.js';
-import { GOAL_CONTRACT_SCHEMA_V1, type GoalContractV1 } from '../contracts/goalContract.js';
 import type { GoalSuccessCriterion } from '../contracts/goalTypes.js';
 import { ContextEncoder } from '../planner/contextEncoder.js';
 import type { ColdStartPlannerPort } from '../planner/planGraphBuilder.js';
-import { GoalSignatureCompiler } from '../planner/goals/goalSignatureCompiler.js';
 import { PlanVerifier } from '../planner/planVerifier.js';
 import type {
   AgentGoalOutcome,
@@ -91,7 +89,6 @@ const SUPPORTED_CRITERION_TYPES = new Set([
 export class GoalAgentRoundToolRuntime {
   private readonly registry = new Map<string, RegisteredTool>();
   private readonly encoder = new ContextEncoder();
-  private readonly signatures = new GoalSignatureCompiler();
   private readonly verifier = new PlanVerifier();
   private readonly candidateAuthority = new GoalAgentCandidateAuthority();
   private readonly now: () => string;
@@ -153,7 +150,7 @@ export class GoalAgentRoundToolRuntime {
       this.tool('goal_get_target', 'Read one controlled target definition by registryId.', {
         registryId: { type: 'string' },
       }, ['registryId'], (state, args) => this.getTarget(state, args)),
-      this.tool('goal_create', 'Create an immutable root goal. Default/template mode selects a controlled target. With mode=composed, submit draft containing versioned registered predicates and targetRefs from world_observe.goalBindings; preserve every required target/predicate and original scope. No template is required, but unbound scopes and unsupported predicates are rejected. Template outcome must reflect intent: 给我/交给/递给 or give/deliver/bring requires deliver, not merely inventory obtain.', {
+      this.tool('goal_create', 'Create the sole immutable formal root goal. Call world_observe first: compilation requires its fresh world snapshot and fixed plugin Generation. Template mode selects a registered target; composed mode submits versioned predicates and targetRefs from world_observe.goalBindings. Preserve every required target/predicate and original scope. Unbound scopes and unsupported predicates are rejected. Template outcome must reflect intent: 给我/交给/递给 or give/deliver/bring requires deliver, not merely inventory obtain.', {
         mode: { type: 'string', enum: ['template', 'composed'] },
         draft: GOAL_DRAFT_SCHEMA,
         outcome: { type: 'string', enum: [...OUTCOMES] },
@@ -192,7 +189,7 @@ export class GoalAgentRoundToolRuntime {
         state => this.loadExperience(state)),
       this.tool('plan_read', 'Read the current plan, machine-required milestones and active task.', {}, [],
         state => this.readPlan(state)),
-      this.tool('plan_commit', 'Create or replace the current machine-verifiable task plan. For composed goals each node MUST include operation {id,version,args}, requires and satisfies copied from capability_get(arguments). Only code-verified causal predecessors within the root scope are permitted. Copy authoritative successCriteria exactly and preserve since. Inventory checkpoints must be separate predecessor tasks from consuming actions.', {
+      this.tool('plan_commit', 'Create or replace the current machine-verifiable task plan. Every node MUST include operation {contribution,args}; requires and satisfies, when supplied, are machine criteria copied from capability_get(arguments). Each operation is rebound by code to that node\'s exact effects under the root scope and fixed Generation. Copy authoritative successCriteria exactly and preserve since. Inventory checkpoints must be separate predecessor tasks from consuming actions.', {
         rationale: { type: 'string' },
         tasks: {
           type: 'array',
@@ -234,11 +231,16 @@ export class GoalAgentRoundToolRuntime {
                 },
               },
               dependsOn: { type: 'array', items: { type: 'string' } },
-              operation: { type: 'object', additionalProperties: false, required: ['id', 'version', 'args'], properties: {
-                id: { type: 'string' }, version: { type: 'integer', minimum: 1 }, args: { type: 'object' },
+              operation: { type: 'object', additionalProperties: false, required: ['contribution', 'args'], properties: {
+                contribution: { type: 'object', additionalProperties: false,
+                  required: ['pluginId', 'pluginVersion', 'contributionId', 'contributionVersion'], properties: {
+                    pluginId: { type: 'string' }, pluginVersion: { type: 'string' },
+                    contributionId: { type: 'string' }, contributionVersion: { type: 'string' },
+                  } },
+                args: { type: 'object' },
               } },
-              requires: predicateRefsSchema(),
-              satisfies: predicateRefsSchema(),
+              requires: criterionRefsSchema(),
+              satisfies: criterionRefsSchema(),
               taskFamily: { type: 'string' },
               estimatedActions: { type: 'number', minimum: 1 },
               estimatedDurationMs: { type: 'number', minimum: 1000 },
@@ -341,7 +343,7 @@ export class GoalAgentRoundToolRuntime {
       if (Object.keys(args).some(key => !['mode', 'draft'].includes(key))) return failureReceipt('composed_goal_unknown_arguments');
       const compiler = this.options.tools.goals;
       if (!compiler) return failureReceipt('composed_goal_compiler_unavailable');
-      const committed = compiler.compile({ draft: args.draft, state, profileId: this.options.profileId, goalId: this.goalId(), acceptedAt: this.now() });
+      const committed = await compiler.compile({ input: { kind: 'draft', draft: args.draft }, state, profileId: this.options.profileId, goalId: this.goalId(), acceptedAt: this.now() });
       state.schema = GOAL_AGENT_STATE_SCHEMA_V2;
       state.rootGoal = committed.rootGoal;
       state.goal = { definition: committed.goal, signature: committed.signature, context: state.goal.context };
@@ -380,16 +382,13 @@ export class GoalAgentRoundToolRuntime {
     };
     const built = buildCommittedGoal(state, normalizedArgs);
     if ('error' in built) return failureReceipt(built.error);
-    const committed = commitGoal({
-      input: built.goal,
-      target: canonical,
-      args: normalizedArgs,
-      profileId: this.options.profileId,
-      goalId: this.goalId(),
-      acceptedAt: this.now(),
-      signatures: this.signatures,
+    const compiler = this.options.tools.goals;
+    if (!compiler) return failureReceipt('goal_compiler_unavailable');
+    const committed = await compiler.compile({
+      input: { kind: 'template', goal: built.goal, target: canonical, arguments: normalizedArgs },
+      state, profileId: this.options.profileId, goalId: this.goalId(), acceptedAt: this.now(),
     });
-    if ('error' in committed) return failureReceipt(committed.error);
+    state.schema = GOAL_AGENT_STATE_SCHEMA_V2;
     state.rootGoal = committed.rootGoal;
     state.goal = {
       definition: committed.goal,
@@ -421,7 +420,7 @@ export class GoalAgentRoundToolRuntime {
     const perception = this.options.tools.perception;
     if (!perception) return failureReceipt('world_perception_unavailable');
     const factRequests = requestedFacts ?? state.world.factRequests ?? [];
-    const world = await perception.observe(signal, factRequests);
+    const world = await perception.observe(signal, factRequests, state.snapshotRef);
     const observedAt = new Date(world.timestamp).toISOString();
     state.world = {
       latest: structuredClone(world),
@@ -438,7 +437,7 @@ export class GoalAgentRoundToolRuntime {
     });
     const evidenceRef = `world:${world.tick}:${world.timestamp}`;
     let goalBindings: unknown[] = [], bindingIssues: string[] = [];
-    try { goalBindings = [...(this.options.tools.goals?.bindings(state) ?? [])]; }
+    try { goalBindings = [...(await this.options.tools.goals?.bindings(state) ?? [])]; }
     catch (error) { bindingIssues = [error instanceof Error ? error.message : String(error)]; }
     if (verifyRoot && state.rootGoal && this.options.tools.verification) {
       const root = await this.options.tools.verification.verifyRoot({ state });
@@ -446,7 +445,7 @@ export class GoalAgentRoundToolRuntime {
     }
     return {
       content: { ok: true, world: boundedWorld(world), requestRef: state.requestId, goalBindings, bindingIssues,
-        composedGoalsEnabled: tuning().goalComposition.enabled, rootCompleted: state.terminal?.outcome === 'completed' },
+        unifiedGoalCompiler: true, rootCompleted: state.terminal?.outcome === 'completed' },
       summary: `observed world tick ${world.tick}`,
       evidenceRefs: [evidenceRef, ...(state.terminal?.evidenceRefs ?? [])],
     };
@@ -508,10 +507,9 @@ export class GoalAgentRoundToolRuntime {
     }));
     const revision = state.plan.revision + 1;
     let graph = buildPlanGraph(state, tasks, revision, maxTasks);
-    if (state.rootGoal.schema === 'mineclaw.goal/v2') {
-      if (!this.options.tools.plans) return failureReceipt('causal_plan_authority_unavailable');
-      graph = this.options.tools.plans.validatePlan(state, graph, tasks);
-    }
+    if (state.rootGoal.schema !== 'mineclaw.goal/v2') return failureReceipt('needs_rebind:formal_goal_required');
+    if (!this.options.tools.plans) return failureReceipt('causal_plan_authority_unavailable');
+    graph = this.options.tools.plans.validatePlan(state, graph, tasks);
     const plannedCriteria = graph.nodes.flatMap(node => node.goal.metadata?.structuredSuccessCriteria ?? []);
     const required = requiredPlanMilestones(state, this.options.planMilestones);
     const issues = [
@@ -566,6 +564,7 @@ export class GoalAgentRoundToolRuntime {
           argumentSchema: candidate.argumentSchema,
           mutableArgumentPaths: candidate.mutableArgumentPaths ?? [],
           authorization: candidate.authorization ?? { status: 'ready', reasons: [] },
+          prerequisites: candidate.prerequisites ?? [],
           operationRef: candidate.operationRef,
           evidenceRefs: candidate.evidenceRefs,
         })),
@@ -604,11 +603,10 @@ export class GoalAgentRoundToolRuntime {
       args: prepareCandidateArguments(candidate, args.arguments),
       rationale: text(args.rationale) || candidate.description,
     };
-    if (state.rootGoal.schema === 'mineclaw.goal/v2') {
-      if (!this.options.tools.plans) return failureReceipt('causal_plan_authority_unavailable');
-      this.options.tools.plans.authorize(state, candidate, proposal.args);
-    }
-    const idempotencyKey = actionKey(state, candidate.id, proposal.args);
+    if (state.rootGoal.schema !== 'mineclaw.goal/v2') return failureReceipt('needs_rebind:formal_goal_required');
+    if (!this.options.tools.plans) return failureReceipt('causal_plan_authority_unavailable');
+    this.options.tools.plans.authorize(state, candidate, proposal.args);
+    const idempotencyKey = logicalOperationId(state);
     state.world.beforeAction = state.world.latest ? structuredClone(state.world.latest) : null;
     state.action = { proposal, result: null, executionSessionId: null, idempotencyKey };
     const result = await execution.execute({
@@ -675,11 +673,11 @@ export class GoalAgentRoundToolRuntime {
   private catalogCheckedCandidate(input: GoalAgentActionCandidate): GoalAgentActionCandidate {
     const candidate = structuredClone(input);
     if (!candidate.operationRef) return candidate; // Existing v1 adapters retain their own guarded candidate path.
-    const entry = this.options.capabilities?.get(candidate.operationRef.id);
-    const reasons = !entry || !('operation' in entry) || !entry.operation
+    const entry = this.options.capabilities?.get(candidate.operationRef.contributionId);
+    const reasons = !entry
       ? ['operation_not_registered']
-      : entry.packageVersion !== candidate.operationRef.version ? ['operation_version_stale']
-        : entry.availability.state === 'unavailable' ? [...entry.availability.reasons]
+      : 'packageVersion' in entry && String(entry.packageVersion) !== candidate.operationRef.pluginVersion ? ['operation_version_stale']
+        : 'availability' in entry && entry.availability.state === 'unavailable' ? [...entry.availability.reasons]
           : !candidate.authorization ? ['operation_authorization_missing'] : [];
     if (reasons.length) candidate.authorization = { status: 'blocked', reasons };
     return candidate;
@@ -840,8 +838,14 @@ export class GoalAgentRoundToolRuntime {
     const result = this.options.capabilities.get(text(args.id));
     const expectedVersion = text(args.expectedVersion);
     if (result && expectedVersion && (!('version' in result) || result.version !== expectedVersion)) return failureReceipt('capability_version_stale');
-    const planning = result && args.arguments !== undefined && 'operation' in result && result.operation
-      ? this.options.tools.plans?.inspect(state, { id: result.id, version: result.packageVersion!, args: record(args.arguments) })
+    const planning = result && args.arguments !== undefined && 'entryKind' in result && result.entryKind === 'contribution'
+      && result.contributionKind === 'execution'
+      ? this.options.tools.plans?.inspect(state, { contribution: {
+          pluginId: result.packageId,
+          pluginVersion: result.packageVersion,
+          contributionId: result.id,
+          contributionVersion: result.contributionVersion,
+        }, args: record(args.arguments) })
       : undefined;
     return result
       ? { content: { ok: true, capability: result, ...(planning ? { planning } : {}) }, summary: `loaded capability ${result.id}`, evidenceRefs: [`capability:${result.id}${'version' in result ? `@${result.version}` : ''}`] }
@@ -1079,85 +1083,6 @@ function buildCommittedGoal(state: GoalAgentStateV1, args: Record<string, unknow
   };
 }
 
-function commitGoal(input: {
-  input: Omit<CommittedAgentGoal, 'successCriteria'>;
-  target: GoalTargetDefinition;
-  args: Record<string, unknown>;
-  profileId: string;
-  goalId: string;
-  acceptedAt: string;
-  signatures: GoalSignatureCompiler;
-}): { goal: CommittedAgentGoal; signature: ReturnType<GoalSignatureCompiler['compile']>; rootGoal: GoalContractV1 } | { error: string } {
-  if (!outcomeSupportsKind(input.input.outcome, input.target.kind)) return { error: `goal outcome=${input.input.outcome} incompatible with ${input.target.kind}` };
-  const acceptedAtMs = Date.parse(input.acceptedAt);
-  if (!Number.isFinite(acceptedAtMs)) return { error: 'goal clock returned invalid timestamp' };
-  const criteria = successCriteriaFor(input.input, input.target, input.args);
-  if ('error' in criteria) return criteria;
-  const goal: CommittedAgentGoal = {
-    ...input.input,
-    successCriteria: criteria.successCriteria.map(criterion => ['item_delivered', 'item_deposited', 'block_placed', 'predicate'].includes(String(criterion.type))
-      && (typeof criterion.since !== 'number' || !Number.isFinite(criterion.since))
-      ? { ...criterion, since: acceptedAtMs }
-      : criterion),
-  };
-  const signature = input.signatures.compile(goal);
-  const rootGoal: GoalContractV1 = {
-    schema: GOAL_CONTRACT_SCHEMA_V1,
-    goalId: input.goalId,
-    profileId: input.profileId,
-    goalText: goal.objective,
-    successCriteria: structuredClone(goal.successCriteria) as unknown as GoalSuccessCriterion[],
-    constraints: goal.constraints.map(value => ({ type: 'natural_language' as const, value })),
-    contextRef: `goal-signature:${signature.key}`,
-    createdAt: input.acceptedAt,
-  };
-  return { goal, signature, rootGoal };
-}
-
-function successCriteriaFor(
-  goal: Omit<CommittedAgentGoal, 'successCriteria'>,
-  target: GoalTargetDefinition,
-  args: Record<string, unknown>,
-): { successCriteria: Array<Record<string, unknown>> } | { error: string } {
-  const item = target.registryId.replace(/^minecraft:/, '');
-  if (target.successCriteriaPolicy === 'authoritative') {
-    if (!target.successCriteria?.length) return { error: `authoritative target has no success criteria: ${target.registryId}` };
-    return { successCriteria: materializeTargetCriteria(target, goal.target.quantity) };
-  }
-  if (goal.outcome === 'deliver' && target.kind === 'item') return { successCriteria: [{ type: 'item_delivered', item, count: goal.target.quantity }] };
-  if (goal.outcome === 'deposit' && target.kind === 'item') return { successCriteria: [{ type: 'item_deposited', item, count: goal.target.quantity }] };
-  if (goal.outcome === 'obtain' && target.kind === 'item') return { successCriteria: [{ type: 'inventory', item, count: goal.target.quantity }] };
-  if (goal.outcome === 'place' && target.kind === 'item') {
-    const placement = record(args.placement);
-    const relativeTo = text(placement.relativeTo);
-    const inputRelation = text(placement.relation);
-    const relation = inputRelation === 'underfoot' ? 'near' : inputRelation;
-    const radius = typeof placement.radius === 'number' && Number.isFinite(placement.radius) ? Math.max(0.1, placement.radius) : 1.5;
-    if (!['owner', 'self'].includes(relativeTo) || !['near', 'right', 'front', 'at', 'underfoot'].includes(relation)) {
-      return { error: 'place outcome requires placement.relativeTo and placement.relation' };
-    }
-    return { successCriteria: [{ type: 'block_placed', item, count: goal.target.quantity, relativeTo, relation, radius }] };
-  }
-  if (target.successCriteria?.length) {
-    return { successCriteria: materializeTargetCriteria(target, goal.target.quantity) };
-  }
-  return { error: `no machine success criterion registered for ${goal.outcome}:${target.registryId}` };
-}
-
-function materializeTargetCriteria(target: GoalTargetDefinition, quantity: number): Array<Record<string, unknown>> {
-  return (target.successCriteria ?? []).map(value => value.type === 'inventory'
-    ? { type: value.type, item: value.item, count: value.count === '$quantity' ? quantity : value.count }
-    : { ...value });
-}
-
-function outcomeSupportsKind(outcome: AgentGoalOutcome, kind: ParentGoalTargetKind): boolean {
-  if (kind === 'item') return ['obtain', 'deliver', 'deposit', 'place'].includes(outcome);
-  if (kind === 'entity') return outcome === 'defeat';
-  if (kind === 'location') return outcome === 'reach';
-  if (kind === 'structure') return outcome === 'build';
-  return outcome === 'explore' || outcome === 'survive';
-}
-
 function completeState(state: GoalAgentStateV1, summary: string, evidenceRefs: string[], now: string): void {
   state.verdict = {
     decision: 'complete', summary, machineCriteriaSatisfied: true,
@@ -1175,9 +1100,17 @@ function rootCoverageIssues(plannedCriteria: unknown[], rootCriteria: unknown[])
   return rootCriteria.flatMap(criterion => planned.has(stableJson(criterion)) ? [] : [`root_criterion_not_covered:${stableJson(criterion)}`]);
 }
 
-function predicateRefsSchema(): Record<string, unknown> {
-  return { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'version', 'args'], properties: {
-    id: { type: 'string' }, version: { type: 'string' }, args: { type: 'object' },
+function criterionRefsSchema(): Record<string, unknown> {
+  return { type: 'array', items: { type: 'object', additionalProperties: false, required: ['type'], properties: {
+    type: { type: 'string', enum: [...SUPPORTED_CRITERION_TYPES] },
+    entityId: { type: 'string' }, entityName: { type: 'string' }, item: { type: 'string' },
+    count: { type: 'number', minimum: 0 }, from: { type: 'number', minimum: 0 },
+    position: { type: 'object', additionalProperties: false, required: ['x', 'y', 'z'], properties: {
+      x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' },
+    } },
+    radius: { type: 'number', minimum: 0 }, relativeTo: { type: 'string', enum: ['owner', 'self'] },
+    relation: { type: 'string', enum: ['near', 'right', 'front', 'at'] },
+    predicate: { type: 'string' }, predicateVersion: { type: 'string' }, args: { type: 'object' },
   } } };
 }
 
@@ -1214,9 +1147,9 @@ function asCandidate(target: GoalTargetDefinition): GoalTargetCandidate {
   return { ...structuredClone(target), evidenceRef: `goal-target:${target.registryId}` };
 }
 
-function actionKey(state: GoalAgentStateV1, candidateId: string, args: Record<string, unknown>): string {
+function logicalOperationId(state: GoalAgentStateV1): string {
   return createHash('sha256')
-    .update(`${state.sessionId}:${state.epoch}:${state.plan.revision}:${state.plan.activeNodeId}:${candidateId}:${stableJson(args)}`)
+    .update(`${state.sessionId}:${state.epoch}:${state.plan.revision}:${state.plan.activeNodeId ?? 'root'}:attempt:${state.budget.actions + 1}`)
     .digest('hex');
 }
 

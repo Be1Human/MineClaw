@@ -48,6 +48,7 @@ contributions:
       progressContributionId: mineclaw.placement.progress.place
       resultContributionId: mineclaw.placement.result.place
       cancellable: true
+      applicability: { outcomes: [place, build], targetKinds: [item, structure], taskFamilies: [building, placement], criterionTypes: [block_placed, predicate] }
   - kind: planning
     id: mineclaw.placement.progress.place
     version: 1.0.0

@@ -170,8 +170,16 @@ test('BUG-CROSS-74 · compaction checkpoints do not delete raw message events', 
     });
     store.recordCompaction({
       sessionId: 'goal-1', node: 'round', stateRevision: 0, epoch: 1,
-      summary: '[GoalAgent compaction/v1]\n{"request":"make a pickaxe"}', omittedMessages: 1,
-      throughMessageIndex: 1,
+      schema: 'mineclaw.goalagent-compaction/v2', omittedMessages: 1, throughMessageIndex: 1,
+      coveredEventSeq: { from: 2, through: 2 }, profileRef: 'test-profile', policyRevision: 'test-policy',
+      tokensBefore: 100, tokensAfter: 60, sourceDigest: 'source-digest',
+      summary: {
+        goal: { request: 'make a pickaxe', rootGoal: null, constraints: [], successCriteria: [] },
+        plan: { revision: 0, activeTask: null, completedTasks: [], pendingTasks: [] },
+        attempts: [], failures: [], receiptEvidence: { refs: [], omitted: 0 }, waiting: null,
+        cancellation: { requested: false },
+        budget: initial().budget, compacted: { messages: 1, sourceDigest: 'source-digest' },
+      },
     });
     assert.equal(store.deriveMessages('goal-1').length, 2);
     assert.deepEqual(store.projectMessages('goal-1').messages, [{ role: 'user', content: 'old round turn' }]);

@@ -47,6 +47,7 @@ contributions:
       progressContributionId: mineclaw.flee.progress.flee
       resultContributionId: mineclaw.flee.result.flee
       cancellable: true
+      applicability: { outcomes: [explore, survive], targetKinds: [state, location], taskFamilies: [flee, survival], criterionTypes: [reached, predicate] }
   - kind: planning
     id: mineclaw.flee.progress.flee
     version: 1.0.0

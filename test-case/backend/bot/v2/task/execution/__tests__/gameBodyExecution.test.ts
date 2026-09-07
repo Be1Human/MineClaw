@@ -1,12 +1,16 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { BodyActionService } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/bodyActionService.js';
-import { BehaviorRegistry } from '../../../../../../../apps/minecraft-companion/src/bot/v2/behavior/behaviorRegistry.js';
+import { OperationLedger } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/operationLedger.js';
 import { EventBusV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/eventBus.js';
 import { __setTuningOverride } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { ActionRequest, WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 import type { GoalAgentStateV1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
 import { createMockBot } from '../../../__tests__/mocks/index.js';
+import { buildSystemAtomicContracts } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugins/builtin/minecraft-system/atomicContracts.js';
+import { createSystemAtomicExecutor } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugins/builtin/minecraft-system/index.js';
+import { createGoalAgentState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
+import { formalizeState } from '../../goalAgent/__tests__/goalTestFixtures.js';
 
 afterEach(()=>__setTuningOverride(null));
 function deferred<T>() { let resolve!:(v:T)=>void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve}; }
@@ -15,22 +19,48 @@ function request(type:ActionRequest['type']='look_at',priority=30):ActionRequest
   return {id:'request',source:'producer',taskId:'task',type,priority,interrupt_level:'soft',resource:[],
     preconditions:[],timeout_ms:5000,target:{position:{x:3,y:64,z:0}}};
 }
+class TestBehaviorRegistry {
+  private readonly definitions = new Map<string, { id: string; kind: 'sequence'; compile(): ActionRequest[] } | { id: string; kind: 'adaptive'; run(ctx: any): Promise<{ ok: boolean; cancelled: boolean; error?: string }> }>();
+  register(definition: { id: string; kind: 'sequence'; compile(): ActionRequest[] } | { id: string; kind: 'adaptive'; run(ctx: any): Promise<{ ok: boolean; cancelled: boolean; error?: string }> }): void { this.definitions.set(definition.id, definition); }
+  resolver() {
+    const value = (id: string) => {
+      const definition = this.definitions.get(id.replace(/^behavior:/, '').replace(/^test\.behavior\./, ''));
+      if (!definition) return { status: 'in_doubt' as const, reason: 'behavior_not_found' };
+      const contribution = { pluginId: 'mineclaw.test', pluginVersion: '1.0.0', contributionId: `test.behavior.${definition.id}`, contributionVersion: '1.0.0' };
+    return { status: 'resolved' as const, value: { contribution, factory: {
+      id: definition.id, version: '1.0.0', create: () => ({
+        instanceId: `test-${definition.id}`, contribution, settled: false,
+        ...(definition.kind === 'sequence'
+          ? { kind: 'sequence' as const, compile: () => ({ ok: true as const, steps: definition.compile().map(step => ({ atomicId: step.type, args: step.target ?? {} })) }) }
+          : { kind: 'adaptive' as const, run: definition.run }),
+        halt: async () => undefined, close: async () => undefined,
+      }),
+    } } };
+    };
+    return {
+      resolve: (_snapshot: unknown, contribution: { contributionId: string }) => value(contribution.contributionId),
+      resolveById: (_snapshot: unknown, id: string) => value(id),
+      list: () => ({ status: 'resolved' as const, value: [...this.definitions.keys()].map(id => value(id).value) }),
+    };
+  }
+}
 function fixture() {
   const bot=createMockBot();bot.nav.gotoDelay=0;
-  const bus=new EventBusV2();const registry=new BehaviorRegistry();
+  const bus=new EventBusV2();const registry=new TestBehaviorRegistry();
   let running=true,embodied=true;
   let goal:GoalAgentStateV1|null=null;
   const world=():WorldStateView=>({timestamp:Date.now(),tick:1,self:{...bot.world.self,maxHealth:20},
     environment:{dimension:bot.game.getDimension(),isDay:true,isRaining:false,timeOfDay:6000},owner:null,
     entities:[],inventory:{items:bot.game.getInventoryItems(),held:null,freeSlots:36},taskContext:null} as WorldStateView);
-  const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,registry,getWorld:world,
+  const body=new BodyActionService({game:bot.game,nav:bot.nav,bus,getWorld:world,
     tasks:{list:()=>[{id:'task',state:'running'}],isRunning:(id:string)=>id==='task'&&running} as never,
     isEmbodied:()=>embodied,getGoalState:()=>goal,
     getSnapshot:()=>({generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'}),
-    // 夹具：本套件验证执行链语义（owner/取消/effect），exists+executor 简单通过即可。
+    // 使用和生产相同的系统插件执行器，覆盖固定代解析后的设备绑定与停止合同。
     atomicResolver:{resolve:(_snapshot:_s,atomicId:string)=>atomicId==='stop'||atomicId==='stop_follow'
       ? {status:'in_doubt' as const,reason:'control'}
-      : {status:'resolved' as const,value:{executor:{id:`a.${atomicId}`,version:'1.0.0',execute:async()=>({ok:true})},contract:null,contribution:{pluginId:'mineclaw.minecraft-system',pluginVersion:'1.0.0',contributionId:'mineclaw.minecraft-system.execution.atomics',contributionVersion:'1.0.0'}}}} as never});
+      : {status:'resolved' as const,value:{executor:createSystemAtomicExecutor(atomicId,{game:bot.game,nav:bot.nav,bus,getWorld:world}),contract:buildSystemAtomicContracts([atomicId])[0]!,contribution:{pluginId:'mineclaw.minecraft-system',pluginVersion:'1.0.0',contributionId:'mineclaw.minecraft-system.execution.atomics',contributionVersion:'1.0.0'}}}} as never,
+    behaviorResolver:registry.resolver() as never,hostApiVersion:'2.0.0',ledger:new OperationLedger(':memory:')});
   return {bot,bus,registry,body,pause:()=>{running=false;bus.publish('task.paused','info',{taskId:'task'});},
     resume:()=>{running=true;bus.publish('task.resumed','info',{taskId:'task'});},detach:()=>{embodied=false;},
     goal:(state:GoalAgentStateV1)=>{goal=state;}};
@@ -59,6 +89,17 @@ test('sequence Behavior children share one operation, owner and body lease',asyn
   assert.equal(new Set(identities.map(v=>v.operationId)).size,1);assert.equal(new Set(identities.map(v=>v.leaseRef)).size,1);
   assert.equal(new Set(identities.map(v=>v.stepId)).size,2);
 });
+test('adaptive Behavior alone receives the receipt-aware child-operation port',async()=>{
+  const f=fixture();let receipts=0;
+  f.registry.register({id:'adaptive-two-looks',kind:'adaptive',run:async ctx=>{
+    const first=await ctx.submitBody({atomicId:'look_at',args:{position:{x:1,y:64,z:1}}});receipts++;
+    if(first.ok===false)return {ok:false,cancelled:false,error:'first_failed'};
+    const second=await ctx.submitBody({atomicId:'look_at',args:{position:{x:2,y:64,z:2}}});receipts++;
+    return {ok:second.ok!==false,cancelled:false};
+  }});
+  const result=await f.body.executeTask({...request('invoke_behavior'),target:{behavior:'adaptive-two-looks'}});
+  assert.equal(result.ok,true);assert.equal(receipts,2);assert.equal(f.bot.game.calls.lookAt.length,2);
+});
 test('pausing a task fences queued equip continuation and waits for the native promise',async()=>{
   const f=fixture();const native=deferred<void>();let calls=0;
   f.bot.game.equip=async()=>{calls++;await native.promise;};
@@ -86,7 +127,7 @@ test('equal-owner requests cannot implicitly replace an outstanding operation',a
 test('higher-priority preemption waits for native drainage before the new write',async()=>{
   const f=fixture();const native=deferred<{ok:boolean}>();f.bot.nav.goto=()=>native.promise;
   const first=f.body.executeTask(request('move_to'));await flush();
-  const next=f.body.executeSafety({...request('look_at',90),interrupt_level:'hard'},'test-reflex');
+  const next=f.body.executeTask({...request('look_at',90),interrupt_level:'hard'});
   await flush();assert.equal(f.bot.game.calls.lookAt.length,0);assert.equal(f.body.busy(),true);
   native.resolve({ok:true});assert.equal((await first).receipt?.status,'cancelled');
   assert.equal((await next).ok,true);assert.equal(f.bot.game.calls.lookAt.length,1);
@@ -95,17 +136,16 @@ test('unconfirmed stop quarantines ownership and rejects preemption instead of c
   __setTuningOverride({controlledExecution:{stopConfirmTimeoutMs:5}});
   const f=fixture();const native=deferred<{ok:boolean}>();f.bot.nav.goto=()=>native.promise;
   const first=f.body.executeTask(request('move_to'));await flush();
-  const next=f.body.executeSafety({...request('look_at',90),interrupt_level:'hard'},'test-reflex');
+  const next=f.body.executeTask({...request('look_at',90),interrupt_level:'hard'});
   const old=await first;assert.equal(old.receipt?.status,'in_doubt');assert.equal(old.receipt?.stop,null);
   assert.equal((await next).ok,false);assert.equal(f.body.busy(),true);assert.equal(f.bot.game.calls.lookAt.length,0);
   native.resolve({ok:true});await flush();await flush();assert.equal(f.body.busy(),false);
   assert.equal(old.receipt?.status,'in_doubt','late completion must not rewrite an emitted receipt');
 });
-test('follow remains an in-flight operation until cancellation, with no early success',async()=>{
+test('follow is a finite dynamic body slice and releases the body lease on arrival',async()=>{
   const f=fixture();f.bot.world.setOwner('owner',42,{x:4,y:64,z:0});
-  let settled=false;const work=f.body.executeTask({...request('follow_entity'),target:{entityId:42,range:2}}).then(r=>{settled=true;return r;});
-  await flush();assert.equal(settled,false);assert.equal(f.body.busy(),true);assert.equal(f.bot.nav.calls.startFollow.length,1);
-  f.body.cancelAll('owner-stop');assert.equal((await work).receipt?.status,'cancelled');assert.equal(f.body.busy(),false);
+  const work=f.body.executeTask({...request('follow_entity'),target:{entityId:42,range:2,durationMs:25}});
+  assert.equal((await work).ok,true);assert.equal(f.body.busy(),false);assert.equal(f.bot.nav.calls.startFollow.length,1);
 });
 test('stop is activity control: it joins the owned move without acquiring a second lease',async()=>{
   const f=fixture();const native=deferred<{ok:boolean}>();f.bot.nav.goto=()=>native.promise;
@@ -173,7 +213,11 @@ test('navigation range stays numeric, preserves zero, and rejects malformed rang
 
 test('goal owner plan revision is captured, not retargeted by a mutable caller state',async()=>{
   const f=fixture(),native=deferred<void>();let calls=0;
-  const state={sessionId:'goal',epoch:1,phase:'running',plan:{revision:1},snapshotRef:{generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'}} as GoalAgentStateV1;
+  const state=formalizeState(createGoalAgentState({sessionId:'goal',interactionSessionId:'interaction',request:{
+    meta:{schemaVersion:2,sessionId:'interaction',messageId:'request',correlationId:'correlation',conversationId:'conversation',sequence:1,
+      emittedAt:'2026-09-06T00:00:00.000Z',idempotencyKey:'request'},origin:'player_message',originalText:'move',requestText:'move',requestKind:'task',constraints:[],
+  }}));
+  state.phase='running';state.plan.revision=1;
   f.goal(state);f.bot.game.equip=async()=>{calls++;await native.promise;};
   f.registry.register({id:'goal-generation',kind:'sequence',compile:()=>[
     {...request('equip'),target:{itemName:'stick'}},{...request('equip'),target:{itemName:'stick'}},

@@ -241,6 +241,16 @@
           <p>{{ worldPreviewPresentation.message }}</p>
         </div>
 
+        <LanWorldDiscoveryPanel
+          class="desktop-lan-worlds"
+          :snapshot="lanWorldSnapshot"
+          :profileName="selectedProfile?.name || ''"
+          :joiningWorldId="lanWorldJoiningId"
+          :disabled="!selectedProfile || !wsConnected || Boolean(currentWorldConnectionAction)"
+          :error="currentWorldConnectionError"
+          @join="joinLanWorld"
+        />
+
         <!-- 外层图例 -->
         <div class="perception-legend">
           <div class="radar-legend-list">
@@ -330,6 +340,16 @@
               </button>
             </div>
             <p :class="`is-${worldPreviewPresentation.tone}`">{{ worldPreviewPresentation.title }}</p>
+            <LanWorldDiscoveryPanel
+              class="inspector-lan-worlds"
+              :snapshot="lanWorldSnapshot"
+              :profileName="selectedProfile?.name || ''"
+              :joiningWorldId="lanWorldJoiningId"
+              :disabled="!wsConnected || Boolean(currentWorldConnectionAction)"
+              :error="currentWorldConnectionError"
+              compact
+              @join="joinLanWorld"
+            />
           </div>
         </section>
 
@@ -373,7 +393,6 @@
 
           <!-- 角色交流：状态与聊天合并 -->
           <div v-if="ctrlTab === 'status'" class="interaction-panel">
-            <AlertBanner :alerts="v2Alerts" />
             <div class="interaction-summary">
               <div class="interaction-avatar">
                 <div class="interaction-status-badge">
@@ -548,12 +567,12 @@ import { ref, reactive, onMounted, onUnmounted, nextTick, watch, computed, markR
 import { io } from 'socket.io-client';
 import PerceptionScene3D from './components/PerceptionScene3D.vue';
 import TaskBarPanel from './components/TaskBarPanel.vue';
-import AlertBanner from './components/AlertBanner.vue';
 import InventoryPanel from './components/InventoryPanel.vue';
 import ChatBox from './components/ChatBox.vue';
 import BrainPanel from './components/BrainPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import LlmTracePanel from './components/LlmTracePanel.vue';
+import LanWorldDiscoveryPanel from './components/LanWorldDiscoveryPanel.vue';
 import McResizeHandle from './components/layout/McResizeHandle.vue';
 import McCharacter from './components/McCharacter.vue';
 import McHead from './components/McHead.vue';
@@ -572,6 +591,7 @@ import {
 } from './lib/resizableLayout.js';
 import { useProfileTasks } from './lib/profileTasks.js';
 import { VisualWorldStore } from './lib/authentic/visualWorldStore.js';
+import { EMPTY_LAN_WORLD_SNAPSHOT, projectLanWorldSnapshot } from './lib/lanWorldPresentation.js';
 import {
   WORLD_PREVIEW_MODES,
   migrateWorldPreviewModes,
@@ -813,6 +833,8 @@ const botStatuses = reactive(new Map());
 const worldStates = reactive(new Map());
 const worldConnectionActions = reactive(new Map());
 const worldConnectionErrors = reactive(new Map());
+const lanWorldSnapshot = ref(EMPTY_LAN_WORLD_SNAPSHOT);
+const lanWorldJoiningId = ref('');
 const visualWorldStore = ref(null);
 const visualWorldRevision = ref(0);
 const visualWorldStatus = ref({ state: 'idle', phase: 'idle', current: 0, total: 0, message: '' });
@@ -827,7 +849,6 @@ const {
   selectBot: selectTaskBot,
   refresh: refreshV2Tasks,
 } = useProfileTasks();
-const v2Alerts = ref({ suspendedByDanger: [], recentDiagnoses: [], narrationCooldowns: {} });
 const agentLoopSteps = ref([]);
 // FEAT-WEBUI-09 · 常驻单思考气泡
 const liveThinking = ref('');
@@ -955,7 +976,10 @@ function statusDot(id) {
 
 const socket = io({ autoConnect: true });
 let pendingChatSettle = null;
-socket.on('connect', () => { wsConnected.value = true; });
+socket.on('connect', () => {
+  wsConnected.value = true;
+  void loadLanWorlds();
+});
 socket.on('disconnect', () => {
   wsConnected.value = false;
   visualSubscriptionRequest += 1;
@@ -1010,6 +1034,9 @@ socket.on('bot:v2:visualWorld:bootstrap:start', data => {
     state: 'loading', phase: 'receiving', current: 0, total: data.sectionCount,
     message: `正在接收真实世界首帧… 0/${data.sectionCount}`,
   };
+});
+socket.on('minecraft:lan-worlds', (snapshot) => {
+  lanWorldSnapshot.value = projectLanWorldSnapshot(snapshot);
 });
 socket.on('bot:v2:visualWorld:bootstrap:section', data => {
   if (data.botId !== subscribedVisualBotId || !visualWorldStore.value) return;
@@ -1192,35 +1219,12 @@ socket.on('bot:agentLoop', (data) => {
   }
 });
 
-const emptyV2Alerts = () => ({ suspendedByDanger: [], recentDiagnoses: [], narrationCooldowns: {} });
-
-async function refreshV2Alerts() {
-  const botId = selectedProfile.value?.id;
-  if (!botId || workspaceView.value !== 'play' || ctrlTab.value !== 'status') {
-    v2Alerts.value = emptyV2Alerts();
-    return;
-  }
-  try {
-    const response = await fetch(`/api/bots/${encodeURIComponent(botId)}/v2/supervisor-alerts`);
-    if (!response.ok || selectedProfile.value?.id !== botId) {
-      v2Alerts.value = emptyV2Alerts();
-      return;
-    }
-    v2Alerts.value = await response.json();
-  } catch {
-    v2Alerts.value = emptyV2Alerts();
-  }
-}
-
-const v2AlertPoll = setInterval(() => { void refreshV2Alerts(); }, 2000);
-
 const v2TaskPoll = setInterval(() => { void refreshV2Tasks(); }, 2000);
 const visualConfigPoll = setInterval(() => {
   if (show3D.value && worldMode.value === 'authentic' && wsConnected.value) void refreshVisualWorldConfig().catch(() => {});
 }, 1000);
 
 onUnmounted(() => {
-  clearInterval(v2AlertPoll);
   clearInterval(v2TaskPoll);
   clearInterval(visualConfigPoll);
   stopVisualSubscription();
@@ -1236,15 +1240,12 @@ watch(
 watch(
   () => selectedProfile.value?.id,
   botId => {
-    v2Alerts.value = emptyV2Alerts();
     void selectTaskBot(botId);
-    void refreshV2Alerts();
   },
   { flush: 'sync' },
 );
 
 watch([workspaceView, ctrlTab], ([view, tab]) => {
-  if (view === 'play' && tab === 'status') void refreshV2Alerts();
   if (view !== 'play' || tab !== 'status') return;
   void scrollBottom(messagesEl);
 });
@@ -1454,6 +1455,21 @@ async function readActionResponse(response) {
   catch { return {}; }
 }
 
+async function loadLanWorlds() {
+  try {
+    const response = await fetch('/api/minecraft/lan-worlds');
+    const data = await readActionResponse(response);
+    if (!response.ok) throw new Error(data.error || `局域网世界查询失败 (${response.status})`);
+    lanWorldSnapshot.value = projectLanWorldSnapshot(data);
+  } catch (error) {
+    lanWorldSnapshot.value = projectLanWorldSnapshot({
+      state: 'unavailable',
+      worlds: lanWorldSnapshot.value.worlds,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function joinGame() {
   if (!selectedProfile.value) return;
   const botId = selectedProfile.value.id;
@@ -1472,6 +1488,34 @@ async function joinGame() {
   } catch (error) {
     worldConnectionErrors.set(botId, error instanceof Error ? error.message : String(error));
   } finally {
+    worldConnectionActions.delete(botId);
+  }
+}
+
+async function joinLanWorld(world) {
+  if (!selectedProfile.value || !world?.id) return;
+  const botId = selectedProfile.value.id;
+  if (worldConnectionActions.has(botId)) return;
+  worldConnectionActions.set(botId, 'connect');
+  worldConnectionErrors.delete(botId);
+  lanWorldJoiningId.value = world.id;
+  try {
+    await ensureBrainStarted(botId);
+    const response = await fetch(`/api/bots/${encodeURIComponent(botId)}/join-lan-world`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worldId: world.id }),
+    });
+    const data = await readActionResponse(response);
+    if (!response.ok) {
+      worldConnectionErrors.set(botId, data.error || `加入局域网世界失败 (${response.status})`);
+      return;
+    }
+    botStatuses.set(botId, data);
+  } catch (error) {
+    worldConnectionErrors.set(botId, error instanceof Error ? error.message : String(error));
+  } finally {
+    lanWorldJoiningId.value = '';
     worldConnectionActions.delete(botId);
   }
 }
@@ -1544,6 +1588,7 @@ onMounted(() => {
   reflowWorkspaceLayout();
   window.addEventListener('resize', reflowWorkspaceLayout);
   loadProfiles();
+  void loadLanWorlds();
 });
 </script>
 
@@ -1633,6 +1678,8 @@ onMounted(() => {
 .perception-vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 62% 66% at 50% 48%,rgba(25,45,29,.14),transparent 65%),linear-gradient(180deg,rgba(4,8,5,.08),rgba(4,8,5,.3)); }
 .perception-scene { --perception-hud-top-safe-area:112px; position:absolute; z-index:1; inset:0; }
 .perception-camera-controls { position:absolute; z-index:3; top:66px; left:50%; display:flex; gap:8px; transform:translateX(-50%); }
+.desktop-lan-worlds { position:absolute; z-index:4; right:18px; bottom:18px; width:min(390px,calc(100% - 300px)); }
+.inspector-lan-worlds { display:none; }
 .stage-button { display:inline-flex; min-height:34px; align-items:center; gap:7px; padding:7px 12px; cursor:pointer; background:rgba(17,24,19,.9); border:1px solid var(--mc-border-strong); border-radius:var(--mc-radius-sm); color:var(--mc-text-secondary); font-size:var(--mc-type-body); font-weight:700; white-space:nowrap; transition:background var(--mc-duration-fast),border-color var(--mc-duration-fast),color var(--mc-duration-fast); backdrop-filter:blur(10px); }
 .stage-button:hover { background:var(--mc-surface-hover); color:var(--mc-text); }
 .stage-button.active { background:var(--mc-accent-soft); border-color:rgba(105,201,74,.3); color:var(--mc-accent-strong); }
@@ -1895,6 +1942,7 @@ onMounted(() => {
   .inspector-world-preview-tabs button { min-width:0; flex:1; justify-content:center; padding:5px 4px; }
   .inspector-world-preview > p { margin:0; color:var(--mc-text-muted); font-size:10px; line-height:1.4; }
   .inspector-world-preview > p.is-error { color:var(--mc-danger); }
+  .inspector-lan-worlds { display:flex; }
 }
 
 @media (max-width:640px) {

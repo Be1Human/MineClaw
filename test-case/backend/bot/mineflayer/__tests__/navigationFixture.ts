@@ -8,6 +8,7 @@ import { MineflayerGameAdapter } from '../../../../../apps/minecraft-companion/s
 import { MineflayerNavigationAdapter } from '../../../../../apps/minecraft-companion/src/bot/mineflayer/MineflayerNavigationAdapter.js';
 import { BodyExecutionRuntime } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/bodyExecutionRuntime.js';
 import { ExecutionAuthority } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/executionAuthority.js';
+import { OperationLedger } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/operationLedger.js';
 
 const require = createRequire(new URL('../../../../../apps/minecraft-companion/package.json',import.meta.url));
 const { Vec3 } = require('vec3');
@@ -80,7 +81,7 @@ export function navigationFixture(device = navigationBot()) {
   const authority = new ExecutionAuthority();
   let work!: (actions:NavigationActions)=>Promise<unknown>;
   let maintain: (actions:NavigationActions)=>Promise<void> = async()=>{};
-  const runtime = new BodyExecutionRuntime({authority,driver:{resources:()=>['minecraft:body'],bind:()=>{
+  const runtime = new BodyExecutionRuntime({authority,ledger:new OperationLedger(':memory:'),driver:{resources:()=>['minecraft:body'],bind:()=>{
     let boundGame:BoundGameActions|null=null,boundNav:BoundNavigation|null=null;
     return {
       run:async ctx=>{boundGame=game.bind(ctx);boundNav=nav.bind({scope:ctx,game:boundGame,maintain});
@@ -92,7 +93,7 @@ export function navigationFixture(device = navigationBot()) {
     start:(run:typeof work,maintenance=maintain,id='nav-operation')=>{
       work=run;maintain=maintenance;
       const intent:OperationIntent={operationId:id,owner:{kind:'task',taskId:'task',ownerEpoch:1},
-        command:{ref:{id:'test-navigation',contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:'test-navigation',contributionVersion:'1.0.0'}},args:{}},scope:{dimension:'overworld',targetRefs:[],bindings:[]},
+        command:{ref:{id:'test-navigation',contribution:{pluginId:'mineclaw.legacy-builtin',pluginVersion:'1.0.0',contributionId:'test-navigation',contributionVersion:'1.0.0'}},snapshot:{generationId:'gen-test',buildId:'test-build',graphHash:'test-graph'},args:{}},expectedEffects:[],scope:{dimension:'overworld',targetRefs:[],bindings:[]},
         deadlineAt:Date.now()+5000,budget:{maxActions:5000},priority:1,preemption:'none'};
       return runtime.submit({intent,grant:authority.issue(intent,{isCurrent:()=>true,allowsChild:()=>false})});
     }};

@@ -31,6 +31,8 @@ export interface KnowledgeContribution {
   readonly id: string;
   readonly version: string;
   readonly contentRef: string;
+  /** Host-captured immutable content. Consumers must never reopen contentRef from the filesystem. */
+  readonly content?: string;
   readonly contentSchema?: Readonly<Record<string, unknown>>;
   readonly requirements?: readonly ContributionRequirement[];
 }
@@ -40,6 +42,8 @@ export interface SkillContribution {
   readonly id: string;
   readonly version: string;
   readonly entryRef: string;
+  /** Host-captured immutable content. Consumers must never reopen entryRef from the filesystem. */
+  readonly content?: string;
   readonly requirements?: readonly ContributionRequirement[];
 }
 
@@ -54,8 +58,14 @@ export interface PluginGoalTargetDeclaration {
   readonly registryId: string;
   readonly goalKind: 'item' | 'entity' | 'location' | 'composite';
   readonly aliases: readonly string[];
+  readonly taskFamilies?: readonly string[];
   readonly successCriteria: readonly {
     readonly type: 'inventory' | 'entity_dead' | 'reached' | 'predicate';
+    readonly item?: string;
+    readonly count?: number | '$quantity' | '$count';
+    readonly entityName?: string;
+    readonly relativeTo?: 'owner';
+    readonly radius?: number;
     readonly predicate?: string;
     readonly args?: Readonly<Record<string, unknown>>;
   }[];
@@ -79,6 +89,13 @@ export interface PluginOperationDeclaration {
   readonly progressContributionId: string;
   readonly resultContributionId: string;
   readonly cancellable: boolean;
+  /** Declarative authorization surface used by GoalCompiler/PlanAuthority. */
+  readonly applicability: {
+    readonly outcomes: readonly import('../task/planner/plannerContracts.js').AgentGoalOutcome[];
+    readonly targetKinds: readonly import('../task/planner/plannerContracts.js').ParentGoalTargetKind[];
+    readonly taskFamilies: readonly string[];
+    readonly criterionTypes: readonly import('../task/contracts/goalTypes.js').GoalSuccessCriterion['type'][];
+  };
 }
 
 export interface PlanningContribution {
@@ -135,6 +152,9 @@ export interface ProactiveContribution {
   readonly goalTarget: string;
   readonly rate: 'fast' | 'std' | 'slow' | 'idle';
   readonly priority: number;
+  readonly defaultEnabled?: boolean;
+  readonly conflictGroups?: readonly string[];
+  readonly configSchema?: import('../proactive/contracts.js').ProactiveConfigSchema;
   readonly evaluator: (input: Readonly<Record<string, unknown>>) => boolean;
 }
 
@@ -232,6 +252,7 @@ export function parseContribution(
           registryId,
           goalKind,
           aliases: Object.freeze([...target.aliases] as string[]),
+          ...(Array.isArray(target.taskFamilies) ? { taskFamilies: Object.freeze([...target.taskFamilies] as string[]) } : {}),
           successCriteria: Object.freeze([...target.successCriteria] as PluginGoalTargetDeclaration['successCriteria']),
         }),
         ...(binding ? { bindingProvider: binding as unknown as GoalContribution['bindingProvider'] } : {}),
@@ -274,10 +295,12 @@ export function parseContribution(
       }
       return freeze({
         kind, id, version,
-        ...(isRecord(record.operation) ? { operation: Object.freeze({ ...record.operation }) as unknown as ExecutionContribution['operation'] } : {}),
+        ...(isRecord(record.operation) ? { operation: parseOperationDeclaration(record.operation, id) } : {}),
         ...(isRecord(record.behaviorFactory) && typeof (record.behaviorFactory as unknown as Record<string, unknown>).create === 'function'
           ? { behaviorFactory: record.behaviorFactory as unknown as ExecutionContribution['behaviorFactory'] } : {}),
-        ...(isRecord(record.activityFactory) && typeof (record.activityFactory as unknown as Record<string, unknown>).create === 'function'
+        ...(isRecord(record.activityFactory)
+          && typeof (record.activityFactory as unknown as Record<string, unknown>).create === 'function'
+          && typeof (record.activityFactory as unknown as Record<string, unknown>).prepareStart === 'function'
           ? { activityFactory: record.activityFactory as unknown as ExecutionContribution['activityFactory'] } : {}),
         ...(Array.isArray(catalog) ? { atomicCatalog: Object.freeze([...catalog]) as ExecutionContribution['atomicCatalog'] } : {}),
       });
@@ -302,6 +325,9 @@ export function parseContribution(
         kind, id, version, label, description, goalTarget,
         rate: record.rate as ProactiveContribution['rate'],
         priority: record.priority,
+        ...(typeof record.defaultEnabled === 'boolean' ? { defaultEnabled: record.defaultEnabled } : {}),
+        ...(Array.isArray(record.conflictGroups) ? { conflictGroups: Object.freeze([...record.conflictGroups] as string[]) } : {}),
+        ...(isRecord(record.configSchema) ? { configSchema: Object.freeze({ ...record.configSchema }) as ProactiveContribution['configSchema'] } : {}),
         evaluator: record.evaluator as ProactiveContribution['evaluator'],
       });
     case 'integration':
@@ -314,6 +340,47 @@ export function parseContribution(
         integration: record.integration as unknown as IntegrationContribution['integration'],
       });
   }
+}
+
+function parseOperationDeclaration(value: Record<string, unknown>, ownerId: string): PluginOperationDeclaration {
+  const stringFields = ['operationId', 'goalContributionId', 'bindingContributionId', 'candidateContributionId',
+    'predicateContributionId', 'progressContributionId', 'resultContributionId'] as const;
+  for (const field of stringFields) requireString(value[field], `operation ${field}`, ownerId);
+  if (!Array.isArray(value.factKinds) || value.factKinds.some(item => typeof item !== 'string' || !item)) {
+    throw pluginError('manifest_invalid', `operation ${ownerId} factKinds must be strings`);
+  }
+  if (typeof value.cancellable !== 'boolean') throw pluginError('manifest_invalid', `operation ${ownerId} cancellable must be boolean`);
+  if (!isRecord(value.applicability)) throw pluginError('manifest_invalid', `operation ${ownerId} requires applicability`);
+  const applicability = value.applicability;
+  const specs = [
+    ['outcomes', ['obtain', 'deliver', 'deposit', 'place', 'reach', 'build', 'defeat', 'explore', 'survive', 'composed']],
+    ['targetKinds', ['item', 'entity', 'location', 'structure', 'state']],
+    ['criterionTypes', ['entity_dead', 'inventory', 'inventory_decrease', 'item_delivered', 'item_deposited', 'block_placed', 'reached', 'predicate']],
+  ] as const;
+  for (const [field, allowed] of specs) {
+    const items = applicability[field];
+    if (!Array.isArray(items) || items.length === 0 || items.some(item => typeof item !== 'string' || !allowed.includes(item as never))) {
+      throw pluginError('manifest_invalid', `operation ${ownerId} applicability.${field} is invalid`);
+    }
+  }
+  if (!Array.isArray(applicability.taskFamilies) || applicability.taskFamilies.length === 0
+    || applicability.taskFamilies.some(item => typeof item !== 'string' || !item)) {
+    throw pluginError('manifest_invalid', `operation ${ownerId} applicability.taskFamilies is invalid`);
+  }
+  const outcomes = applicability.outcomes as PluginOperationDeclaration['applicability']['outcomes'][number][];
+  const targetKinds = applicability.targetKinds as PluginOperationDeclaration['applicability']['targetKinds'][number][];
+  const taskFamilies = applicability.taskFamilies as string[];
+  const criterionTypes = applicability.criterionTypes as PluginOperationDeclaration['applicability']['criterionTypes'][number][];
+  return Object.freeze({
+    ...value,
+    factKinds: Object.freeze([...value.factKinds] as string[]),
+    applicability: Object.freeze({
+      outcomes: Object.freeze([...outcomes]),
+      targetKinds: Object.freeze([...targetKinds]),
+      taskFamilies: Object.freeze([...taskFamilies]),
+      criterionTypes: Object.freeze([...criterionTypes]),
+    }),
+  }) as unknown as PluginOperationDeclaration;
 }
 
 function requireContribId(value: unknown, pluginId: string, label: string): string {
@@ -434,7 +501,7 @@ export function parseManifestContribution(value: unknown, pluginId: string, plug
       }
       return Object.freeze({
         kind, id, version,
-        ...(isRecord(record.operation) ? { operation: Object.freeze({ ...record.operation }) as unknown as PluginOperationDeclaration } : {}),
+        ...(isRecord(record.operation) ? { operation: parseOperationDeclaration(record.operation, id) } : {}),
         ...(Array.isArray(record.atomicIds) ? { atomicIds: Object.freeze([...record.atomicIds] as string[]) } : {}),
       });
     case 'result':
@@ -458,6 +525,9 @@ export function parseManifestContribution(value: unknown, pluginId: string, plug
   }
 }
 
-export function toDataContribution(declaration: ManifestContribution & { kind: 'knowledge' | 'skill' }): PluginContribution {
-  return Object.freeze({ ...declaration }) as unknown as PluginContribution;
+export function toDataContribution(
+  declaration: ManifestContribution & { kind: 'knowledge' | 'skill' },
+  content?: string,
+): PluginContribution {
+  return Object.freeze({ ...declaration, ...(content !== undefined ? { content } : {}) }) as unknown as PluginContribution;
 }

@@ -28,6 +28,14 @@ export interface PluginCandidate {
   readonly params: Readonly<Record<string, unknown>>;
   readonly evidenceRefs: readonly string[];
   readonly contribution: ContributionRef;
+  /** Machine-readable prerequisite goals. They are planning evidence, never execution permission. */
+  readonly prerequisites?: readonly {
+    readonly goalContributionId: string;
+    readonly arguments: Readonly<Record<string, unknown>>;
+    readonly reason: string;
+  }[];
+  /** Providers may expose blocked candidates so the planner can satisfy prerequisites first. */
+  readonly authorization?: { readonly status: 'ready' | 'blocked' | 'unknown'; readonly reasons: readonly string[] };
 }
 
 export interface PluginProgress {

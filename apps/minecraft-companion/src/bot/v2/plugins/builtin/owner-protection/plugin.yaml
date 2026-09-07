@@ -1,0 +1,66 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.owner-protection
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies:
+  plugins:
+    - pluginId: mineclaw.minecraft-system
+      range: ^1.0.0
+permissions:
+  - body.submit:mineclaw.minecraft-system.atomic.move-to
+  - body.submit:mineclaw.minecraft-system.atomic.follow-entity
+  - body.submit:mineclaw.minecraft-system.behavior.advanced-move-to
+  - body.submit:mineclaw.minecraft-system.atomic.combat-round
+  - body.submit:mineclaw.minecraft-system.atomic.eat
+contributions:
+  - kind: goal
+    id: mineclaw.owner-protection.goal.protect-owner
+    version: 1.0.0
+    target:
+      registryId: mineclaw.owner-protection.goal.protect-owner
+      goalKind: composite
+      aliases: [保护我, 护主, 保护主人, protect me, protect owner]
+      taskFamilies: [protection]
+      successCriteria:
+        - type: predicate
+          predicate: mineclaw.owner-protection.verification.protection-active
+  - kind: planning
+    id: mineclaw.owner-protection.planning.protect-owner-candidates
+    version: 1.0.0
+    operationIds: [mineclaw.owner-protection.operation.protect-owner]
+  - kind: verification
+    id: mineclaw.owner-protection.verification.protection-active
+    version: 1.0.0
+  - kind: execution
+    id: mineclaw.owner-protection.execution.protect-owner
+    version: 1.0.0
+    operation:
+      operationId: mineclaw.owner-protection.operation.protect-owner
+      goalContributionId: mineclaw.owner-protection.goal.protect-owner
+      bindingContributionId: mineclaw.owner-protection.goal.protect-owner
+      factKinds: [owner_location, nearby_entities]
+      candidateContributionId: mineclaw.owner-protection.planning.protect-owner-candidates
+      predicateContributionId: mineclaw.owner-protection.verification.protection-active
+      progressContributionId: mineclaw.owner-protection.progress.protect-owner
+      resultContributionId: mineclaw.owner-protection.result.protect-owner
+      cancellable: true
+      applicability: { outcomes: [composed], targetKinds: [state], taskFamilies: [protection], criterionTypes: [predicate] }
+  - kind: planning
+    id: mineclaw.owner-protection.progress.protect-owner
+    version: 1.0.0
+    operationIds: [mineclaw.owner-protection.operation.protect-owner]
+  - kind: result
+    id: mineclaw.owner-protection.result.protect-owner
+    version: 1.0.0
+  - kind: proactive
+    id: mineclaw.owner-protection.proactive.auto-protect-owner
+    version: 1.0.0
+    label: 自动保护主人
+    description: 保护我
+    goalTarget: mineclaw.owner-protection.goal.protect-owner
+    rate: fast
+    priority: 100
+    defaultEnabled: true
+    conflictGroups: [minecraft:body]

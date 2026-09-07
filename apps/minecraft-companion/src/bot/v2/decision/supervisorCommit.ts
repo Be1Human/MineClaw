@@ -26,24 +26,8 @@ export function commit(
 ): void {
   for (const a of actions) {
     switch (a.kind) {
-      case 'l6.pause':
-        sinks.tasks.pause(a.taskId, a.resumePoint, 'automatic');
-        break;
-      case 'l6.resume':
-        sinks.tasks.resume(a.taskId);
-        // 重置卡死计时器 · 避免 resume 后立即被判为 stuck
-        state.lastProgressTick.delete(a.taskId);
-        // 恢复后重置恢复次数 · 允许下一次独立的恢复尝试
-        state.recoveryAttempts.delete(a.taskId);
-        break;
       case 'l6.fail':
         sinks.tasks.fail(a.taskId, a.reason);
-        break;
-      case 'state.add_suspended':
-        state.suspendedByDanger.add(a.taskId);
-        break;
-      case 'state.remove_suspended':
-        state.suspendedByDanger.delete(a.taskId);
         break;
       case 'state.push_diagnosis':
         state.recentDiagnoses.push(a.diagnosis);

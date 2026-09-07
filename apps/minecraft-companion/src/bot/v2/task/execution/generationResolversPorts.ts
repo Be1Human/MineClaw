@@ -7,14 +7,36 @@
  */
 import type { GenerationResolvers } from '../../plugin-kernel/lifecycle.js';
 import type { RegistrySnapshotRef, ContributionRef } from '../../plugin-sdk/identity.js';
-import type { PluginBehaviorFactory } from '../../plugin-sdk/contracts/execution.js';
+import type { PluginBehaviorFactory, PluginActivityFactory } from '../../plugin-sdk/contracts/execution.js';
 import type { PluginAtomicExecutor, PluginAtomicContract, AtomicExecutionContext } from '../../plugin-sdk/contracts/execution.js';
 import type { ControlledExecutionContext } from './ports/controlledExecution.js';
 
 export type ResolverOutcome<T> = { readonly status: 'resolved'; readonly value: T } | { readonly status: 'in_doubt'; readonly reason: string };
 
 export interface GenerationBehaviorResolverPort {
-  resolve(snapshot: RegistrySnapshotRef, contributionRef: ContributionRef): ResolverOutcome<PluginBehaviorFactory>;
+  resolve(snapshot: RegistrySnapshotRef, contributionRef: ContributionRef): ResolverOutcome<{
+    readonly factory: PluginBehaviorFactory;
+    readonly contribution: ContributionRef;
+  }>;
+  resolveById(snapshot: RegistrySnapshotRef, behaviorId: string): ResolverOutcome<{
+    readonly factory: PluginBehaviorFactory;
+    readonly contribution: ContributionRef;
+  }>;
+  list(snapshot: RegistrySnapshotRef): ResolverOutcome<readonly {
+    readonly factory: PluginBehaviorFactory;
+    readonly contribution: ContributionRef;
+  }[]>;
+}
+
+export interface GenerationActivityResolverPort {
+  resolve(snapshot: RegistrySnapshotRef, contributionRef: ContributionRef): ResolverOutcome<{
+    readonly factory: PluginActivityFactory;
+    readonly contribution: ContributionRef;
+  }>;
+  list(snapshot: RegistrySnapshotRef): ResolverOutcome<readonly {
+    readonly factory: PluginActivityFactory;
+    readonly contribution: ContributionRef;
+  }[]>;
 }
 
 export interface GenerationAtomicResolverPort {
@@ -49,9 +71,62 @@ export function createBehaviorResolver(resolvers: GenerationResolvers): Generati
       if (contribution.kind !== 'execution' || !contribution.behaviorFactory) {
         return { status: 'in_doubt', reason: 'no_behavior_factory_in_generation' };
       }
-      return { status: 'resolved', value: contribution.behaviorFactory };
+      return { status: 'resolved', value: { factory: contribution.behaviorFactory, contribution: result.entry.ref } };
+    },
+    resolveById(snapshot, behaviorId) {
+      const listed = listBehaviorEntries(resolvers, snapshot);
+      if (listed.status !== 'resolved') return listed;
+      const matches = listed.value.filter(value => value.contribution.contributionId === behaviorId || value.factory.id === behaviorId);
+      if (matches.length !== 1) {
+        return { status: 'in_doubt', reason: matches.length === 0
+          ? `behavior_not_in_generation:${behaviorId}`
+          : `behavior_id_ambiguous:${behaviorId}` };
+      }
+      return { status: 'resolved', value: matches[0]! };
+    },
+    list(snapshot) {
+      return listBehaviorEntries(resolvers, snapshot);
     },
   };
+}
+
+export function createActivityResolver(resolvers: GenerationResolvers): GenerationActivityResolverPort {
+  return {
+    resolve(snapshot, contributionRef) {
+      const result = resolvers.resolveContribution(snapshot, contributionRef);
+      if (result.status !== 'resolved' || !result.entry) return { status: 'in_doubt', reason: result.reason ?? 'activity_unresolved' };
+      const contribution = result.entry.contribution as { kind?: string; activityFactory?: PluginActivityFactory };
+      if (contribution.kind !== 'execution' || !contribution.activityFactory) {
+        return { status: 'in_doubt', reason: 'no_activity_factory_in_generation' };
+      }
+      return { status: 'resolved', value: { factory: contribution.activityFactory, contribution: result.entry.ref } };
+    },
+    list(snapshot) {
+      const generation = resolvers.resolveGeneration(snapshot);
+      if (!generation.record) return { status: 'in_doubt', reason: generation.reason ?? 'generation_unavailable' };
+      return { status: 'resolved', value: [...generation.record.registry.byId.values()].flatMap(entry => {
+        const contribution = entry.contribution as { kind?: string; activityFactory?: PluginActivityFactory };
+        return contribution.kind === 'execution' && contribution.activityFactory
+          ? [{ factory: contribution.activityFactory, contribution: entry.ref }]
+          : [];
+      }) };
+    },
+  };
+}
+
+function listBehaviorEntries(
+  resolvers: GenerationResolvers,
+  snapshot: RegistrySnapshotRef,
+): ResolverOutcome<Array<{ readonly factory: PluginBehaviorFactory; readonly contribution: ContributionRef }>> {
+  const generation = resolvers.resolveGeneration(snapshot);
+  if (!generation.record) return { status: 'in_doubt', reason: generation.reason ?? 'generation_unavailable' };
+  const values = [...generation.record.registry.byId.values()].flatMap(entry => {
+    const contribution = entry.contribution as { kind?: string; behaviorFactory?: PluginBehaviorFactory };
+    return contribution.kind === 'execution' && contribution.behaviorFactory
+      ? [{ factory: contribution.behaviorFactory, contribution: entry.ref }]
+      : [];
+  });
+  return { status: 'resolved', value: values };
 }
 
 /** Atomic executors come from the pinned generation's system atomic catalogs. */
@@ -146,10 +221,20 @@ interface AtomicCatalogEntry {
 }
 
 /** Adapter: controlled execution context -> SDK atomic context (assertCurrent/wait/deadline). */
-export function atomicExecutionContextAdapter(context: ControlledExecutionContext): AtomicExecutionContext {
+export function atomicExecutionContextAdapter(
+  context: ControlledExecutionContext,
+  registerCleanup: (cleanup: (reason: string) => Promise<void>) => void,
+): AtomicExecutionContext {
   return {
+    operationId: context.operationId,
+    operationEpoch: context.operationEpoch,
+    leaseRef: context.leaseRef,
+    stepId: context.stepId,
     deadlineAt: context.deadlineAt,
+    signal: context.signal,
     assertCurrent: (reason: string) => context.assertCurrent(reason),
+    effect: run => context.effect(run),
     wait: (ms: number) => context.wait(ms),
+    registerCleanup,
   };
 }

@@ -1,10 +1,12 @@
 import { normalizeLlmApi, type LlmApi } from '../llm/api.js';
+import type { ModelContextProfileBindingV1 } from '../llm/modelContextProfile.js';
 
 export interface LlmConfig {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
   api?: LlmApi;
+  contextProfile?: ModelContextProfileBindingV1;
 }
 
 export interface ResolvedLlmConfig {
@@ -13,6 +15,7 @@ export interface ResolvedLlmConfig {
   model: string;
   api: LlmApi;
   routeId?: string;
+  contextProfile?: ModelContextProfileBindingV1;
 }
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
@@ -44,6 +47,7 @@ export function resolveProfileLlmConfig(
     baseUrl: clean(fallback?.baseUrl) ?? DEFAULT_BASE_URL,
     model: clean(fallback?.model) ?? DEFAULT_MODEL,
     api: normalizeLlmApi(fallback?.api),
+    ...(fallback?.contextProfile ? { contextProfile: { ...fallback.contextProfile } } : {}),
   };
 
   // llm-test 显式传来的空 Endpoint 表示测试服务器默认配置，
@@ -63,5 +67,8 @@ export function resolveProfileLlmConfig(
     baseUrl,
     model,
     api: normalizeLlmApi(endpointSource?.api),
+    ...((override?.contextProfile ?? endpointSource?.contextProfile)
+      ? { contextProfile: { ...(override?.contextProfile ?? endpointSource!.contextProfile!) } }
+      : {}),
   };
 }

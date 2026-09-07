@@ -1,7 +1,7 @@
 /**
  * FEAT-CROSS-28-003 E2E contract side (CR/QR, E2E offline subset).
  * The QueryRunner consumes the real agriculture observation contribution through
- * the plugin catalog: nearby_crops answers carry mature crops with positions,
+ * the plugin catalog: nearby_crops answers carry all crops with maturity and positions,
  * coverage, time and completeness plus evidence; budgets hot-read from tuning.
  */
 import assert from 'node:assert/strict';
@@ -97,9 +97,10 @@ test('CR/QR E2E：QueryRunner 经真实 agriculture 观察回答 nearby_crops（
   assert.equal(answer.facts.length, 1);
   const fact = answer.facts[0]!;
   const payload = fact.payload as { crops: Array<{ position: { x: number }; state: string }>; count: number };
-  assert.equal(payload.count, 1, 'only age=7 wheat counts as mature');
+  assert.equal(payload.count, 2, 'nearby_crops includes mature and growing crops');
   assert.equal(payload.crops[0]!.position.x, 3);
   assert.equal(payload.crops[0]!.state, 'mature');
+  assert.equal(payload.crops[1]!.state, 'growing');
   assert.equal(fact.complete, true);
   assert.ok(fact.evidenceRefs.length >= 1);
   assert.ok(answer.freshness.fresh);
@@ -152,7 +153,7 @@ test('CR 负向：范围外无作物 → not_found 精确区分（不冒充全�
   assert.deepEqual(result.failures, []);
   const factory = (result.slot.read().active.registry.byId.get(HARVEST_FACT)!.contribution as { factory: unknown }).factory;
   const answer = await new QueryRunner({ resolveProvider: (kind: string) => kind === 'nearby_crops' ? [factory] : [] }).run(query(), new AbortController().signal);
-  // 有 provider 且扫描完整但零成熟作物 → not_found（范围性），而不是 unavailable。
+  // 有 provider 且扫描完整但零作物 → not_found（范围性），而不是 unavailable。
   assert.equal(answer.outcome, 'not_found');
   assert.match(answer.reason ?? '', /no_facts_in_scope/);
 });

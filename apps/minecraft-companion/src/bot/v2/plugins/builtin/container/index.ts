@@ -12,7 +12,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.container';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.container.goal.chest-access';
 const CANDIDATE = 'mineclaw.container.planning.chest-candidates';
 const PREDICATE = 'mineclaw.container.verification.chest-access-done';
@@ -29,8 +28,6 @@ export function createMineclawContainerPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -45,7 +42,7 @@ export function createMineclawContainerPlugin(): PluginFactory {
         list: async (input) => {
           const chest = input.params?.chest;
           if (!chest) return { status: 'unavailable', candidates: [], reason: 'chest_required' };
-          return { status: 'complete', candidates: [{ candidateId: 'chest:transfer', operationContribution: ref(OPERATION), params: { chest }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
+          return { status: 'complete', candidates: [{ candidateId: 'chest:transfer', operationContribution: ref(EXECUTOR), params: { chest }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
         },
       };
 
@@ -57,7 +54,7 @@ export function createMineclawContainerPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const done = (input.evidence?.tossed as boolean | undefined) === true || (input.evidence?.transferred as boolean | undefined) === true;
           return { verdict: done ? 'satisfied' : 'unknown', evidenceRefs: [], reason: done ? undefined : 'transfer_not_verified', contribution: ref(PREDICATE) };
         },
@@ -69,15 +66,12 @@ export function createMineclawContainerPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `chest-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const chest = (ctx.facts[0]?.payload as { chest?: Record<string, unknown> } | undefined)?.chest;
-            if (!chest) return { ok: false, cancelled: false, error: 'chest_required' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const receipt = await bodySubmit({ action: 'storage-system:deposit', chest });
-            return (receipt as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'transfer_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const chest = ctx.params.chest as Record<string, unknown> | undefined;
+            return chest
+              ? { ok: true, steps: [{ atomicId: 'deposit', args: { position: chest } }] }
+              : { ok: false, error: 'chest_required' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -125,6 +119,7 @@ export function createMineclawContainerPlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['deposit'], targetKinds: ['item'], taskFamilies: ['storage'], criterionTypes: ['item_deposited', 'predicate'] },
           },
           behaviorFactory,
         },

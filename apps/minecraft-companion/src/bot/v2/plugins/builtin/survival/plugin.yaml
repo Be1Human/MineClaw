@@ -49,6 +49,7 @@ contributions:
       progressContributionId: mineclaw.survival.progress.survive
       resultContributionId: mineclaw.survival.result.survive
       cancellable: true
+      applicability: { outcomes: [survive], targetKinds: [state], taskFamilies: [survival], criterionTypes: [predicate] }
   - kind: planning
     id: mineclaw.survival.progress.survive
     version: 1.0.0

@@ -31,13 +31,21 @@ export interface BotInstance {
   startedAt: number;
 }
 
+export interface LanWorldJoinTarget {
+  host: string;
+  port: number;
+}
+
+interface BotManagerEntry {
+  runtime: BotRuntime;
+  instance: BotInstance;
+  profile: BotProfile;
+  skinSyncRun: number;
+  connectionSource: 'profile' | 'lan';
+}
+
 export class BotManager {
-  private instances = new Map<string, {
-    runtime: BotRuntime;
-    instance: BotInstance;
-    profile: BotProfile;
-    skinSyncRun: number;
-  }>();
+  private instances = new Map<string, BotManagerEntry>();
   private readonly skinSyncService: SkinSyncService;
   defaultLlm: { apiKey: string; baseUrl: string; model: string; api?: import('../llm/api.js').LlmApi } | null = null;
 
@@ -104,7 +112,7 @@ export class BotManager {
       startedAt: Date.now(),
     };
 
-    const entry = { runtime, instance, profile, skinSyncRun: 0 };
+    const entry: BotManagerEntry = { runtime, instance, profile, skinSyncRun: 0, connectionSource: 'profile' };
 
     runtime.onStatusChange = (status) => {
       instance.status = status;
@@ -116,9 +124,7 @@ export class BotManager {
       this.onFullStatus?.(profile.id, instance.fullStatus);
     };
 
-    runtime.onGameJoined = () => {
-      void this.syncSkin(profile.id);
-    };
+    runtime.onGameJoined = () => this.handleGameJoined(entry);
 
     runtime.onChat = (sender, message, meta) => {
       this.onChat?.(profile.id, sender, message, meta);
@@ -199,6 +205,7 @@ export class BotManager {
     const entry = this.instances.get(botId);
     if (!entry) return null;
     if (profile) entry.profile = profile;
+    entry.connectionSource = 'profile';
     const connection = profile ? this.resolveConnection(profile) : undefined;
     await entry.runtime.reconnect(connection);
     return this.withSkinSync(entry, entry.runtime.getFullStatus());
@@ -211,10 +218,36 @@ export class BotManager {
       throw new Error('该角色未启用 Minecraft 能力');
     }
     if (profile) entry.profile = profile;
+    entry.connectionSource = 'profile';
     const connection = profile ? this.resolveConnection(profile) : undefined;
     await entry.runtime.joinGame(connection);
     entry.instance.fullStatus = this.withSkinSync(entry, entry.runtime.getFullStatus());
     entry.instance.status = entry.runtime.getStatus();
+    return entry.instance.fullStatus;
+  }
+
+  async joinLanWorld(botId: string, profile: BotProfile, target: LanWorldJoinTarget): Promise<BotFullStatus | null> {
+    const entry = this.instances.get(botId);
+    if (!entry) return null;
+    if (!resolveCharacterCard(profile).performance.capabilities.minecraft) {
+      throw new Error('该角色未启用 Minecraft 能力');
+    }
+    entry.profile = profile;
+    if (entry.runtime.getFullStatus().embodied) {
+      await entry.runtime.leaveGame();
+      entry.skinSyncRun += 1;
+      entry.instance.skinSync = this.idleSkinSync();
+    }
+    entry.connectionSource = 'lan';
+    const joined = await entry.runtime.joinGame({
+      host: target.host,
+      port: target.port,
+      version: undefined,
+      auth: 'offline',
+    });
+    entry.instance.fullStatus = this.withSkinSync(entry, entry.runtime.getFullStatus());
+    entry.instance.status = entry.runtime.getStatus();
+    if (!joined.ok) throw new Error(joined.error ?? 'connect_failed');
     return entry.instance.fullStatus;
   }
 
@@ -446,6 +479,18 @@ export class BotManager {
     return profile.server.presetId ? this.serverPresetStore?.get(profile.server.presetId) : undefined;
   }
 
+  private handleGameJoined(entry: BotManagerEntry): void {
+    if (entry.connectionSource === 'lan') {
+      this.setSkinSync(entry, {
+        state: 'unsupported',
+        message: '局域网世界未启用服务器皮肤同步',
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+    void this.syncSkin(entry.instance.id);
+  }
+
   private async syncSkin(botId: string): Promise<void> {
     const entry = this.instances.get(botId);
     if (!entry) return;
@@ -491,7 +536,7 @@ export class BotManager {
   }
 
   private setSkinSync(
-    entry: { runtime: BotRuntime; instance: BotInstance },
+    entry: Pick<BotManagerEntry, 'runtime' | 'instance'>,
     status: SkinSyncStatus,
   ): void {
     entry.instance.skinSync = status;

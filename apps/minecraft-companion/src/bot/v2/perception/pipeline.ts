@@ -14,6 +14,7 @@
 
 import type { GameAdapter } from '../../adapter/GameAdapter.js';
 import type { Vec3, RawEntity } from '../../adapter/types.js';
+import { categorizeEntity } from './entityClassification.js';
 import type { EventBusV2 } from '../infra/eventBus.js';
 import type {
   WorldStateView,
@@ -122,23 +123,34 @@ export class PerceptionPipeline {
         type: e.type,
         position: e.position,
         distance: dist3(selfPos, e.position),
-        category: categorize(e),
+        category: categorizeEntity(e),
         yaw: e.yaw,
         ...(e.skinUrl ? { skinUrl: e.skinUrl } : {}),
         ...(e.skinModel ? { skinModel: e.skinModel } : {}),
         ...(e.droppedItem ? { droppedItem: structuredClone(e.droppedItem) } : {}),
       }));
 
-    // 分桶：player 和 hostile 保证入选，其余按距离排序后截取
+    // 分桶：player 和 hostile 保证入选，其余按距离排序后截取。
+    // 主人可见时，敌对桶的窗口是“主人安全”窗口：先保留离主人最近的
+    // 威胁，才由护主等下游策略继续做战术选择。否则下游只能对已经被
+    // self-centric 截断过的候选排序，无法恢复真正的最近主人威胁。
     const players = allEntities.filter(e => e.category === 'player');
     const hostiles = allEntities.filter(e => e.category === 'hostile');
+    const ownerPosition = owner?.position ?? null;
     const others = allEntities
       .filter(e => e.category !== 'player' && e.category !== 'hostile')
       .sort((a, b) => a.distance - b.distance);
 
     const entities: EntityView[] = [
       ...players,
-      ...hostiles.sort((a, b) => a.distance - b.distance),
+      ...hostiles.sort((a, b) => {
+        if (ownerPosition) {
+          const ownerDistanceA = dist3(a.position, ownerPosition);
+          const ownerDistanceB = dist3(b.position, ownerPosition);
+          if (ownerDistanceA !== ownerDistanceB) return ownerDistanceA - ownerDistanceB;
+        }
+        return a.distance - b.distance || a.id - b.id;
+      }),
       ...others,
     ].slice(0, 32);
 
@@ -324,14 +336,4 @@ function dist3(a: Vec3, b: Vec3): number {
   const dy = a.y - b.y;
   const dz = a.z - b.z;
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-function categorize(e: RawEntity): EntityView['category'] {
-  if (e.type === 'player') return 'player';
-  if (e.droppedItem) return 'item';
-  const hostiles = ['zombie', 'skeleton', 'creeper', 'spider', 'witch', 'enderman'];
-  if (hostiles.some(h => e.name.includes(h))) return 'hostile';
-  const passives = ['cow', 'pig', 'sheep', 'chicken', 'rabbit'];
-  if (passives.some(p => e.name.includes(p))) return 'passive';
-  return 'other';
 }

@@ -1,4 +1,5 @@
 import { BodyActionService } from './task/execution/bodyActionService.js';
+import { ActivityRunner } from './task/execution/activityRunner.js';
 /**
  * v2 Runtime 装配器 · "跟着我" 场景所需模块全部组装
  *
@@ -16,6 +17,7 @@ import type { NavigationAdapter } from '../adapter/NavigationAdapter.js';
 import { randomUUID } from 'node:crypto';
 
 import { EventBusV2 } from './infra/eventBus.js';
+import { RuntimeStorageLayout } from './infra/runtimeStorageLayout.js';
 import {
   LlmTraceEventStore,
   LlmTraceQueryService,
@@ -39,6 +41,7 @@ import { TemplateRenderer } from './narration/templateRenderer.js';
 import { AsyncTaskQueue } from './infra/asyncTaskQueue.js';
 import { TickRegistry, TickRate } from './infra/tickRegistry.js';
 import { Heartbeat, type HeartbeatConfig } from './infra/heartbeat.js';
+import { OwnerThreatHeartbeatCadencePolicy } from './infra/heartbeatCadence.js';
 import { PerceptionPipeline } from './perception/pipeline.js';
 import { TaskRuntime } from './task/taskRuntime.js';
 import { PreconditionRegistry } from './task/preconditionRegistry.js';
@@ -47,28 +50,31 @@ import { tuning } from './infra/tuning.js';
 import { gamePresenceFromWorld } from './gamePresenceContext.js';
 import {
   buildRuntimePluginKernel,
+  createRuntimeObservationCatalog,
   createRuntimeObservationPorts,
   type RuntimePluginKernelResult,
 } from './infra/pluginRuntimeBridge.js';
-import { createAtomicEntryResolver, createContractResolver, type GenerationAtomicEntryPort } from './task/execution/generationResolversPorts.js';
-import { projectAtomicContractsToKnowledge } from './plugin-kernel/generationKnowledgeProjection.js';
-import type { ActionContractDefinition } from './atomic/contracts/atomicContractRegistry.js';
+import { QueryRunner } from './decision/knowledgeQueryRunner.js';
+import { KnowledgeQueryPort } from './decision/knowledgeQueryPort.js';
+import {
+  createAtomicEntryResolver,
+  createActivityResolver,
+  createBehaviorResolver,
+  createContractResolver,
+  type GenerationAtomicEntryPort,
+  type GenerationActivityResolverPort,
+  type GenerationBehaviorResolverPort,
+} from './task/execution/generationResolversPorts.js';
+import { GenerationRuntimeProjection } from './plugin-kernel/runtimeProjection.js';
+import { createGenerationCapabilityKnowledge } from './plugin-kernel/goalCapabilityKnowledge.js';
+import { GenerationDomainKnowledgePort, GenerationSkillKnowledgePort } from './plugin-kernel/generationResources.js';
 import type { FailureCode } from './task/failureReason.js';
 import { TaskRegistry } from './knowledge/taskRegistry.js';
-import { createRuntimeCapabilityKnowledge } from './capabilities/capabilityRuntimeProjection.js';
 import { GoalAgentRoundToolRuntime } from './task/goalAgent/goalAgentRoundTools.js';
-import { GoalDraftCompiler } from './task/goalAgent/goalDraftCompiler.js';
+import { GoalCompiler } from './task/goalAgent/goalCompiler.js';
 import { GoalPlanAuthority } from './task/goalAgent/goalPlanAuthority.js';
-import { CapabilityProgressPolicy } from './capabilities/capabilityProgressPolicy.js';
-import {
-  DEFAULT_GOAL_TARGETS,
-  InMemoryGoalKnowledgePort,
-} from './knowledge/goalTargetKnowledge.js';
-import { DomainKnowledgeRegistry } from './knowledge/domainKnowledge.js';
-import { buildRecipeKnowledgeDocuments } from './knowledge/recipeKnowledge.js';
+import { ProjectedGoalKnowledgePort } from './knowledge/goalTargetKnowledge.js';
 import { confirmCompletion } from './decision/goalAgentPort/completionConfirmationGate.js';
-import { AgentSkillRegistry } from './skills/skillRegistry.js';
-import { GoalAgentSkillKnowledgeAdapter } from './skills/goalAgentSkillKnowledge.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -85,8 +91,6 @@ import {
   type GoalStatusSnapshotV2,
 } from './decision/goalAgentPort/index.js';
 import { FollowStrategy } from './strategy/followStrategy.js';
-import { ReflexStrategy } from './strategy/reflexStrategy.js';
-import { FarmStrategy } from './strategy/farmStrategy.js';
 import { GatherStrategy } from './strategy/gatherStrategy.js';
 import { GotoStrategy } from './strategy/gotoStrategy.js';
 import { ProvisionStrategy } from './strategy/provisionStrategy.js';
@@ -99,31 +103,14 @@ import {
   ChestMemoryProvider,
 } from './task/resourceProvider.js';
 import { DecisionPolicy } from './task/decisionPolicy.js';
-import { createDefaultAtomicContractRegistry } from './atomic/contracts/defaultContracts.js';
 import type { BusEvent, WorldStateView } from './types.js';
 import { LLMClient } from './cognitive/llm/LLMClient.js';
-import { BehaviorRegistry } from './behavior/behaviorRegistry.js';
-import { FollowBehavior } from './behavior/followBehavior.js';
-import { FarmBehavior } from './behavior/farmBehavior.js';
-import { CombatBehavior } from './behavior/combatBehavior.js';
-import { FleeBehavior } from './behavior/fleeBehavior.js';
-import { GatherBehavior } from './behavior/gatherBehavior.js';
-import { CraftBehavior } from './behavior/craftBehavior.js';
-import { ChestWithdrawBehavior } from './behavior/chestWithdrawBehavior.js';
-import { DepositToChestBehavior } from './behavior/depositToChestBehavior.js';
-import { DeliverToOwnerBehavior } from './behavior/deliverToOwnerBehavior.js';
-import { PlaceRelativeBehavior } from './behavior/placeRelativeBehavior.js';
-import { PickupGroundItemBehavior } from './behavior/pickupGroundItemBehavior.js';
 import { CriticRegistry, RuleCritic, makeVerdict } from './task/critic/ruleCritic.js';
 import { buildPostconditionFn } from './task/critic/postconditionBuilder.js';
 import { SubtaskInjector } from './task/subtaskInjector.js';
 import { StrategyStore } from './task/strategy/strategyStore.js';
 import { WorldScanCapability } from './capability/worldScanCapability.js';
 import { MineralProbeCapability } from './capability/mineralProbeCapability.js';
-import { CapabilityPackageRegistry } from './capabilities/capabilityPackageRegistry.js';
-import { loadCapabilityResourcePackage } from './capabilities/capabilityManifestLoader.js';
-import { createAgricultureCapabilityPackage } from './capabilities/agriculture/agricultureCapabilityPackage.js';
-import { createAmbientProactiveCapabilityPackage } from './capabilities/ambient/ambientProactiveCapabilityPackage.js';
 import {
   MainBrainProactiveInbox,
   ProactiveCapabilityStateStore,
@@ -138,7 +125,6 @@ import {
 } from './proactive/index.js';
 import { WorldMapStoreImpl, type WorldMapStore } from './infra/worldMapStore.js';
 import { WorldMapCollectorImpl, type WorldMapCollector } from './infra/worldMapCollector.js';
-import { rankChestTargets } from './task/goalAgent/production/containerTargetResolver.js';
 import { installPatchedBlockAt, type PatchStats, type BotBlockAtTarget } from './infra/patchedBlockAt.js';
 import { NavFailureFeedback } from './strategy/navFailureFeedback.js';
 import { CompanionCore } from './companion/companionCore.js';
@@ -150,6 +136,10 @@ import type { CharacterCardV1 } from '../../character/types.js';
 import type { GoalProgressReportLevel } from './decision/goalAgentPort/goalProgressCommunicationGovernor.js';
 import { ExecutionFactLog } from './task/execution/executionFactLog.js';
 import { TaskRuntimeFactBridge } from './task/execution/taskRuntimeFactBridge.js';
+import { OperationLedger } from './task/execution/operationLedger.js';
+import { OperationRecoveryCoordinator } from './task/execution/operationRecoveryCoordinator.js';
+import { evaluateGoalCriteriaState } from './task/goalRunner/goalCriteriaEvaluator.js';
+import type { GoalSuccessCriterion } from './task/contracts/goalTypes.js';
 
 export type PlannerEvolutionMode = 'off' | 'observe' | 'active';
 import type { PlannerExperienceBundle, PlannerExperienceFreezeResult } from './task/planner/experience/plannerExperienceProvider.js';
@@ -158,7 +148,6 @@ import type { ExperienceFreezeRequest } from './task/planner/experience/experien
 import type { PlannerPolicyInvalidationV1 } from './task/planner/evolution/plannerEvolutionRuntime.js';
 import {
   GoalAgent,
-  GoalAgentActionLedger,
   GoalAgentProductionExecutionPort,
   GoalAgentProductionExperiencePort,
   GoalAgentProductionPerceptionPort,
@@ -180,8 +169,6 @@ export interface V2RuntimeConfig {
   ownerName: string;
   /** 主人别名列表（游戏 ID / Web 用户名等多身份）· 可选 */
   ownerAliases?: string[];
-  /** tick 周期 ms · 默认 200 */
-  tickMs?: number;
   /** ⑧ Execute 是否阻塞 · 默认 false（推荐，符合 v2.0 设计） */
   blockingExecute?: boolean;
   /** 是否让任务终态触发 MainBrain 再决策 · 默认 true；隔离评测可关闭 */
@@ -318,8 +305,6 @@ export class V2Runtime {
   /** FEAT-L6-04 · 触发器结果记忆（连败退避 + 战后冷却） */
   readonly triggerOutcomes: TriggerOutcomeMemory;
   readonly follow: FollowStrategy;
-  readonly reflex: ReflexStrategy;
-  readonly farm: FarmStrategy;
   readonly gather: GatherStrategy;
   readonly goto: GotoStrategy;
   readonly provision: ProvisionStrategy;
@@ -329,7 +314,7 @@ export class V2Runtime {
   readonly policy: DecisionPolicy;
   readonly heart: Heartbeat;
   readonly body: BodyActionService;
-  readonly behaviorRegistry: BehaviorRegistry;
+  readonly activityRunner: ActivityRunner;
   readonly asyncQueue: AsyncTaskQueue;
   readonly tickRegistry: TickRegistry;
   readonly subtaskInjector: SubtaskInjector;
@@ -357,6 +342,8 @@ export class V2Runtime {
   static readonly TRAJECTORY_INTERVAL_MS = 30_000;
 
   private running = false;
+  /** Runtime-owned stores are terminally closed even if start() was never called. */
+  private stopped = false;
   private readonly memoryCapabilityEnabled: boolean;
   private memoryConsolidationEnabled: boolean;
   private unsubBusForUi: (() => void) | null = null;
@@ -365,6 +352,10 @@ export class V2Runtime {
   private plannerPolicyInvalidationUnsub: (() => void) | null = null;
   private taskRuntimeFactBridge: TaskRuntimeFactBridge | null = null;
   private executionFacts: ExecutionFactLog | null = null;
+  private operationLedger: OperationLedger | null = null;
+  private readonly storageLayout: RuntimeStorageLayout;
+  private operationRecoveryAbort: AbortController | null = null;
+  private operationRecoveryPromise: Promise<unknown> | null = null;
   private goalAgentTaskProjection: GoalAgentTaskProjection | null = null;
   /** FEAT-CROSS-21 · 完成确认被拒后的重试计数（按 requestId）。 */
   private readonly confirmationRetries = new Map<string, number>();
@@ -386,6 +377,7 @@ export class V2Runtime {
 
   constructor(private readonly cfg: V2RuntimeConfig) {
     const log = (msg: string) => cfg.onLog?.('info', `[v2] ${msg}`);
+    this.storageLayout = new RuntimeStorageLayout(cfg.dbPath);
 
     this.bus = new EventBusV2();
     this.bus.on('atomic.toss_item.success',event=>{
@@ -419,8 +411,7 @@ export class V2Runtime {
       });
       if(this.placementReceipts.length>100)this.placementReceipts.splice(0,this.placementReceipts.length-100);
     });
-    const runtimeDataDir = dirname(cfg.dbPath ?? 'data/v2-memory.db');
-    this.benchRecorder = new RunRecorder(this.bus, cfg.runsDir ?? join(runtimeDataDir, 'runs'));
+    this.benchRecorder = new RunRecorder(this.bus, cfg.runsDir ?? this.storageLayout.directory('runs'));
       this.memory = new MemoryV2(cfg.dbPath);
       const prunedEvents = this.memory.pruneEventsByType(NON_DURABLE_EVENT_TYPES);
       if (prunedEvents > 0) log(`清理 ${prunedEvents} 条非耐久 Heartbeat telemetry`);
@@ -435,7 +426,7 @@ export class V2Runtime {
       });
     // FEAT-L7-09 · Hermes 内置记忆 · 落在 v2-memory.db 同目录的 memories/
     this.botMemory = new BotMemoryStore(
-      { dir: join(dirname(cfg.dbPath ?? 'data/v2-memory.db'), 'memories') },
+      { dir: this.storageLayout.directory('memories') },
       (m) => log(`[memory] ${m}`),
     );
     const chatProfileId = cfg.chatProfileId ?? cfg.botName ?? cfg.ownerName;
@@ -443,9 +434,7 @@ export class V2Runtime {
     this.llmTraceStore = new LlmTraceEventStore({
       profileId: chatProfileId,
       filename: cfg.llmTraceDbPath
-        ?? (cfg.dbPath === ':memory:'
-          ? ':memory:'
-          : join(runtimeDataDir, `llm-traces-${traceProfileFile}.db`)),
+        ?? this.storageLayout.database(`llm-traces-${traceProfileFile}.db`),
     });
     this.llmTraceQuery = new LlmTraceQueryService(this.llmTraceStore);
     this.memoryCapabilityEnabled = cfg.chatMemoryAutoCapture ?? true;
@@ -458,10 +447,8 @@ export class V2Runtime {
         || !this.memoryConsolidationEnabled
       ),
       embeddingProvider: cfg.chatMemorySemanticSearch === false ? null : new LocalTokenEmbeddingProvider(),
-      dbPath: cfg.chatMemoryDbPath ?? join(
-        dirname(cfg.dbPath ?? 'data/v2-memory.db'),
-        `chat-memory-${chatProfileId.replace(/[^a-zA-Z0-9_-]/g, '_')}.db`,
-      ),
+      dbPath: cfg.chatMemoryDbPath
+        ?? this.storageLayout.database(`chat-memory-${chatProfileId.replace(/[^a-zA-Z0-9_-]/g, '_')}.db`),
     });
 
     // FEAT-NARR-01 · 统一语言中枢 · 自驱系统的通知经此去重/仲裁/出口，并写入 NoticeLog 供注入大模型上下文
@@ -484,7 +471,7 @@ export class V2Runtime {
     this.bus.on('chat.from_owner', () => { this.lastOwnerChatAt = Date.now(); });
 
     // FEAT-L1-01: 记忆地图 — WorldMapStore + Collector + patchedBlockAt
-    const worldMapDbPath = cfg.worldMapDbPath ?? 'data/world_map.db';
+    const worldMapDbPath = cfg.worldMapDbPath ?? this.storageLayout.database('world_map.db');
     this.worldMap = new WorldMapStoreImpl(worldMapDbPath);
     this.worldMapCollector = new WorldMapCollectorImpl(cfg.game, this.worldMap, {
       intervalMs: 2000,
@@ -525,9 +512,7 @@ export class V2Runtime {
       ownerAliases: cfg.ownerAliases,
     });
     const episodeDbPath = cfg.episodeDbPath
-      ?? (cfg.dbPath === ':memory:'
-        ? ':memory:'
-        : join(runtimeDataDir, `memory-episodes-${chatProfileId.replace(/[^a-zA-Z0-9_-]/g, '_')}.db`));
+      ?? this.storageLayout.database(`memory-episodes-${chatProfileId.replace(/[^a-zA-Z0-9_-]/g, '_')}.db`);
     this.episodeStore = new EpisodeStore(episodeDbPath);
     this.episodeCapture = new RuntimeEpisodeCapture({
       profileId: chatProfileId,
@@ -547,9 +532,7 @@ export class V2Runtime {
       }),
     });
     const memoryCatalogPath = cfg.memoryCatalogPath
-      ?? (cfg.dbPath === ':memory:'
-        ? ':memory:'
-        : join(runtimeDataDir, `memory-catalog-${chatProfileId.replace(/[^a-zA-Z0-9_-]/g, '_')}.db`));
+      ?? this.storageLayout.database(`memory-catalog-${chatProfileId.replace(/[^a-zA-Z0-9_-]/g, '_')}.db`);
     let memoryCatalog: MemoryCatalog;
     let catalogReady = false;
     if (cfg.memorySystemEnabled !== false) {
@@ -646,33 +629,19 @@ export class V2Runtime {
       this.perception,
     );
     this.follow = new FollowStrategy();
-    this.reflex = new ReflexStrategy(this.tasks);
-    this.farm = new FarmStrategy(this.bus, this.tasks);
     this.gather = new GatherStrategy(cfg.game, this.bus, this.tasks);
     this.goto = new GotoStrategy(this.bus, this.tasks);
     this.provision = new ProvisionStrategy(cfg.game, this.bus, this.tasks);
-    this.survival = new SurvivalStrategy(this.tasks);
+    this.survival = new SurvivalStrategy();
     this.escape = new EscapeStrategy(cfg.game, this.tasks);
     // One assembly list feeds heartbeat and discovery; a YAML class name cannot register a strategy.
-    const taskStrategies = [this.escape, this.follow, this.farm, this.gather, this.goto, this.provision];
-    const autoDefenseStrategies = [this.survival];
+    const taskStrategies = [this.escape, this.follow, this.gather, this.goto, this.provision];
+    const hazardFallbackStrategies = [this.survival];
     this.resolver = new ResourceResolver();
     this.resolver.register(new InventoryProvider());
     this.resolver.register(new CraftProvider());
     this.resolver.register(new ChestMemoryProvider(this.memory));
     this.policy = new DecisionPolicy();
-    this.behaviorRegistry = new BehaviorRegistry();
-    this.behaviorRegistry.register(new FollowBehavior());
-    this.behaviorRegistry.register(new FarmBehavior());
-    this.behaviorRegistry.register(new CombatBehavior());
-    this.behaviorRegistry.register(new FleeBehavior());
-    this.behaviorRegistry.register(new GatherBehavior());
-    this.behaviorRegistry.register(new CraftBehavior());
-    this.behaviorRegistry.register(new ChestWithdrawBehavior());
-    this.behaviorRegistry.register(new DepositToChestBehavior());
-    this.behaviorRegistry.register(new DeliverToOwnerBehavior());
-    this.behaviorRegistry.register(new PlaceRelativeBehavior());
-    this.behaviorRegistry.register(new PickupGroundItemBehavior());
     this.asyncQueue = new AsyncTaskQueue();
     this.tickRegistry = new TickRegistry();
     this.proactiveStateStore = new ProactiveCapabilityStateStore();
@@ -790,6 +759,37 @@ export class V2Runtime {
       )
       : null;
 
+    const runtimeGetWorld = () => this.perception.getWorldState() ?? this.perception.perceive();
+    const observationPorts = createRuntimeObservationPorts(runtimeGetWorld, cfg.game);
+    this.pluginKernelReady = buildRuntimePluginKernel({
+      systemPorts: {
+        game: cfg.game,
+        nav: cfg.nav,
+        bus: this.bus,
+        getWorld: runtimeGetWorld,
+        blockObservation: observationPorts.block,
+        inventoryObservation: observationPorts.inventory,
+        ownerContextObservation: observationPorts.owner,
+        ...(llmClient ? { llm: llmClient } : {}),
+      },
+    });
+    void this.pluginKernelReady.then(result => {
+      this.pluginKernelResult = result;
+      if (result.ok && result.slot) {
+        this.proactiveCapabilities = new GenerationRuntimeProjection(result.slot, '2.0.0')
+          .proactive(this.runtimeSnapshotRef());
+        this.proactiveScheduler?.setCapabilities(this.proactiveCapabilities);
+      }
+      this.bus.publish('plugin.kernel.status', result.ok ? 'info' : 'recoverable', {
+        ok: result.ok,
+        installed: result.installed.length,
+        failures: result.failures,
+      });
+      log(result.ok
+        ? `[plugin-kernel] 就绪 · ${result.installed.length} 个插件已发布`
+        : `[plugin-kernel] boot 失败: ${result.failures.join('; ') || 'unknown'}`);
+    });
+
     // FEAT-L6-04 · 触发器结果记忆 · 订阅任务终态维护连败退避；IDLE trigger 立项前咨询
     this.triggerOutcomes = new TriggerOutcomeMemory();
     this.bus.on('task.completed', ev => {
@@ -812,10 +812,14 @@ export class V2Runtime {
     const capabilityRouter = new GoalCapabilityRouter();
     // FEAT-CROSS-07 · 固化策略库提前建好（供主脑 manage_strategy 工具 + goal 求解器 fast-path 共用）
     if (goalSystemOn && tuning().strategy.enabled) {
-      this.strategyStore = new StrategyStore(cfg.strategyDir ?? join(runtimeDataDir, 'strategies'), () => Date.now(), (m) => log(m));
+      this.strategyStore = new StrategyStore(cfg.strategyDir ?? this.storageLayout.directory('strategies'), () => Date.now(), (m) => log(m));
     }
+    const profileId = cfg.plannerExecutionConfigRevision ?? cfg.botName ?? 'default';
+    const profileFile = profileId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const operationLedger = new OperationLedger(this.storageLayout.database(`goal-agent-actions-${profileFile}.db`));
+    this.operationLedger = operationLedger;
     this.body = new BodyActionService({
-      game:cfg.game,nav:cfg.nav,registry:this.behaviorRegistry,bus:this.bus,tasks:this.tasks,
+      game:cfg.game,nav:cfg.nav,bus:this.bus,tasks:this.tasks,
       getWorld:()=>this.perception.getWorldState() ?? this.perception.perceive(),
       isEmbodied:()=>this.isEmbodied(),
       getGoalState:sessionId=>this.goalAgent?.snapshot(sessionId) ?? null,
@@ -823,119 +827,100 @@ export class V2Runtime {
       getSnapshot:()=>this.runtimeSnapshotRef(),
       // P3-4 · 原子存在性经当前代（惰性：kernel boot 后可用；未就绪 accepts fail-closed）。
       atomicResolver:this.runtimeAtomicResolver(),
+      behaviorResolver:this.runtimeBehaviorResolver(),
+      hostApiVersion:'2.0.0',
+      ledger:operationLedger,
     });
+    this.activityRunner = new ActivityRunner({
+      tasks: this.tasks,
+      body: this.body,
+      bus: this.bus,
+      activities: this.runtimeActivityResolver(),
+      hostApiVersion: '2.0.0',
+      getWorld: runtimeGetWorld,
+      getHostConfig: () => tuning().pluginActivities,
+    });
+    this.operationRecoveryAbort = new AbortController();
+    const operationRecoverySignal = this.operationRecoveryAbort.signal;
+    this.operationRecoveryPromise = this.pluginKernelReady?.then(async result => {
+      if (operationRecoverySignal.aborted) return;
+      if (!result.ok || !result.slot) return;
+      const projection = new GenerationRuntimeProjection(result.slot, '2.0.0');
+      const recovery = new OperationRecoveryCoordinator(operationLedger, { readback: async (record, signal) => {
+        const intent = record.intent;
+        if (!intent || intent.expectedEffects.length === 0) return {
+          status:'unknown',evidenceRefs:[`operation-readback:${record.operationId}:no-postcondition`],
+          reason:'operation_has_no_fixed_postcondition',at:Date.now(),
+        };
+        // Prove the operation contribution still belongs to the persisted Generation before interpreting facts.
+        projection.resolveOperation(intent.command.snapshot, intent.command.ref.contribution);
+        const observed = runtimeGetWorld();
+        const facts = await projection.observeAll(intent.command.snapshot, observed, signal);
+        const world = { ...structuredClone(observed), capabilityFacts:facts };
+        const criteria = intent.expectedEffects.map(criterion => ({ ...criterion, since:record.startedAt })) as GoalSuccessCriterion[];
+        const verdict = evaluateGoalCriteriaState({ goalText:`recover ${record.operationId}`,successCriteria:criteria },world,{
+          deliveries:this.deliveryReceipts,deposits:this.depositReceipts,placements:this.placementReceipts,
+          predicateEvaluators:projection.predicateEvaluators(intent.command.snapshot),
+        });
+        const evidenceRefs = verdict.evidenceRefs?.length
+          ? verdict.evidenceRefs
+          : [`operation-readback:${record.operationId}:world:${world.tick}`];
+        return verdict.status === 'satisfied'
+          ? {status:'completed',effects:record.effects,evidenceRefs,reason:verdict.detail,at:Date.now()}
+          : {status:'unknown',evidenceRefs,reason:`${verdict.status}:${verdict.detail}`,at:Date.now()};
+      } });
+      const recovered = await recovery.recover(operationRecoverySignal);
+      if (operationRecoverySignal.aborted) return;
+      for (const item of recovered) this.bus.publish('body.operation_recovery',item.status === 'recovered' ? 'info':'recoverable',item);
+    }) ?? null;
 
     if (goalSystemOn && llmClient) {
-      const profileId = cfg.plannerExecutionConfigRevision ?? cfg.botName ?? 'default';
-      const profileFile = profileId.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const actionLedger = new GoalAgentActionLedger(join(runtimeDataDir, `goal-agent-actions-${profileFile}.db`));
       this.goalAgentTaskProjection = new GoalAgentTaskProjection(this.tasks);
-      const agentSkillRegistry = new AgentSkillRegistry(message => log(message));
-      agentSkillRegistry.loadLocalDir(cfg.agentSkillsDir ?? join(__dirname, '../../../skills'));
       const goalToolNames = new GoalAgentRoundToolRuntime({ profileId, tools: {} }).names();
-      const skillKnowledge = new GoalAgentSkillKnowledgeAdapter(agentSkillRegistry, () => goalToolNames);
+      const skillKnowledge = new GenerationSkillKnowledgePort(
+        () => this.pluginKernel?.slot ?? null,
+        () => this.runtimeSnapshotRef(),
+        () => goalToolNames,
+      );
       for (const skill of skillKnowledge.catalog({ limit: 64 })) {
         if (skill.toolCompatibility?.state === 'unsupported_tools') {
           log(`[v2][capabilities] Skill ${skill.name} references unsupported tools: ${skill.toolCompatibility.missingTools.join(', ')}`);
         }
       }
-      const agricultureResources = loadCapabilityResourcePackage(
-        join(__dirname, '../../../capability-packages/agriculture'),
+      const domainKnowledge = new GenerationDomainKnowledgePort(
+        () => this.pluginKernel?.slot ?? null,
+        () => this.runtimeSnapshotRef(),
       );
-      // BUG-CROSS-80 · 配方知识与执行层同源：从 getCraftRecipes/getItemSource 生成领域知识文档。
-      // 生成依赖 bot.registry（mineflayer 连接后才有），故延迟到 onSpawn 时注入；
-      // 初始 registry 只装能力包 Markdown（农业），bot 上线后 addAll 配方知识（幂等）。
-      const domainKnowledge = new DomainKnowledgeRegistry(agricultureResources.knowledgeDocuments);
-      const recipeKnowledgeItems = DEFAULT_GOAL_TARGETS
-        .filter(target => target.kind === 'item' && target.registryId.startsWith('minecraft:'))
-        .map(target => ({
-          id: target.registryId.replace(/^minecraft:/, ''),
-          aliases: target.aliases,
-        }));
-      const attachRecipeKnowledge = (): void => {
-        try {
-          const documents = buildRecipeKnowledgeDocuments({
-            items: recipeKnowledgeItems,
-            data: {
-              getCraftRecipes: (item, withTable) => cfg.game.getCraftRecipes(item, withTable),
-              getItemSource: item => cfg.game.getItemSource(item),
-            },
-          });
-          const added = domainKnowledge.addAll(documents);
-          if (added > 0) {
-            log(`[v2][knowledge] recipe knowledge attached: ${added} documents`);
-          }
-        } catch (error) {
-          log(`[v2][knowledge] recipe knowledge attach failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      };
-      // bot 上线/spawn 时注入；死亡重生重复触发时 addAll 幂等跳过已存在 id。
-      cfg.game.onSpawn(() => attachRecipeKnowledge());
-      const capabilityPackages = new CapabilityPackageRegistry({
-        atomicIds: createDefaultAtomicContractRegistry().list().map(value => value.action),
-        behaviorIds: this.behaviorRegistry.list().map(value => value.id),
-        strategyIds: this.strategyStore?.usable().map(value => value.id) ?? [],
-        skillNames: agentSkillRegistry.list()
-          .filter(value => value.meta.agent !== 'main' && (value.meta.uses ?? []).every(name => goalToolNames.includes(name)))
-          .map(value => value.meta.name),
-        knowledgeIds: domainKnowledge.ids(),
-        goalTargetIds: DEFAULT_GOAL_TARGETS.map(value => value.registryId),
-        taskKinds: this.taskRegistry.listAll().map(value => value.kind),
+      const goalKnowledge = new ProjectedGoalKnowledgePort(() => {
+        const projection = this.runtimeProjectionSafe();
+        const snapshot = this.runtimeSnapshotRefSafe();
+        return projection && snapshot ? projection.goalTargets(snapshot) : [];
       });
-      capabilityPackages.register(createAgricultureCapabilityPackage({
-        game: cfg.game,
-        manifest: agricultureResources.manifest,
-        resolveChestTargets: (requestText, world) => {
-          const positions = cfg.game.findBlocks({ names: ['chest', 'trapped_chest'], maxDistance: 32, count: 12 });
-          return rankChestTargets(positions, requestText, world);
+      const goalCompiler = new GoalCompiler({
+        predicates: state => {
+          const projection = this.runtimeProjectionSafe();
+          return projection && state.snapshotRef ? projection.predicateEvaluators(state.snapshotRef, state) : [];
         },
-      }));
-      capabilityPackages.register(createAmbientProactiveCapabilityPackage());
-      const capabilitySnapshot = capabilityPackages.snapshot();
-      const goalDraftCompiler = new GoalDraftCompiler({
-        predicates: () => capabilitySnapshot.predicateEvaluators,
-        bindings: state => capabilitySnapshot.goalBindingProviders.flatMap(provider => [...provider.list(state)]),
+        bindings: async state => {
+          const projection = this.runtimeProjection();
+          const world = state.world.latest;
+          if (!world || !state.snapshotRef) return [];
+          return projection.goalBindings(state.snapshotRef, state, world, new AbortController().signal);
+        },
       });
-      const goalPlanAuthority = new GoalPlanAuthority({ snapshot: () => capabilitySnapshot, bindings: state => goalDraftCompiler.bindings(state) });
-      this.proactiveCapabilities = capabilitySnapshot.proactiveTicks;
-      for (const behavior of capabilitySnapshot.behaviors) this.behaviorRegistry.register(behavior);
-      const goalKnowledge = new InMemoryGoalKnowledgePort([
-        ...DEFAULT_GOAL_TARGETS,
-        ...capabilitySnapshot.goalTargets,
-      ]);
+      const goalPlanAuthority = new GoalPlanAuthority({
+        resolve: (state, ref) => {
+          if (!state.snapshotRef) throw new Error('needs_rebind:goal_snapshot_missing');
+          return this.runtimeProjection().resolveOperation(state.snapshotRef, ref);
+        },
+      });
       const executionPort = new GoalAgentProductionExecutionPort({
-        game:cfg.game,bus:this.bus,body:this.body,
-        getWorld:()=>this.perception.getWorldState() ?? this.perception.perceive(),
-        behaviors: this.behaviorRegistry,
-        tasks: this.tasks,
+        body:this.body,
         parentTaskId: sessionId => this.goalAgentTaskProjection?.rootTaskId(sessionId) ?? null,
-        resolveGatherTargets: (item, world) => {
-          const source = cfg.game.getItemSource(item);
-          if (!source) return [];
-          try {
-            return cfg.game.findBlocks({ names: source.block, maxDistance: 64, count: 4 }).map(pos => ({
-              pos,
-              blockName: source.block,
-              ...(source.requiredTool ? { toolName: source.requiredTool } : {}),
-            }));
-          } catch {
-            return [];
-          }
-        },
-        resolveChestTargets: (_item, _count, requestText, world) => {
-          try {
-            const positions = cfg.game.findBlocks({ names: ['chest', 'trapped_chest'], maxDistance: 32, count: 12 });
-            return rankChestTargets(positions, requestText, world);
-          } catch {
-            return [];
-          }
-        },
-        ...(this.strategyStore ? { strategyStore: this.strategyStore } : {}),
-        categorizeTarget: (bind, world) => this.categorizeTarget(bind, world),
-        actionLedger,
-        actionProviders: capabilitySnapshot.actionProviders,
-        operations: capabilitySnapshot.operations,
+        actionProviders: snapshot => snapshot ? this.runtimeProjection().actionProviders(snapshot) : [],
         plans: goalPlanAuthority,
+        contractResolver: this.runtimeContractResolver(),
+        behaviorResolver: this.runtimeBehaviorResolver(),
         log,
       });
       const experiencePort = new GoalAgentProductionExperiencePort(
@@ -964,46 +949,15 @@ export class V2Runtime {
       );
       this.goalAgent = new GoalAgent({
         profileId,
-        stateDbPath: join(runtimeDataDir, `goal-agent-${profileFile}.db`),
+        stateDbPath: this.storageLayout.database(`goal-agent-${profileFile}.db`),
+        getSnapshotRef: () => this.runtimeSnapshotRef(),
         modelClient: llmClient,
         skillKnowledge,
         domainKnowledge,
-        capabilityKnowledge: createRuntimeCapabilityKnowledge(() => ({
-          snapshot: capabilitySnapshot, routes: capabilityRouter.list(),
-          atomics: this.runtimeAtomicKnowledge(), behaviors: this.behaviorRegistry.list(),
-          executionSupport: [
-            ...this.runtimeAtomicKnowledge().map(value=>({kind:'atomic' as const,id:value.action})),
-            ...this.behaviorRegistry.list().map(value=>({kind:'behavior' as const,id:value.id})),
-          ].map(value=>{
-            const snapshot = this.runtimeSnapshotRefSafe();
-            if (!snapshot) return { ...value, controlledCancellation: false };
-            // P3-4 · 贡献引用经固定代解析后才可询问受控取消（不再写死 legacy-builtin）。
-            let contribution: import('./plugin-sdk/identity.js').ContributionRef;
-            if (value.kind === 'behavior') {
-              const behavior = this.behaviorRegistry.get(value.id);
-              if (!behavior) return { ...value, controlledCancellation: false };
-              contribution = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: value.id, contributionVersion: '1.0.0' };
-            } else {
-              const entry = this.runtimeAtomicResolver().resolve(snapshot, value.id);
-              if (entry.status !== 'resolved') return { ...value, controlledCancellation: false };
-              contribution = entry.value.contribution;
-            }
-            return { ...value, controlledCancellation: this.body.supports({ ref: { id: `${value.kind}:${value.id}`, contribution }, snapshot, args: {} }) };
-          }),
-          tasks: this.taskRegistry.listAll(),
-          strategies: [...taskStrategies, this.reflex, ...autoDefenseStrategies].map(value => ({
-            id: value.id, name: value.constructor.name, kind: value.kind,
-          })),
-          services: [
-            { id: this.worldScan.id, name: 'WorldScanCapability', summary: '周期扫描世界、地形与容器；写入空间记忆，不是直接模型工具。' },
-            { id: this.mineralProbe.id, name: 'MineralProbeCapability', summary: '周期探测矿物并写入空间记忆；不是 find_mineral 工具。' },
-          ],
-          adapters: [
-            { id: 'GameAdapter', summary: 'Injected game interface; actual body binding is checked at execution, never a direct model tool.' },
-            { id: 'NavigationAdapter', summary: 'Injected navigation interface used by movement execution; never a direct model tool.' },
-          ],
-          dataStrategies: this.strategyStore?.usable().map(value => ({ id: value.id, description: value.description })) ?? [],
-        })),
+        capabilityKnowledge: createGenerationCapabilityKnowledge({
+          slot: () => this.pluginKernel?.slot ?? null,
+          routes: () => capabilityRouter.list(),
+        }),
         planMilestones: new RecipeMilestonePlanner({
           getCraftRecipes: (item, withTable) => cfg.game.getCraftRecipes(item, withTable),
           getItemSource: item => cfg.game.getItemSource(item),
@@ -1011,16 +965,28 @@ export class V2Runtime {
         tools: {
           knowledge: goalKnowledge,
           execution: executionPort,
-          goals: goalDraftCompiler,
+          goals: goalCompiler,
           plans: goalPlanAuthority,
-          progress: new CapabilityProgressPolicy(() => capabilitySnapshot),
+          progress: {
+            read: (state, signal) => this.runtimeProjection().progressPort().read(state, signal),
+          },
           experience: experiencePort,
-          perception: new GoalAgentProductionPerceptionPort(() => this.perception.perceive(), () => capabilitySnapshot.worldFactProviders),
+          perception: new GoalAgentProductionPerceptionPort(
+            () => this.perception.perceive(),
+            snapshot => {
+              const projection = this.runtimeProjectionSafe();
+              const ref = snapshot ?? this.runtimeSnapshotRefSafe() ?? undefined;
+              return projection && ref ? projection.worldFactProviders(ref) : [];
+            },
+          ),
           verification: new GoalAgentProductionVerificationPort(
             () => this.deliveryReceipts,
             () => this.depositReceipts,
             () => this.placementReceipts,
-            () => capabilitySnapshot.predicateEvaluators,
+            state => state.snapshotRef ? this.runtimeProjection().predicateEvaluators(state.snapshotRef, state) : [],
+            async (state, world, signal) => state.snapshotRef
+              ? this.runtimeProjection().observeAll(state.snapshotRef, world, signal)
+              : [],
           ),
           ...(this.memorySystemActive
             ? { memory: new GoalAgentMemoryKnowledgeAdapter(this.memorySystem) }
@@ -1060,7 +1026,6 @@ export class V2Runtime {
           if (state.mode === 'planned_goal') this.goalAgentTaskProjection?.update(state);
           this.notifyGoalAgentTerminal(state);
         },
-        disposeTools:()=>actionLedger.close(),
         log,
       });
     }
@@ -1115,6 +1080,65 @@ export class V2Runtime {
       }
       return refs;
     };
+    void this.pluginKernelReady.then(result => {
+      if (!result.ok || !result.slot) return;
+      const projection = new GenerationRuntimeProjection(result.slot, '2.0.0');
+      const snapshot = projection.activeSnapshot();
+      for (const activity of projection.activityCapabilities(snapshot)) {
+        const handlerId = `plugin_activity:${activity.contribution.contributionId}`;
+        capabilityRouter.register({
+          id: activity.id,
+          description: activity.description,
+          aliases: [...activity.aliases],
+          mode: 'persistent_behavior',
+          successContract: 'registered activity running under a pinned Generation; stop waits for body StopAck',
+          handler: handlerId,
+        });
+        capabilityDispatcher.register(handlerId, {
+          submit: request => {
+            const world = runtimeGetWorld();
+            try {
+              const params = this.activityRunner.prepare({ snapshot, contribution: activity.contribution,
+                requestText: request.requestText });
+              const started = this.activityRunner.start({
+                snapshot,
+                contribution: activity.contribution,
+                label: activity.title,
+                priority: 35,
+                params,
+              });
+              const monitor = this.goalAgent?.startPersistentMonitor(request, {
+                world,
+                runtimeRef: started.taskId,
+                evidenceRefs: [`activity:${started.taskId}:running`, ...persistentWorldEvidenceRefs(world)],
+              });
+              if (this.goalAgent && !monitor?.accepted) {
+                void this.activityRunner.cancel(started.taskId, monitor?.reason ?? 'goal_agent_monitor_start_failed');
+                return { accepted: false, reason: monitor?.reason ?? 'goal_agent_monitor_start_failed' };
+              }
+              publishCapabilityReport(request, 'running', `已开始${activity.title}，会持续到你要求停止。`, started.taskId);
+              return { accepted: true, details: { runtimeRef: started.taskId, taskId: started.taskId,
+                ...(monitor?.details?.sessionId ? { monitorSessionId: monitor.details.sessionId } : {}) } };
+            } catch (error) {
+              return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+            }
+          },
+          inspect: (probe, record) => {
+            const activityState = record.runtimeRef ? this.activityRunner.inspect(record.runtimeRef) : null;
+            if (!activityState) return unavailableSnapshot(probe, 'plugin_activity_not_found');
+            const state: GoalStatusSnapshotV2['state'] = activityState.state === 'running' ? 'executing'
+              : activityState.state === 'stopping' ? 'blocked'
+                : activityState.state === 'failed' ? 'failed' : 'completed';
+            const observedAt = new Date().toISOString();
+            return { sessionId: probe.sessionId, requestId: probe.requestId, state,
+              stage: `plugin_activity:${activityState.state}`, runtimeRef: activityState.taskId,
+              ...(activityState.error ? { blocker: activityState.error } : {}),
+              ...(state === 'executing' ? { nextAction: 'continue_registered_activity' } : {}),
+              evidence: [{ type: 'action_result', ref: `activity:${activityState.taskId}:${activityState.state}`, observedAt }], observedAt };
+          },
+        });
+      }
+    });
     const goalAgentHandler = {
       submit: (request: GoalRequestV2) => this.goalAgent?.submit(request) ?? ({
         accepted: false,
@@ -1227,6 +1251,7 @@ export class V2Runtime {
       if (!value.taskId) return;
       const record = capabilityDispatcher.findByRuntimeRef(value.taskId);
       if (!record) return;
+      this.proactiveInbox?.confirmRelease(record.request.meta.messageId, `task_${status}`);
       const detail = value.detail ?? value.reason;
       const monitorSessionId = typeof record.details.monitorSessionId === 'string'
         ? record.details.monitorSessionId
@@ -1266,10 +1291,17 @@ export class V2Runtime {
         const record = capabilityDispatcher.findByRequestId(requestId);
         let accepted = this.goalAgent?.cancelRequest(requestId, reason) ?? false;
         if (record?.runtimeRef) {
-          const task = this.tasks.getById(record.runtimeRef);
-          if (task && !['completed', 'failed', 'cancelled'].includes(task.state)) {
-            this.tasks.cancel(task.id, reason);
+          if (this.activityRunner.owns(record.runtimeRef)) {
+            void this.activityRunner.cancel(record.runtimeRef, reason).catch(error => {
+              this.bus.publish('activity.stop_failed', 'recoverable', { taskId: record.runtimeRef, error: error instanceof Error ? error.message : String(error) });
+            });
             accepted = true;
+          } else {
+            const task = this.tasks.getById(record.runtimeRef);
+            if (task && !['completed', 'failed', 'cancelled'].includes(task.state)) {
+              this.tasks.cancel(task.id, reason);
+              accepted = true;
+            }
           }
         }
         return accepted;
@@ -1376,6 +1408,19 @@ export class V2Runtime {
     });
     this.goalAgentPort.setPlayerTurnPreemptor(() => { this.proactiveInbox.preemptForPlayer(); });
     this.tickRegistry.register(this.proactiveScheduler);
+    const knowledgeQueryPort = new KnowledgeQueryPort({
+      runner: new QueryRunner(createRuntimeObservationCatalog(() => this.pluginKernelResult)),
+      sink: {
+        deliver: async answer => {
+          this.bus.publish('knowledge.answer.delivery_pending', 'info', {
+            requestId: answer.requestId,
+            correlationId: answer.correlationId,
+            replyKey: answer.replyKey,
+          });
+          return { accepted: true };
+        },
+      },
+    });
     const brainDeps = {
       onBenchCommand: (message: string) => this.handleBenchCommand(message),
       isBenchActive: () => this.benchRunner?.active() != null,
@@ -1393,6 +1438,13 @@ export class V2Runtime {
       narration: this.narration, // FEAT-NARR-01 · 近期通知注入 LLM 上下文
       llm: llmClient,
       llmTraceRecorder: this.llmTraceStore,
+      knowledgeQueryPort,
+      getRegistrySnapshot: () => this.runtimeSnapshotRefSafe(),
+      isRegisteredTaskIntent: (message: string) => capabilityRouter.resolve({
+        requestKind: 'task',
+        requestText: message,
+        originalText: message,
+      }).definition.mode === 'persistent_behavior',
       getProactiveCapabilitiesContext: () => this.getProactiveCapabilitiesContext(),
       asyncQueue: this.asyncQueue,
       embodied: cfg.embodied !== false,
@@ -1426,8 +1478,8 @@ export class V2Runtime {
     );
 
     const hbCfg: HeartbeatConfig = {
-      tickMs: cfg.tickMs ?? 200,
       blockingExecute: cfg.blockingExecute ?? false,
+      cadence: new OwnerThreatHeartbeatCadencePolicy(() => tuning().heartbeat),
     };
     this.heart = new Heartbeat(hbCfg, {
       bus: this.bus,
@@ -1435,9 +1487,9 @@ export class V2Runtime {
       perception: this.perception,
       tasks: this.tasks,
       supervisor: this.supervisor,
-      reflex: this.reflex,
       taskStrategies,
-      autoDefenseStrategies,
+      hazardFallbackStrategies,
+      isHazardManaged: category => this.activityRunner.handlesHazard(category),
       isAutomaticDefenseEnabled: () => tuning().defense.automaticEnabled,
       body: this.body,
       asyncQueue: this.asyncQueue,
@@ -1456,25 +1508,15 @@ export class V2Runtime {
     });
 
     // TickRegistry · 按节拍等级注册各模块
-    //   Reflex         → FAST  (每 tick   · 紧急反应  · 主路径走 Heartbeat ④)
-    //   Follow / Farm  → STD   (每 5 tick · 常规策略  · 主路径走 Heartbeat ⑥)
+    //   HazardRoute    → FAST  (每 tick   · 主路径走 Heartbeat ④)
+    //   Follow         → STD   (每 5 tick · 常规策略  · 主路径走 Heartbeat ⑥)
     //   Supervisor     → SLOW  (每 10tick · watchdog  · 在节拍内调 watchdog)
     //   idle_placeholder → IDLE (每 150tick · 预留 GC/snapshot)
     const _supervisor = this.supervisor;
     this.tickRegistry.register({
-      id: 'reflex',
-      rate: TickRate.FAST,
-      onTick: () => { /* Reflex 主路径走 Heartbeat ④ · 节拍感知占位 */ },
-    });
-    this.tickRegistry.register({
       id: 'follow_strategy',
       rate: TickRate.STD,
       onTick: () => { /* FollowStrategy 主路径走 Heartbeat ⑥ · 节拍感知占位 */ },
-    });
-    this.tickRegistry.register({
-      id: 'farm_strategy',
-      rate: TickRate.STD,
-      onTick: () => { /* FarmStrategy 主路径走 Heartbeat ⑥ · 节拍感知占位 */ },
     });
     this.tickRegistry.register({
       id: 'supervisor_watchdog',
@@ -1581,12 +1623,6 @@ export class V2Runtime {
     this.bus.on('task.resumed', ev =>
       log(`L6 task resumed: ${JSON.stringify(ev.payload)}`),
     );
-    this.bus.on('supervisor.task_suspended_by_danger', () =>
-      log('🛡 Supervisor 暂停任务（遇袭）'),
-    );
-    this.bus.on('supervisor.task_resumed', () =>
-      log('🛡 Supervisor 恢复任务（危险解除）'),
-    );
     // FEAT-CROSS-01 v2: DoorMonitor 关键日志
     this.bus.on('door.detected', ev => {
       const p = ev.payload as { pos: { x: number; y: number; z: number }; block: string; state: string };
@@ -1639,8 +1675,8 @@ export class V2Runtime {
       log(`[block_changed] ${p.previousBlockName} → ${p.actualBlockName} @${p.position.x},${p.position.y},${p.position.z}`);
     });
 
-    // FEAT-L3-01 · 逃跑已由 ReflexStrategy → FleeSkill 正式接管
-    // 原 BUG-L7-02 盲跑桩已删除
+    // Hazard routing is owned by declared plugin Activities with one generic
+    // current-task fallback; the former event-driven escape path is retired.
 
     // ── 心跳管线关键日志 ──────────────────────────────────────────
     this.bus.on('arbitrate.result', ev => {
@@ -1668,48 +1704,6 @@ export class V2Runtime {
       log(`⚠️ executing watchdog · stuck ${p.stuckMs}ms · req=${p.req} · 强制重置`);
     });
 
-    // FEAT-CROSS-26-001-004-004 · P3-4 第 1 步：装配插件内核（生成索引 + world/设备端口注入）。
-    // boot 异步且 fail-visible：结果同步到 bus 事件与日志，切换提交前不阻断既有启动路径。
-    const runtimeGetWorld = () => this.perception.getWorldState() ?? this.perception.perceive();
-    const observationPorts = createRuntimeObservationPorts(runtimeGetWorld);
-    this.pluginKernelReady = buildRuntimePluginKernel({
-      buildId: `runtime-${cfg.botName ?? 'mineclaw'}-${process.pid}`,
-      systemPorts: {
-        game: cfg.game,
-        nav: cfg.nav,
-        bus: this.bus,
-        getWorld: runtimeGetWorld,
-        inventoryObservation: observationPorts.inventory,
-        ownerContextObservation: observationPorts.owner,
-        ...(llmClient ? { llm: llmClient } : {}),
-      },
-    });
-    void this.pluginKernelReady.then(result => {
-      this.pluginKernelResult = result;
-      this.bus.publish('plugin.kernel.status', result.ok ? 'info' : 'recoverable', {
-        ok: result.ok,
-        installed: result.installed.length,
-        failures: result.failures,
-      });
-      log(result.ok
-        ? `[plugin-kernel] 就绪 · ${result.installed.length} 个插件已发布`
-        : `[plugin-kernel] boot 失败: ${result.failures.join('; ') || 'unknown'}`);
-    });
-  }
-
-  /** 目标安全归类（matcher 安全闸用）：owner/friendly/hostile_entity/player */
-  private categorizeTarget(bind: Record<string, unknown>, world: import('./types.js').WorldStateView | null): string[] {
-    const t = bind.target;
-    if (t == null || !world) return [];
-    if (world.owner && (String((world.owner as { entityId?: unknown }).entityId) === String(t) || (world.owner as { username?: string }).username === String(t))) return ['owner'];
-    const ent = (world.entities ?? []).find(e => String(e.id) === String(t) || e.name === String(t));
-    if (!ent) return [];
-    if (ent.name === this.cfg.ownerName) return ['owner'];
-    const cat = (ent as { category?: string }).category;
-    const labels: string[] = [];
-    if (cat === 'hostile') labels.push('hostile_entity');
-    if (cat === 'player') labels.push('player');
-    return labels.length ? labels : ['other'];
   }
 
   private notifyGoalAgentTerminal(state: Readonly<GoalAgentStateV1>): void {
@@ -1937,7 +1931,7 @@ export class V2Runtime {
   }
 
   start(): void {
-    if (this.running) return;
+    if (this.stopped || this.running) return;
     this.running = true;
     const embodied = this.isEmbodied();
     this.cfg.onLog?.('info', `[v2] runtime starting (${embodied ? 'embodied' : 'companion'})`);
@@ -1999,12 +1993,19 @@ export class V2Runtime {
 
     const active = this.tasks.list().filter(task =>
       task.state === 'pending' || task.state === 'running' || task.state === 'paused');
-    for (const task of active) this.tasks.cancel(task.id, reason);
+    for (const task of active) {
+      if (this.activityRunner.owns(task.id)) {
+        void this.activityRunner.cancel(task.id, reason).catch(error => {
+          this.bus.publish('activity.stop_failed', 'recoverable', { taskId: task.id, error: error instanceof Error ? error.message : String(error) });
+        });
+      } else this.tasks.cancel(task.id, reason);
+    }
     return active.length + cancelledGoalSessions;
   }
 
   stop(): void {
-    if (!this.running) return;
+    if (this.stopped) return;
+    this.stopped = true;
     this.running = false;
     this.memoryConsolidationScheduler?.stop();
     this.taskRuntimeFactBridge?.close();
@@ -2016,11 +2017,22 @@ export class V2Runtime {
     this.mainBrain.shutdown('runtime_stopped');
     this.goalAgentPort.shutdown();
     if (this.benchRunner.active()) this.benchRunner.abort('runtime_stopped');
+    const activitiesDrained = this.activityRunner.close();
     this.cancelActiveTasks('runtime_stopped', { preservePlanRuns: true });
     this.goalAgent?.close();
     this.asyncQueue.close({ dropPending: true });
     this.heart.stop();
-    this.body.close();
+    this.operationRecoveryAbort?.abort('runtime_stopped');
+    this.operationRecoveryAbort = null;
+    const bodyDrained = activitiesDrained.catch(() => undefined).then(() => this.body.close());
+    const recoveryDrained = this.operationRecoveryPromise ?? Promise.resolve();
+    this.operationRecoveryPromise = null;
+    const ledger = this.operationLedger;
+    this.operationLedger = null;
+    void Promise.allSettled([bodyDrained,recoveryDrained]).then(() => {
+      ledger?.close();
+      this.storageLayout.dispose();
+    });
     // FEAT-L1-01: 停止采集 + 卸载 patch + 关闭 DB
     this.worldMapCollector.stop();
     // FEAT-L5-01: 停止寻路失败感知反馈
@@ -2102,17 +2114,68 @@ export class V2Runtime {
     };
   }
 
-  /**
-   * P3-4 · capabilityKnowledge 的原子知识经当前代 contract list 投影
-   * （不再自建默认 registry）；kernel 未就绪 → 空列表（展示降级，执行层仍由 resolver fail-closed）。
-   */
-  private runtimeAtomicKnowledge(): readonly ActionContractDefinition[] {
+  /** Every Goal-side projection resolves from the same published Generation slot. */
+  private runtimeProjection(): GenerationRuntimeProjection {
     const kernel = this.pluginKernel;
-    if (!kernel?.ok || !kernel.resolvers) return [];
-    const snapshot = this.runtimeSnapshotRefSafe();
-    if (!snapshot) return [];
-    const resolved = createContractResolver(kernel.resolvers).list(snapshot);
-    return resolved.status === 'resolved' ? projectAtomicContractsToKnowledge(resolved.value) : [];
+    if (!kernel?.ok || !kernel.slot) throw new Error('needs_rebind:kernel_not_ready');
+    return new GenerationRuntimeProjection(kernel.slot, '2.0.0');
+  }
+
+  private runtimeProjectionSafe(): GenerationRuntimeProjection | null {
+    try { return this.runtimeProjection(); }
+    catch { return null; }
+  }
+
+  /** Behavior factories and their contribution identities resolve only from the pinned Generation. */
+  private runtimeBehaviorResolver(): GenerationBehaviorResolverPort {
+    const runtime = this;
+    const unavailable = <T>(): import('./task/execution/generationResolversPorts.js').ResolverOutcome<T> => ({ status: 'in_doubt', reason: 'kernel_not_ready' });
+    return {
+      resolve(snapshot, contributionRef) {
+        const kernel = runtime.pluginKernel;
+        return kernel?.ok && kernel.resolvers ? createBehaviorResolver(kernel.resolvers).resolve(snapshot, contributionRef) : unavailable();
+      },
+      resolveById(snapshot, behaviorId) {
+        const kernel = runtime.pluginKernel;
+        return kernel?.ok && kernel.resolvers ? createBehaviorResolver(kernel.resolvers).resolveById(snapshot, behaviorId) : unavailable();
+      },
+      list(snapshot) {
+        const kernel = runtime.pluginKernel;
+        return kernel?.ok && kernel.resolvers ? createBehaviorResolver(kernel.resolvers).list(snapshot) : unavailable();
+      },
+    };
+  }
+
+  private runtimeActivityResolver(): GenerationActivityResolverPort {
+    const runtime = this;
+    const unavailable = <T>(): import('./task/execution/generationResolversPorts.js').ResolverOutcome<T> => ({ status: 'in_doubt', reason: 'kernel_not_ready' });
+    return {
+      resolve(snapshot, contributionRef) {
+        const kernel = runtime.pluginKernel;
+        return kernel?.ok && kernel.resolvers ? createActivityResolver(kernel.resolvers).resolve(snapshot, contributionRef) : unavailable();
+      },
+      list(snapshot) {
+        const kernel = runtime.pluginKernel;
+        return kernel?.ok && kernel.resolvers ? createActivityResolver(kernel.resolvers).list(snapshot) : unavailable();
+      },
+    };
+  }
+
+  /** 原子合同与执行器共享同一固定 Generation；不存在默认合同注册表。 */
+  private runtimeContractResolver(): import('./task/execution/generationResolversPorts.js').GenerationContractResolverPort {
+    const runtime = this;
+    return {
+      resolve(snapshot, atomicId) {
+        const kernel = runtime.pluginKernel;
+        if (!kernel?.ok || !kernel.resolvers) return { status: 'in_doubt', reason: 'kernel_not_ready' };
+        return createContractResolver(kernel.resolvers).resolve(snapshot, atomicId);
+      },
+      list(snapshot) {
+        const kernel = runtime.pluginKernel;
+        if (!kernel?.ok || !kernel.resolvers) return { status: 'in_doubt', reason: 'kernel_not_ready' };
+        return createContractResolver(kernel.resolvers).list(snapshot);
+      },
+    };
   }
 
   /**

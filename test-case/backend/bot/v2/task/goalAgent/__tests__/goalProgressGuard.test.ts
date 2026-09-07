@@ -7,6 +7,7 @@ import { GoalProgressGuard, goalProgress } from '../../../../../../../apps/minec
 import { GoalAgent } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgent.js';
 import { GoalAgentRoundLoop } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundLoop.js';
 import { GoalAgentModelRuntime } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentModelRuntime.js';
+import { createGoalAgentTestModelClient } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentModelRuntime.js';
 import { GoalAgentSessionStore } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionStore.js';
 import { createGoalAgentState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
 import type { GoalAgentStateV1 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
@@ -15,6 +16,7 @@ import { GoalAgentProductionVerificationPort } from '../../../../../../../apps/m
 import { __setTuningOverride } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { GoalProgressGuidance } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/ports/goalProgressPort.js';
 import type { WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
+import { formalizeState, TEST_SNAPSHOT, testGoalCompiler, testTarget } from './goalTestFixtures.js';
 
 beforeEach(() => __setTuningOverride({ goalProgress: { enabled: true, noProgressRounds: 2, recoveryRounds: 1, maxRecoveryAttempts: 1, waitPollMs: 100, maxWaitMs: 1000, maxWaitChecks: 10 } }));
 afterEach(() => __setTuningOverride(null));
@@ -27,17 +29,23 @@ function fixture() {
     origin: 'player_message', originalText: '测试生长等待', requestText: '测试生长等待', requestKind: 'task', constraints: [],
   } });
   state.phase = 'running';
-  state.rootGoal = { schema: 'mineclaw.goal/v1', goalId: 'goal', profileId: 'test', goalText: state.request.requestText, createdAt: new Date(now).toISOString(), successCriteria: [{ type: 'inventory', item: 'wheat', count: 1 }] };
   const world: WorldStateView = { tick: 1, timestamp: now, self: { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0, health: 20, maxHealth: 20, food: 20, isOnGround: true }, owner: null,
     environment: { dimension: 'overworld', timeOfDay: 0, isDay: true, isRaining: false }, inventory: { items: [], held: null, freeSlots: 36 }, entities: [], taskContext: null };
   state.world.latest = structuredClone(world);
-  const policy = { assess: () => guidance && guidance.kind === 'wait' ? { ...guidance, observedAt: now } : guidance,
-    project: (value: typeof state) => ({ stage, tick: value.world.latest?.tick ?? 0, timestamp: value.world.latest?.timestamp ?? 0 }) };
+  formalizeState(state, [{ type: 'inventory', item: 'wheat', count: 1 }]);
+  const policy = { read: (value: typeof state) => ({
+    snapshot: value.snapshotRef!,
+    contribution: { pluginId: 'test.progress', pluginVersion: '1.0.0', contributionId: 'test.progress.goal', contributionVersion: '1.0.0' },
+    observedAt: now,
+    semanticState: { stage, tick: value.world.latest?.tick ?? 0, timestamp: value.world.latest?.timestamp ?? 0 },
+    evidenceRefs: ['test:progress'],
+    guidance: guidance && guidance.kind === 'wait' ? { ...guidance, observedAt: now } : guidance,
+  }) };
   const tools = { progress: policy, perception: { observe: async () => { observations++; world.tick++; world.timestamp = now; return structuredClone(world); } }, verification: new GoalAgentProductionVerificationPort(() => []) };
   const loop = (store: GoalAgentSessionStore, kind = 'observe', events: string[] = []) => new GoalAgentRoundLoop({ store, profileId: 'test', tools,
     now: () => new Date(now).toISOString(), nowMs: () => now, maxRoundsPerRun: 1, publish: event => events.push(event.type),
     capabilities: { list: () => [], search: () => [], get: () => undefined },
-    model: new GoalAgentModelRuntime({ callWithTools: async () => { calls++; return { content: '', toolCalls: [{ id: `call-${calls}`, name: kind === 'observe' ? 'world_observe' : 'capability_search', arguments: kind === 'observe' ? {} : { query: calls % 2 ? '种田' : '播种' } }] }; } }, { eventLog: store }),
+    model: new GoalAgentModelRuntime({ callWithTools: async () => { calls++; return { content: '', toolCalls: [{ id: `call-${calls}`, name: kind === 'observe' ? 'world_observe' : 'capability_search', arguments: kind === 'observe' ? {} : { query: calls % 2 ? '种田' : '播种' } }] }; } }, { eventLog: store, allowLegacyTestClient: true }),
   });
   return { state, world, tools, policy, loop, now: () => now, advance: (ms: number) => now += ms, stage: (value: number) => stage = value,
     guidance: (value: GoalProgressGuidance | null) => guidance = value,
@@ -45,25 +53,25 @@ function fixture() {
     observations: () => observations, calls: () => calls };
 }
 
-test('U15: clocks, synonymous empty queries, plan revisions and failed actions do not count as progress', () => {
+test('U15: clocks, synonymous empty queries, plan revisions and failed actions do not count as progress', async () => {
   const f = fixture(), guard = new GoalProgressGuard(f.policy);
-  assert.equal(guard.afterRound(f.state, f.now(), 'catalog-1', false), null);
+  assert.equal(await guard.afterRound(f.state, f.now(), 'catalog-1', false, new AbortController().signal), null);
   f.state.world.latest!.tick++; f.state.world.latest!.timestamp++; f.state.plan.revision++;
-  assert.equal(guard.afterRound(f.state, f.now(), 'catalog-1', false), 'bounded_recovery');
+  assert.equal(await guard.afterRound(f.state, f.now(), 'catalog-1', false, new AbortController().signal), 'bounded_recovery');
   f.state.action.result = { ok: false, detail: 'failed again', executionSessionId: 'failure', idempotencyKey: 'failure', startedAt: new Date(f.now()).toISOString(), completedAt: new Date(f.now()).toISOString(), evidenceRefs: [] };
-  assert.equal(guard.afterRound(f.state, f.now(), 'catalog-1', true), 'no_validated_path_after_bounded_recovery');
+  assert.equal(await guard.afterRound(f.state, f.now(), 'catalog-1', true, new AbortController().signal), 'no_validated_path_after_bounded_recovery');
   assert.equal(f.state.terminal?.outcome, 'failed');
   assert.equal(f.state.progress!.totalNoProgressRounds, 3);
   assert.equal(f.state.budget.recoveries, 1);
 });
 
-test('U15: a new relevant fact resets the streak, replaying old fact states cannot farm recovery budget', () => {
+test('U15: a new relevant fact resets the streak, replaying old fact states cannot farm recovery budget', async () => {
   const f = fixture(), guard = new GoalProgressGuard(f.policy);
-  guard.afterRound(f.state, f.now(), 'same', false);
-  f.stage(1); assert.equal(guard.afterRound(f.state, f.now(), 'same', false), 'meaningful_progress');
+  await guard.afterRound(f.state, f.now(), 'same', false, new AbortController().signal);
+  f.stage(1); assert.equal(await guard.afterRound(f.state, f.now(), 'same', false, new AbortController().signal), 'meaningful_progress');
   assert.equal(f.state.progress!.noProgressRounds, 0);
-  f.stage(0); guard.afterRound(f.state, f.now(), 'same', false);
-  f.stage(1); assert.equal(guard.afterRound(f.state, f.now(), 'same', false), 'bounded_recovery');
+  f.stage(0); await guard.afterRound(f.state, f.now(), 'same', false, new AbortController().signal);
+  f.stage(1); assert.equal(await guard.afterRound(f.state, f.now(), 'same', false, new AbortController().signal), 'bounded_recovery');
 });
 
 test('U16: empty searches, used recovery and notification dedupe survive slices and real database reopen', async () => {
@@ -176,17 +184,19 @@ function submittedWaitAgent(observe?: (read: number, world: WorldStateView) => P
   let calls = 0, reads = 0;
   const waiters: Array<{ matches: (state: Readonly<GoalAgentStateV1>) => boolean; resolve: (state: Readonly<GoalAgentStateV1>) => void }> = [];
   const agent = new GoalAgent({ profileId: 'wait-public-test', stateDbPath: ':memory:', maxRoundsPerRun: 1,
-    modelClient: { callWithTools: async () => {
+    getSnapshotRef: () => TEST_SNAPSHOT,
+    modelClient: createGoalAgentTestModelClient({ callWithTools: async () => {
       calls++;
       return { content: '', toolCalls: calls === 1 ? [
         { id: 'select-wheat', name: 'goal_get_target', arguments: { registryId: 'minecraft:wheat' } },
-        { id: 'create-wheat', name: 'goal_create', arguments: { outcome: 'obtain', target: { kind: 'item', surface: '小麦', registryId: 'minecraft:wheat', quantity: 1 } } },
         { id: 'observe-first', name: 'world_observe', arguments: {} },
+        { id: 'create-wheat', name: 'goal_create', arguments: { outcome: 'obtain', target: { kind: 'item', surface: '小麦', registryId: 'minecraft:wheat', quantity: 1 } } },
       ] : [{ id: `observe-${calls}`, name: 'world_observe', arguments: {} }] };
-    } },
+    } }),
     tools: { ...f.tools,
-      progress: { ...f.policy, project: (state: Readonly<GoalAgentStateV1>) => ({ inventory: state.world.latest?.inventory.items ?? [] }) },
-      knowledge: new InMemoryGoalKnowledgePort([{ kind: 'item', registryId: 'minecraft:wheat', aliases: ['小麦'], taskFamilies: ['agriculture'] }]),
+      progress: { read: (state: Readonly<GoalAgentStateV1>) => ({ ...f.policy.read(state as GoalAgentStateV1), semanticState: { inventory: state.world.latest?.inventory.items ?? [] } }) },
+      goals: testGoalCompiler(),
+      knowledge: new InMemoryGoalKnowledgePort([testTarget({ kind: 'item', registryId: 'minecraft:wheat', aliases: ['小麦'], taskFamilies: ['agriculture'] })]),
       perception: { observe: async () => {
         reads++; f.world.timestamp = Date.now(); f.world.tick++;
         return observe ? observe(reads, structuredClone(f.world)) : structuredClone(f.world);

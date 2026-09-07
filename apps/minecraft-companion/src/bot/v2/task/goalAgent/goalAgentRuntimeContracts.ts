@@ -1,11 +1,11 @@
 import type { LLMChatMessage, LLMToolSchema } from '../../cognitive/llm/types.js';
 import type { GoalKnowledgePort } from '../../knowledge/goalTargetKnowledge.js';
 import type { GoalAgentNodeId, GoalAgentStateV1 } from './goalAgentState.js';
-import type { GoalAgentCompactionProposal } from './goalAgentContextCompiler.js';
+import type { GoalAgentCompactionProposalV2 } from './goalAgentContextReducer.js';
 import type { MemoryRecord } from '../../memory/contracts.js';
-import type { GoalDraftCompilationPort } from './ports/goalDraftPort.js';
+import type { GoalCompilationPort } from './ports/goalCompilerPort.js';
 import type { GoalPlanAuthorizationPort } from './ports/goalPlanPort.js';
-import type { GoalProgressPolicyPort } from './ports/goalProgressPort.js';
+import type { GoalProgressContributionPort } from './ports/goalProgressPort.js';
 import type {
   GoalAgentExecutionPort,
   GoalAgentExperiencePort,
@@ -32,7 +32,7 @@ export interface GoalAgentModelResponse<T> {
   value: T;
   assistant: LLMChatMessage;
   messagesToAppend: LLMChatMessage[];
-  compaction?: GoalAgentCompactionProposal;
+  compaction?: GoalAgentCompactionProposalV2;
   budget: GoalAgentStateV1['budget'];
   promptTokens: number;
   completionTokens: number;
@@ -62,9 +62,9 @@ export interface GoalAgentMemoryPort {
 }
 
 export interface GoalAgentTools {
-  readonly goals?: GoalDraftCompilationPort;
+  readonly goals?: GoalCompilationPort;
   readonly plans?: GoalPlanAuthorizationPort;
-  readonly progress?: GoalProgressPolicyPort;
+  readonly progress?: GoalProgressContributionPort;
   readonly knowledge?: GoalKnowledgePort;
   readonly execution?: GoalAgentExecutionPort;
   readonly experience?: GoalAgentExperiencePort;

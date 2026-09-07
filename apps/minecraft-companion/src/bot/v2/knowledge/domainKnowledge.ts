@@ -135,15 +135,21 @@ export function loadDomainKnowledgeFile(rootDir: string, filePath: string): Doma
   if (!isWithin(root, file)) throw new Error(`domain knowledge path escapes root: ${filePath}`);
   if (path.extname(file).toLowerCase() !== '.md') throw new Error(`domain knowledge must be Markdown: ${filePath}`);
   const content = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
-  const split = splitFrontmatter(content, file);
+  return parseDomainKnowledgeContent(content, file);
+}
+
+/** Parse immutable content already captured by a plugin Generation. */
+export function parseDomainKnowledgeContent(content: string, sourceRef: string): DomainKnowledgeDocument {
+  const normalizedContent = content.replace(/^\uFEFF/, '');
+  const split = splitFrontmatter(normalizedContent, sourceRef);
   const raw = parse(split.frontmatter) as unknown;
-  if (!isRecord(raw)) throw new Error(`invalid domain knowledge frontmatter: ${file}`);
-  const id = requiredText(raw.id, 'id', file).toLowerCase();
-  const title = requiredText(raw.title, 'title', file);
-  const summary = requiredText(raw.summary, 'summary', file);
-  const tags = stringArray(raw.tags, 'tags', file);
+  if (!isRecord(raw)) throw new Error(`invalid domain knowledge frontmatter: ${sourceRef}`);
+  const id = requiredText(raw.id, 'id', sourceRef).toLowerCase();
+  const title = requiredText(raw.title, 'title', sourceRef);
+  const summary = requiredText(raw.summary, 'summary', sourceRef);
+  const tags = stringArray(raw.tags, 'tags', sourceRef);
   const body = split.body.trim();
-  if (!body) throw new Error(`domain knowledge body is required: ${file}`);
+  if (!body) throw new Error(`domain knowledge body is required: ${sourceRef}`);
   const canonical = JSON.stringify({ id, title, summary, tags, body });
   const version = `sha256:${createHash('sha256').update(canonical).digest('hex')}`;
   const ref = domainKnowledgeRef(id);
@@ -153,7 +159,7 @@ export function loadDomainKnowledgeFile(rootDir: string, filePath: string): Doma
     summary,
     tags: Object.freeze(tags),
     body,
-    sourcePath: file,
+    sourcePath: sourceRef,
     ref,
     version,
     evidenceRef: `${ref}@${version}`,

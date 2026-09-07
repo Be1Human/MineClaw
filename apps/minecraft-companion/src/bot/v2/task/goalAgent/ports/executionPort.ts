@@ -1,4 +1,5 @@
 import type { ActionProposal } from '../../../atomic/contracts/atomicContractRegistry.js';
+import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 import type { GoalAgentActionResult, GoalAgentStateV1 } from '../goalAgentState.js';
 
 export interface GoalAgentActionCandidate {
@@ -13,7 +14,14 @@ export interface GoalAgentActionCandidate {
   mutableArgumentPaths?: readonly string[];
   /** Missing prerequisites stay discoverable, but are never execution permission. */
   authorization?: { status: 'ready' | 'blocked' | 'unknown'; reasons: readonly string[] };
-  operationRef?: { id: string; version: number };
+  /** Registered prerequisite goals used by the model when building the causal plan. */
+  prerequisites?: readonly {
+    goalContributionId: string;
+    arguments: Readonly<Record<string, unknown>>;
+    reason: string;
+  }[];
+  /** Exact execution contribution selected from the pinned Generation. */
+  operationRef?: ContributionRef;
   evidenceRefs: string[];
 }
 

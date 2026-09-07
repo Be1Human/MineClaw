@@ -3,11 +3,10 @@
  *
  * 实现：StatefulStrategy<FollowState>（FSM）
  *
- * 核心模型转变（BUG-L5-01）：
- *   跟随 = 设一次 pathfinder 动态目标（nav.startFollow → GoalFollow dynamic），
- *   后台持续驱动 bot：进 range 自停、owner 动自追、永不 timeout。
- *   following 状态每 tick 只重新提交幂等的 follow_entity（atomic no-op 维持），
- *   离开跟随态发 stop_follow 清目标。
+ * 核心模型：
+ *   跟随 = 反复提交有限的动态目标步骤（GoalFollow 在步骤内持续重算）。
+ *   每一步完成、到位或超时后都释放身体租约；下一轮重新观察后再决定续发。
+ *   离开跟随态仍发 stop_follow，以取消可能正在执行的那一步。
  *
  *   ⛔ 已删除：旧的「每 tick 发一次性阻塞 goto + stuck-detector/backoff 兜底」整套，
  *      那是 GoalFollow 被当一次性 goto 调用的错配补丁，且自死锁（GYM-BUG-18）。
@@ -15,7 +14,7 @@
  *
  * 状态图：
  *   idle ──owner 可见──► following
- *   following ──可见──► following     (幂等维持 follow_entity，pathfinder 后台跟)
+ *   following ──可见──► following     (续发有限 follow_entity 动态步骤)
  *   following ──失联+有坐标──► seeking (stop_follow + goto 坐标，静默追)
  *   following ──失联+无坐标──► lost    (stop_follow + 问"你在哪")
  *   seeking ──可见──► following
@@ -39,12 +38,7 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
   private reqSeq = 0;
   private lastSayLostAt = 0;
 
-  /** BUG-L5-02 · 上次强制重算时主人的位置 + 时刻（跟手重算用） */
-  private lastRepathOwnerPos: { x: number; y: number; z: number } | null = null;
-  private lastRepathAt = 0;
-
-  /** BUG-L5-02 诊断 · 本 tick 是否触发了强制重算 + 上次诊断日志时刻（节流） */
-  private forceFiredThisTick = false;
+  /** 跟随诊断的节流时刻。 */
   private lastDiagAt = 0;
 
   /** owner 最后可见坐标缓存 · owner.isVisible 时更新，失联后驱动 seeking */
@@ -88,7 +82,6 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
     const { world, tick } = ctx;
     this.narrateFn = ctx.narrate ? (i) => ctx.narrate!({ source: 'follow', ...i }) : undefined;
     const owner = world.owner;
-    this.forceFiredThisTick = false;
     const reqs = this._tickInner(ctx, owner);
     this._diag(world, owner);
     return reqs;
@@ -111,7 +104,7 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
     const sp = `(${s.x.toFixed(1)},${s.z.toFixed(1)})`;
     console.log(
       `[FOLLOW-DIAG ${ts}] state=${this.state} vis=${owner?.isVisible ?? false} ` +
-      `owner=${op} bot=${sp} dist=${dist.toFixed(2)} force=${this.forceFiredThisTick}`,
+      `owner=${op} bot=${sp} dist=${dist.toFixed(2)}`,
     );
   }
 
@@ -132,8 +125,6 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
       this.seekingExhausted      = false;
       this.invisibleStreakTicks  = 0;
       this.lastTargetFingerprint = '';
-      this.lastRepathOwnerPos    = null;
-      this.lastRepathAt          = 0;
       return wasFollowing ? [this.stopFollowReq(tick)] : [];
     }
 
@@ -179,7 +170,7 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
       case 'following': {
         if (!owner) { this.transit('lost', tick); return [this.stopFollowReq(tick)]; }
         if (!owner.isVisible || owner.position == null) {
-          // 短暂遮挡：保持跟随（pathfinder 还在朝 owner 最后位置走），等阈值再判
+          // 短暂遮挡：仍可尝试短动态步骤；等阈值再判真失联。
           if (this.invisibleStreakTicks < streakThreshold) return [this.followReq(tick, owner.entityId)];
           // 确认失联 → 停跟随，转 seeking（有坐标）/ lost（无坐标）
           if (this.lastKnownOwnerPos) {
@@ -189,10 +180,9 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
           this.transit('lost', tick);
           return [this.stopFollowReq(tick), ...this.maybeSayLost()];
         }
-        // owner 可见 → 幂等维持动态跟随（pathfinder 后台进 range 自停、owner 动自追）。
-        // BUG-L5-02：主人挪动够多 → 发 force 版打断 GoalFollow 懒重算，亚秒级跟手。
+        // owner 可见 → 续发动态目标步骤；GoalFollow 在步骤内直接读取实体位置。
         ctx.setPhase?.(owner.distance <= 4 ? '跟随中 · 在主人身边' : `跟随中 · 距主人 ${Math.round(owner.distance)} 格`);
-        return [this.followReq(tick, owner.entityId, this.shouldForceRepath(owner.position))];
+        return [this.followReq(tick, owner.entityId)];
       }
 
       case 'seeking': {
@@ -256,8 +246,8 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
 
   // ── ActionRequest 构建 ──────────────────────────────────────
 
-  /** 幂等维持跟随：atomic 看到已在跟同实体即 no-op，否则 nav.startFollow 设动态目标 */
-  private followReq(tick: number, entityId: number | null, forceRepath = false): ActionRequest {
+  /** 提交一段动态跟随；到位或切片结束后由下一观察轮续发。 */
+  private followReq(tick: number, entityId: number | null): ActionRequest {
     return {
       id: `${this.id}-follow-${tick}-${++this.reqSeq}`,
       source: this.id,
@@ -265,39 +255,14 @@ export class FollowStrategy extends StatefulStrategy<FollowState> {
       priority: 40,
       interrupt_level: 'soft',
       resource: ['movement'],
-      target: { entityId: entityId ?? undefined, forceRepath },
+      target: { entityId: entityId ?? undefined, durationMs: tuning().follow.followSliceMs },
       preconditions: [],
       expected_effect: ['closer_to_owner'],
       timeout_ms: tuning().controlledExecution.operationTimeoutMs,
     };
   }
 
-  /**
-   * BUG-L5-02 · 是否该强制重算（打断 GoalFollow 懒重算）。
-   * 开关关 → 永不强制（退回纯 GoalFollow）。开 → 主人较上次重算位移 ≥ 阈值且距上次重算 ≥ 最小间隔。
-   * 命中即更新 lastRepath* 锚点。
-   */
-  private shouldForceRepath(ownerPos: { x: number; y: number; z: number }): boolean {
-    const cfg = tuning().follow;
-    if (!cfg.repathOnOwnerMove) return false;
-    const now = Date.now();
-    if (this.lastRepathOwnerPos == null) {
-      // 首次进 following：设锚点，不强制（startFollow 本身已设过目标）
-      this.lastRepathOwnerPos = { ...ownerPos };
-      this.lastRepathAt = now;
-      return false;
-    }
-    if (now - this.lastRepathAt < cfg.repathMinIntervalMs) return false;
-    const dx = ownerPos.x - this.lastRepathOwnerPos.x;
-    const dz = ownerPos.z - this.lastRepathOwnerPos.z;
-    if (Math.sqrt(dx * dx + dz * dz) < cfg.repathMoveThreshold) return false;
-    this.lastRepathOwnerPos = { ...ownerPos };
-    this.lastRepathAt = now;
-    this.forceFiredThisTick = true;
-    return true;
-  }
-
-  /** 离开跟随态 → 撤销 pathfinder 动态目标 */
+  /** 离开跟随态 → 取消可能仍执行中的动态步骤。 */
   private stopFollowReq(tick: number): ActionRequest {
     return {
       id: `${this.id}-stopfollow-${tick}-${++this.reqSeq}`,

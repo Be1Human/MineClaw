@@ -138,7 +138,8 @@ describe('BUG-CROSS-51 · GoalAgentPort V2', () => {
     const governed: Array<{ source?: string; allowed: boolean; reason: string }> = [];
     bus.on('goalagent.continuation', event => continuations.push(event.payload as GoalContinuationV2));
     bus.on('goalagent.progress_report.governed', event => governed.push(event.payload as typeof governed[number]));
-    const now = Date.now();
+    // Keep the injected watchdog clock strictly after request/receipt wall-clock stamps.
+    const now = Date.now() + 1_000;
     const port = new GoalAgentPort(
       bus,
       { getWorldState: () => null } as unknown as PerceptionPipeline,

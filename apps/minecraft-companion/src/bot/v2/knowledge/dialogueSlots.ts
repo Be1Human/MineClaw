@@ -17,19 +17,19 @@
  * logMode "任意原木互换"——砍到任何树都算数，不会死找某种树）。
  * 覆盖常见即可，生僻材料命中不了就 clarify，不强求穷举。
  */
-import { defaultGoalKnowledge } from './goalTargetKnowledge.js';
+import type { GoalKnowledgePort } from './goalTargetKnowledge.js';
 
 /**
  * 从一段自然语言里提取一个 item 槽的 minecraft id。
  * @param text 主人原话（或 LLM 已传的别名值）
  * @returns 命中的 minecraft id；命中不了返回 null（上层据此 clarify）
  */
-export function extractItemFromDialogue(text: string | null | undefined): string | null {
+export function extractItemFromDialogue(text: string | null | undefined, knowledge?: GoalKnowledgePort): string | null {
   const raw = (text ?? '').trim();
   if (!raw) return null;
   const lower = raw.toLowerCase();
 
-  const candidate = defaultGoalKnowledge.searchTargets({ query: lower, kind: 'item', limit: 1 })[0];
+  const candidate = knowledge?.searchTargets({ query: lower, kind: 'item', limit: 1 })[0];
   if (!candidate || !candidate.registryId.startsWith('minecraft:')) return null;
   return candidate.registryId.replace(/^minecraft:/, '');
 }

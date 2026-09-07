@@ -25,6 +25,11 @@ import { LLMClient } from '../bot/v2/cognitive/llm/LLMClient.js';
 import type { LLMFailure } from '../bot/v2/cognitive/llm/errors.js';
 import type { ProactiveCapabilityPreferencesV1 } from '../character/types.js';
 import { CapabilityControlError, CapabilityControlRegistry } from './capabilityControlRegistry.js';
+import {
+  JavaLanWorldDiscovery,
+  type LanWorldDiscoveryPort,
+  type LanWorldDiscoverySnapshot,
+} from './lanWorldDiscovery.js';
 
 export interface HubConfig {
   port: number;
@@ -40,6 +45,10 @@ export interface DefaultLlmConfig {
   api?: LlmApi;
 }
 
+export interface HubDependencies {
+  lanWorldDiscovery?: LanWorldDiscoveryPort;
+}
+
 function connectionTestFailureMessage(failure: LLMFailure | undefined): string {
   if (!failure) return '请求失败';
   if (failure.kind === 'timeout') return '请求超时（20s）';
@@ -48,7 +57,11 @@ function connectionTestFailureMessage(failure: LLMFailure | undefined): string {
   return `请求失败（${failure.kind}）`;
 }
 
-export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig) {
+export function createHubServer(
+  config: HubConfig,
+  defaultLlm?: DefaultLlmConfig,
+  dependencies: HubDependencies = {},
+) {
   const app = express();
   app.use(express.json());
 
@@ -68,6 +81,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   registerInventoryIconRoutes(app, resourcePackStore, builtinResourcePack?.id ?? null);
   const botManager = new BotManager(config.dataDir, llmAgentConfigStore, serverPresetStore);
   botManager.defaultLlm = defaultLlm ?? null;
+  const lanWorldDiscovery = dependencies.lanWorldDiscovery ?? new JavaLanWorldDiscovery();
   const visualWorldRoom = (botId: string): string => `visual-world:${botId}`;
   const visualWorldBatcher = new VisualWorldDeltaBatcher(
     () => tuning().worldVisual,
@@ -89,6 +103,10 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       appendFileSync(logFilePath(), `${ts} [${level}] [${botId}] ${message}\n`);
     } catch {/* ignore disk errors */}
   };
+  const publishLanWorlds = (snapshot: LanWorldDiscoverySnapshot): void => {
+    io.emit('minecraft:lan-worlds', snapshot);
+  };
+  const unsubscribeLanWorlds = lanWorldDiscovery.subscribe(publishLanWorlds);
 
   const runtimeConfigChanged = (patch: Partial<BotProfile>): boolean => (
     patch.llmConfigId !== undefined
@@ -231,6 +249,10 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       rainFogMultiplier: visual.rainFogMultiplier,
       ambientFillLightIntensity: visual.ambientFillLightIntensity,
     });
+  });
+
+  app.get('/api/minecraft/lan-worlds', (_req, res) => {
+    res.json(lanWorldDiscovery.snapshot());
   });
 
   // --- REST API: Profiles ---
@@ -770,6 +792,22 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
     }
   });
 
+  app.post('/api/bots/:botId/join-lan-world', async (req, res) => {
+    const worldId = typeof req.body?.worldId === 'string' ? req.body.worldId.trim() : '';
+    if (!worldId) { res.status(400).json({ error: 'worldId 必填' }); return; }
+    const world = lanWorldDiscovery.get(worldId);
+    if (!world) { res.status(404).json({ error: '局域网世界不存在或已失效' }); return; }
+    const profile = profileStore.get(req.params.botId);
+    if (!profile) { res.status(404).json({ error: 'profile not found' }); return; }
+    try {
+      if (!botManager.getStatus(profile.id)) await botManager.start(profile);
+      const status = await botManager.joinLanWorld(profile.id, profile, { host: world.host, port: world.port });
+      status ? res.json(status) : res.status(404).json({ error: 'bot not found' });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.get('/api/bots/:botId/chat-memory/slots', (req, res) => {
     const group = typeof req.query.group === 'string' ? req.query.group.slice(0, 80) : undefined;
     const filledOnly = req.query.filledOnly === 'true' || req.query.filledOnly === '1';
@@ -1146,7 +1184,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
       return;
     }
     const alerts = botManager.getV2SupervisorAlerts(v2Bot.id);
-    res.json(alerts ?? { suspendedByDanger: [], recentDiagnoses: [], narrationCooldowns: {} });
+    res.json(alerts ?? { recentDiagnoses: [], narrationCooldowns: {} });
   });
 
   app.get('/api/bots/:botId/v2/status', (req, res) => {
@@ -1274,6 +1312,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
   // --- WebSocket ---
 
   io.on('connection', (socket) => {
+    socket.emit('minecraft:lan-worlds', lanWorldDiscovery.snapshot());
     const visualSubscriptions = new Set<string>();
     const subscribeVisualWorld = async (
       data: { botId?: unknown } | null,
@@ -1354,6 +1393,7 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
         console.log(`\n  🎮 Minecraft Companion Hub`);
         console.log(`  📡 http://${config.host}:${config.port}`);
         console.log('');
+        await lanWorldDiscovery.start();
         for (const profile of profileStore.list()) {
           try {
             await botManager.start(profile);
@@ -1369,8 +1409,10 @@ export function createHubServer(config: HubConfig, defaultLlm?: DefaultLlmConfig
 
   httpServer.on('close', () => {
     visualWorldBatcher.close();
+    unsubscribeLanWorlds();
+    lanWorldDiscovery.stop();
     void botManager.stopAll();
   });
 
-  return { app, httpServer, io, profileStore, llmAgentConfigStore, resourcePackStore, botManager, listen };
+  return { app, httpServer, io, profileStore, llmAgentConfigStore, resourcePackStore, botManager, lanWorldDiscovery, listen };
 }

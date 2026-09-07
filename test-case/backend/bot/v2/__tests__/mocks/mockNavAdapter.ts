@@ -15,10 +15,17 @@ export class MockNavigationAdapter implements NavigationAdapter {
     };
     return {actions:{
       goto:(goal,options)=>run(()=>this.goto(goal,options)),
-      follow:(id,range)=>run(async()=>{
+      follow:(id,range,options)=>run(async()=>{
         this.startFollow(id,range);
-        while(!closed && this.isFollowing(id)) await input.scope.wait(this.gotoDelay);
-        return {ok:false,reason:'cancelled'};
+        try {
+          await input.scope.wait(options?.totalTimeout ?? this.gotoDelay);
+          return closed || !this.isFollowing(id)
+            ? {ok:false,reason:'cancelled'}
+            : {ok:true,reason:'follow_slice_complete'};
+        } finally {
+          this.stopFollow();
+          this._isMoving=false;
+        }
       }),
       guideThroughDoor:request=>run(()=>this.guideThroughDoor(request)),
       stop:async()=>{ this.stop(); await Promise.allSettled([...pending]); },

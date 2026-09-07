@@ -4,7 +4,7 @@ import { tuning } from '../../infra/tuning.js';
 import type { ContributionRef, RegistrySnapshotRef } from '../../plugin-sdk/identity.js';
 import type { OperationCommand } from '../contracts/bodyOperation.js';
 import type { ControlledExecutionContext } from './ports/controlledExecution.js';
-import { defaultActionPreparer } from './actionPreparer.js';
+import type { ActionPrepareResult } from './actionPreparer.js';
 import { failureDetail } from './failureEnvelope.js';
 
 /**
@@ -27,20 +27,30 @@ export function actionCommand(request: ActionRequest, contribution: Contribution
   } });
 }
 
-/** Owner, resource claims and execution identity are never inherited from a behavior's child metadata. */
-export function atomicRequest(command: OperationCommand, context: ControlledExecutionContext): ActionRequest {
+/**
+ * Owner, resource claims and execution identity are never inherited from a
+ * behavior's child metadata. `validate` (optional, P3-4) is provided by the
+ * driver from the pinned generation contract when available; without it the
+ * request is forwarded as-is (parameter contract enforcement happens at
+ * driver-level contract.prepare).
+ */
+export function atomicRequest(
+  command: OperationCommand,
+  context: ControlledExecutionContext,
+  validate?: (args: Record<string, unknown>) => ActionPrepareResult,
+): ActionRequest {
   if (!command.ref.contribution || !command.ref.id.startsWith('atomic:')) throw new Error('invalid_atomic_command');
   const type = command.ref.id.slice('atomic:'.length);
   if (type === 'invoke_behavior' || type === 'stop' || type === 'stop_follow') throw new Error('not_an_atomic_operation');
   const target = command.args.target;
   if (!target || typeof target !== 'object' || Array.isArray(target)) throw new Error('invalid_atomic_target');
-  const prepared = defaultActionPreparer.prepare({ action: type, source: 'registered_behavior', args: target as Record<string, unknown> }, {
-    execId: context.stepId, ...(context.owner.kind === 'safety' ? {} : { taskId: context.owner.taskId }),
-  });
-  if (prepared.kind === 'invalid') throw new Error(failureDetail(prepared.failure));
+  if (!validate) throw new Error(`atomic_contract_unavailable:${type}`);
+  const result = validate(target as Record<string, unknown>);
+  if (result.kind === 'invalid') throw new Error(failureDetail(result.failure));
+  const request: ActionRequest = result.request;
   const duration = command.args.timeoutMs;
   if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) throw new Error('invalid_atomic_timeout');
-  return { ...prepared.request,
+  return { ...request,
     source: typeof command.args.source === 'string' ? command.args.source : command.ref.id,
     timeout_ms: Math.min(duration, Math.max(0, context.deadlineAt - Date.now())),
   };

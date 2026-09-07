@@ -16,8 +16,6 @@ import { planRecovery } from './recoveryPlanner.js';
 // ──────────────────────────────────────────────────────────────────
 
 export interface SupervisorState {
-  /** 因 danger 事件被暂停的任务 id 集合 */
-  suspendedByDanger: Set<string>;
   /** taskId → recoveryTaskId · 正在进行中的恢复子任务 */
   ongoingRecoveries: Map<string, string>;
   /** 最近的诊断记录（滑动窗口） */
@@ -39,8 +37,6 @@ export interface SupervisorConfig {
   STUCK_TICK_THRESHOLD: number;
   /** 血量低于此值算危急 */
   HEALTH_CRITICAL_THRESHOLD: number;
-  /** 范围内没有 hostile 才算"danger cleared" */
-  HOSTILE_CLEAR_RANGE: number;
   /** 相同诊断在多少 tick 内去重（防重复 emit） */
   DIAGNOSIS_DEDUP_WINDOW: number;
   /** 同一任务最多恢复多少次 */
@@ -52,7 +48,6 @@ export interface SupervisorConfig {
 export const DEFAULT_SUPERVISOR_CONFIG: SupervisorConfig = {
   STUCK_TICK_THRESHOLD: 300,  // 60s at 5tick/s · 给远距离导航足够时间
   HEALTH_CRITICAL_THRESHOLD: 6,
-  HOSTILE_CLEAR_RANGE: 16,
   DIAGNOSIS_DEDUP_WINDOW: 60,
   RECOVERY_MAX_ATTEMPTS: 2,
   NARRATION_COOLDOWN_MS: 3000,
@@ -63,7 +58,6 @@ export const DEFAULT_SUPERVISOR_CONFIG: SupervisorConfig = {
 // ──────────────────────────────────────────────────────────────────
 
 export interface SupervisorInspect {
-  suspendedByDanger: string[];
   ongoingRecoveries: Record<string, string>;
   recentDiagnoses: Diagnosis[];
   lastProgressTick: Record<string, number>;
@@ -84,12 +78,8 @@ export type DecideTrigger =
 // ──────────────────────────────────────────────────────────────────
 
 export type Action =
-  | { kind: 'l6.pause'; taskId: string; resumePoint?: Record<string, unknown> }
-  | { kind: 'l6.resume'; taskId: string }
   | { kind: 'l6.fail'; taskId: string; reason: string }
   | { kind: 'l6.inject'; parentTaskId: string; suggestion: SubtaskSuggestion }
-  | { kind: 'state.add_suspended'; taskId: string }
-  | { kind: 'state.remove_suspended'; taskId: string }
   | { kind: 'state.push_diagnosis'; diagnosis: Diagnosis }
   | { kind: 'hb.submitSay'; topic: string; priority?: number; text?: string }
   | { kind: 'bus.publish'; eventType: string; level: string; payload: unknown };
@@ -123,10 +113,10 @@ function decideOnEvent(
 ): Action[] {
   switch (event.type) {
     case 'under_attack':
-      return decideUnderAttack(state, tasks);
-
     case 'danger_cleared':
-      return decideDangerCleared(state);
+      // Hazard ownership is selected by HazardDecisionService + the declared
+      // Activity capability. Supervisor is intentionally not a control plane.
+      return [];
 
     case 'task.preflight_failed':
     case 'supervisor.stuck_detected': {
@@ -172,57 +162,6 @@ function decideOnEvent(
     default:
       return [];
   }
-}
-
-function decideUnderAttack(
-  state: Readonly<SupervisorState>,
-  tasks: { running: Task[]; paused: Task[] },
-): Action[] {
-  const runningTask = tasks.running[0];
-  if (!runningTask) return [];
-  // FEAT-CROSS-06 · goal_exec 遇险时由 Reflex/Survival 注册紧急任务处理物理抢占，
-  // Supervisor 不暂停、不发 flee，防止与 GoalAgent/紧急任务形成第二个执行者。
-  if (runningTask.kind === 'goal_exec') return [];
-  if (state.suspendedByDanger.has(runningTask.id)) return [];
-
-  return [
-    { kind: 'l6.pause', taskId: runningTask.id, resumePoint: { suspendedAtMs: Date.now() } },
-    { kind: 'state.add_suspended', taskId: runningTask.id },
-    { kind: 'hb.submitSay', topic: 'danger_flee', priority: 90 },
-    {
-      kind: 'bus.publish',
-      eventType: 'supervisor.task_suspended_by_danger',
-      level: 'info',
-      payload: { taskId: runningTask.id, reason: 'under_attack' },
-    },
-    // BUG-L7-02 · 逃跑信号：让 Supervisor 执行拉距行为
-    {
-      kind: 'bus.publish',
-      eventType: 'supervisor.flee_from_danger',
-      level: 'info',
-      payload: { fleeDistance: 8, fleeDurationMs: 2500 },
-    },
-  ];
-}
-
-function decideDangerCleared(
-  state: Readonly<SupervisorState>,
-): Action[] {
-  if (state.suspendedByDanger.size === 0) return [];
-
-  const actions: Action[] = [];
-  for (const id of state.suspendedByDanger) {
-    actions.push({ kind: 'l6.resume', taskId: id });
-    actions.push({ kind: 'state.remove_suspended', taskId: id });
-    actions.push({
-      kind: 'bus.publish',
-      eventType: 'supervisor.task_resumed',
-      level: 'info',
-      payload: { taskId: id },
-    });
-  }
-  actions.push({ kind: 'hb.submitSay', topic: 'danger_cleared', priority: 50 });
-  return actions;
 }
 
 // ─────────────── watchdog branch ───────────────

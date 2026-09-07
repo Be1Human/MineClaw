@@ -181,11 +181,11 @@ test('U35 atomic/command 精确引用：解析返回精确 SemVer，不查最新
 
 test('LifecycleCoordinator: prepared→active→draining→disabled；faulted 只能到 disabled', () => {
   const coordinator = new LifecycleCoordinator();
-  coordinator.declare('mineclaw.guard', 'prepared');
-  coordinator.transition('mineclaw.guard', 'active');
-  coordinator.transition('mineclaw.guard', 'draining');
-  coordinator.transition('mineclaw.guard', 'disabled');
-  assert.equal(coordinator.stateOf('mineclaw.guard'), 'disabled');
+  coordinator.declare('mineclaw.lifecycle-fixture', 'prepared');
+  coordinator.transition('mineclaw.lifecycle-fixture', 'active');
+  coordinator.transition('mineclaw.lifecycle-fixture', 'draining');
+  coordinator.transition('mineclaw.lifecycle-fixture', 'disabled');
+  assert.equal(coordinator.stateOf('mineclaw.lifecycle-fixture'), 'disabled');
 
   coordinator.declare('mineclaw.broken', 'active');
   coordinator.transition('mineclaw.broken', 'faulted');

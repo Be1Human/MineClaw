@@ -22,8 +22,8 @@ test('FEAT-CROSS-20 · Supervisor 告警接口按 Profile 隔离并区分 404/50
     const origin = `http://127.0.0.1:${(hub.httpServer.address() as AddressInfo).port}`;
 
     hub.botManager.getV2SupervisorAlerts = (botId: string) => {
-      if (botId === profileA.id) return { suspendedByDanger: ['task-a'], recentDiagnoses: [], narrationCooldowns: {} };
-      if (botId === profileB.id) return { suspendedByDanger: [], recentDiagnoses: [{ category: 'b' }], narrationCooldowns: {} };
+      if (botId === profileA.id) return { recentDiagnoses: [{ category: 'a' }], narrationCooldowns: {} };
+      if (botId === profileB.id) return { recentDiagnoses: [{ category: 'b' }], narrationCooldowns: {} };
       return null;
     };
 
@@ -33,7 +33,7 @@ test('FEAT-CROSS-20 · Supervisor 告警接口按 Profile 隔离并区分 404/50
     ]);
     assert.equal(responseA.status, 200);
     assert.equal(responseB.status, 200);
-    assert.deepEqual((await responseA.json() as { suspendedByDanger: string[] }).suspendedByDanger, ['task-a']);
+    assert.deepEqual((await responseA.json() as { recentDiagnoses: Array<{ category: string }> }).recentDiagnoses, [{ category: 'a' }]);
     assert.deepEqual((await responseB.json() as { recentDiagnoses: Array<{ category: string }> }).recentDiagnoses, [{ category: 'b' }]);
 
     hub.botManager.getV2SupervisorAlerts = () => null;

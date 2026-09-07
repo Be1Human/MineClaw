@@ -10,7 +10,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.flee';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.flee.goal.flee-threat';
 const CANDIDATE = 'mineclaw.flee.planning.flee-candidates';
 const PREDICATE = 'mineclaw.flee.verification.fled';
@@ -28,8 +27,6 @@ export function createMineclawFleePlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -49,7 +46,7 @@ export function createMineclawFleePlugin(): PluginFactory {
             : { x: 0, y: 64, z: 0 };
           return {
             status: 'complete',
-            candidates: [{ candidateId: 'flee:retreat', operationContribution: ref(OPERATION), params: { threat, from: position }, evidenceRefs: [], contribution: ref(CANDIDATE) }],
+            candidates: [{ candidateId: 'flee:retreat', operationContribution: ref(EXECUTOR), params: { threat, from: position }, evidenceRefs: [], contribution: ref(CANDIDATE) }],
           };
         },
       };
@@ -62,7 +59,7 @@ export function createMineclawFleePlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const safe = (input.evidence?.safe as boolean | undefined) === true;
           return { verdict: safe ? 'satisfied' : 'unknown', evidenceRefs: [], reason: safe ? undefined : 'distance_unverified', contribution: ref(PREDICATE) };
         },
@@ -74,15 +71,12 @@ export function createMineclawFleePlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `flee-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const threat = (ctx.facts[0]?.payload as { threat?: Record<string, unknown> } | undefined)?.threat;
-            if (!threat) return { ok: false, cancelled: false, error: 'threat_required' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const receipt = await bodySubmit({ action: 'minecraft-system:move-to', target: { away: threat, safeDistance: SAFE_DISTANCE } });
-            return (receipt as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'retreat_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const threat = ctx.params.threat as Record<string, unknown> | undefined;
+            return threat
+              ? { ok: true, steps: [{ atomicId: 'move_to', args: { position: { away: threat, safeDistance: SAFE_DISTANCE } } }] }
+              : { ok: false, error: 'threat_required' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -130,6 +124,7 @@ export function createMineclawFleePlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['explore', 'survive'], targetKinds: ['state', 'location'], taskFamilies: ['flee', 'survival'], criterionTypes: ['reached', 'predicate'] },
           },
           behaviorFactory,
         },

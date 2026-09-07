@@ -24,6 +24,8 @@ import type { FactKind } from '../plugin-sdk/contracts/observation.js';
 /** The deterministic catalog projection a runner may consult (never the live product registries). */
 export interface ObservationCatalogPort {
   readonly resolveProvider: (factKind: FactKind) => readonly PluginObservationProviderFactory[];
+  /** Catalog self-observation for capability_status; no world or action access. */
+  readonly listAvailableFactKinds?: () => readonly FactKind[];
 }
 
 export interface ResolvedObservationPlan {
@@ -150,13 +152,18 @@ function isEmptyFactPayload(payload: Readonly<Record<string, unknown>>): boolean
 export class QueryRunner {
   private readonly resolver: ObservationResolver;
   private readonly validator: KnowledgeAnswerValidator;
+  private readonly catalog: ObservationCatalogPort;
 
   constructor(catalog: ObservationCatalogPort, resolver = new ObservationResolver(catalog), validator = new KnowledgeAnswerValidator()) {
+    this.catalog = catalog;
     this.resolver = resolver;
     this.validator = validator;
   }
 
   async run(query: KnowledgeQueryV1, abort: AbortSignal): Promise<KnowledgeAnswerV1> {
+    if (query.factKinds.length === 1 && query.factKinds[0] === 'capability_status') {
+      return this.capabilityStatus(query, abort.aborted);
+    }
     const plan = this.resolver.resolve(query);
     const results: { factKind: FactKind; outcome: PluginObservationResult }[] = [];
     const timeoutMs = tuning().knowledgeQuery.timeoutMs;
@@ -174,12 +181,42 @@ export class QueryRunner {
       const outcome = await provider.observe({
         params: {},
         signal,
-        scope: { radius: query.scope.radius ?? tuning().knowledgeQuery.defaultRadius },
+        scope: {
+          ...query.scope,
+          anchor: query.anchor,
+          radius: query.scope.radius ?? tuning().knowledgeQuery.defaultRadius,
+        },
         budget: { timeoutMs: Math.max(1, deadline - Date.now()), maxResults: tuning().knowledgeQuery.maxResultsPerFact },
       });
       provider.close();
       results.push({ factKind: step.factKind, outcome });
     }
     return this.validator.validate(query, plan, results, abort.aborted);
+  }
+
+  private capabilityStatus(query: KnowledgeQueryV1, aborted: boolean): KnowledgeAnswerV1 {
+    if (aborted) return this.validator.validate(query, { steps: [], omitted: [] }, [], true);
+    const available = [...new Set(this.resolverCatalog().filter(kind => kind !== 'capability_status'))].sort();
+    const now = new Date().toISOString();
+    return Object.freeze({
+      schemaVersion: 'mineclaw.knowledge-answer/v1', kind: 'knowledge_answer',
+      requestId: query.requestId, correlationId: query.correlationId,
+      outcome: 'answered',
+      facts: Object.freeze([{
+        factKind: 'capability_status' as const, payload: Object.freeze({ entries: Object.freeze(available), count: available.length }),
+        observedAt: now, requestedBounds: Object.freeze({}), observedBounds: Object.freeze({ registryGeneration: query.registryGeneration.generationId }),
+        complete: true, truncated: false,
+        evidenceRefs: Object.freeze([{ ref: `registry:${query.registryGeneration.generationId}`, source: 'plugin-catalog', at: now }]),
+      }]),
+      observedAt: now, freshness: Object.freeze({ fresh: true, observedAt: now }),
+      coverage: Object.freeze({ dimension: 'registry', requested: Object.freeze({}), covered: Object.freeze({}), loaded: true }),
+      completeness: 'complete',
+      evidenceRefs: Object.freeze([{ ref: `registry:${query.registryGeneration.generationId}`, source: 'plugin-catalog', at: now }]),
+      replyKey: replyKeyFor(query), registryGeneration: query.registryGeneration,
+    });
+  }
+
+  private resolverCatalog(): readonly FactKind[] {
+    return this.catalog.listAvailableFactKinds?.() ?? [];
   }
 }

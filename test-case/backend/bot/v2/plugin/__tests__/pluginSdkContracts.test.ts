@@ -278,6 +278,7 @@ function buildClosedManifest(): Record<string, unknown> {
           progressContributionId: 'mineclaw.agriculture.progress.sow',
           resultContributionId: 'mineclaw.agriculture.result.sow',
           cancellable: true,
+          applicability: { outcomes: ['composed'], targetKinds: ['state'], taskFamilies: ['agriculture'], criterionTypes: ['predicate'] },
         },
       }),
       contribution('progress.sow', 'planning', { operationIds: ['mineclaw.agriculture.operation.sow-cell'] }),
@@ -334,10 +335,11 @@ function makeBindingProvider(): PluginBindingProvider {
   };
 }
 
-function makeBehaviorFactory(): { id: string; version: string; create: (lease: unknown, scoped: unknown) => { instanceId: string; contribution: { pluginId: string; pluginVersion: string; contributionId: string; contributionVersion: string }; run: (ctx: unknown) => Promise<{ ok: boolean; cancelled: boolean }>; halt: () => Promise<void>; close: () => Promise<void>; settled: boolean } } {
+function makeBehaviorFactory(): { id: string; version: string; create: (lease: unknown, scoped: unknown) => { kind: 'adaptive'; instanceId: string; contribution: { pluginId: string; pluginVersion: string; contributionId: string; contributionVersion: string }; run: (ctx: unknown) => Promise<{ ok: boolean; cancelled: boolean }>; halt: () => Promise<void>; close: () => Promise<void>; settled: boolean } } {
   return {
     id: 'mineclaw.test.behavior', version: '1.0.0',
     create: () => ({
+      kind: 'adaptive',
       instanceId: `inst-${Math.random()}`,
       contribution: defaultContrib('mineclaw.test.behavior'),
       run: async () => ({ ok: true, cancelled: false }),

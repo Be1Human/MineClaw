@@ -18,7 +18,6 @@ import { speechTools } from './defs/speechTools.js';
 import { resourceTools } from './defs/resourceTools.js';
 import { memoryTools } from './defs/memoryTools.js';
 import { queryTools } from './defs/queryTools.js';
-import { skillTools } from './defs/skillTools.js';
 import { strategyTools } from './defs/strategyTools.js';
 import { companionTools } from './defs/companionTools.js';
 import { goalAgentTools } from './defs/goalAgentTools.js';
@@ -101,7 +100,6 @@ export function buildDefaultToolRegistry(deps: ToolDeps, ports: ToolRegistryPort
     ...resourceTools,
     ...memoryTools,
     ...queryTools,
-    ...skillTools,
     ...strategyTools,
     ...companionTools,
   ];

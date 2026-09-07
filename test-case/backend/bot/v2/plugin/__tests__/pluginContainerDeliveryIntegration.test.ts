@@ -34,7 +34,7 @@ function index(): BuiltinPluginIndex {
   };
 }
 
-test('P2-8 container/delivery 闭环注册（owner-context 驱动交付候选），body 服务缺失显式失败', async () => {
+test('P2-8 container/delivery 闭环注册（owner-context 驱动交付候选），Host body 失败显式失败', async () => {
   const result = await new PluginHost({
     hostApiVersion: '2.0.0',
     buildId: 'build-1',
@@ -69,12 +69,16 @@ test('P2-8 container/delivery 闭环注册（owner-context 驱动交付候选）
   assert.equal(listed.status, 'complete');
   assert.equal(listed.candidates[0]!.params.target!.x, 5);
 
-  // 无 body 服务：两执行器显式失败。
-  for (const plugin of [createMineclawContainerPlugin as () => { create: (c: never) => never }, createMineclawDeliveryPlugin as () => { create: (c: never) => never }]) {
+  for (const [index, plugin] of [createMineclawContainerPlugin as () => { create: (c: never) => never }, createMineclawDeliveryPlugin as () => { create: (c: never) => never }].entries()) {
     const contributions = (plugin() as { create: (c: { host: { version: string; buildId: string }; plugin: { pluginId: string; pluginVersion: string } }) => Array<unknown> }).create({ host: { version: '2.0.0', buildId: 'b' }, plugin: { pluginId: 'x', pluginVersion: '1.0.0' } });
-    const exec = (contributions.find(c => (c as { kind?: string }).kind === 'execution') as { behaviorFactory: { create: (l: Record<string, unknown>) => { run: (ctx: { signal: AbortSignal; facts: Record<string, unknown>[] }) => Promise<{ ok: boolean; error?: string }> } } });
-    const outcome = await exec.behaviorFactory.create({ goalId: 'g' } as never).run({ signal: new AbortController().signal, facts: [] } as never);
-    assert.equal(outcome.ok, false);
-    assert.match(outcome.error ?? '', /body_submit_service_missing/);
+    const exec = contributions.find(c => (c as { kind?: string }).kind === 'execution') as any;
+    const params = index === 0
+      ? { chest: { x: 1, y: 2, z: 3 }, item: 'torch', count: 1 }
+      : { target: { x: 1, y: 2, z: 3 }, item: 'torch', count: 1 };
+    const instance = exec.behaviorFactory.create({ goalId: 'g' } as never);
+    const compiled = instance.compile({ goal: { goalId: 'g' }, facts: [], params });
+    assert.equal(instance.kind, 'sequence');
+    assert.equal(compiled.ok, true);
+    assert.ok(compiled.steps.length >= 1);
   }
 });

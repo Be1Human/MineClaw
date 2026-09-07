@@ -43,9 +43,6 @@
     <!-- Supervisor -->
     <div class="section" v-if="status.supervisor">
       <div class="section-title"><McIcon name="shield" :size="13" /> Supervisor</div>
-      <div v-if="status.supervisor.suspendedByDanger?.length" class="alert-row">
-        <McIcon name="warning" :size="13" /> 危险暂停: {{ status.supervisor.suspendedByDanger.join(', ') }}
-      </div>
       <div v-if="status.supervisor.recentDiagnoses?.length" class="diag-row">
         诊断: {{ status.supervisor.recentDiagnoses[status.supervisor.recentDiagnoses.length - 1]?.category }}
       </div>

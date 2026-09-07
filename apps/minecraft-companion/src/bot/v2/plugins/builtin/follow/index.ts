@@ -18,7 +18,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.follow';
-const SERVICE_BODY = 'body.submit';
 const FOLLOW_GOAL = 'mineclaw.follow.goal.follow-owner';
 const FOLLOW_CANDIDATE = 'mineclaw.follow.planning.follow-candidates';
 const FOLLOW_PREDICATE = 'mineclaw.follow.verification.follow-satisfied';
@@ -48,8 +47,6 @@ export function createMineclawFollowPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: FOLLOW_GOAL,
         list: async (input) => {
@@ -71,7 +68,7 @@ export function createMineclawFollowPlugin(): PluginFactory {
             status: 'complete',
             candidates: [{
               candidateId: 'follow:move',
-              operationContribution: ref(FOLLOW_OPERATION),
+              operationContribution: ref(FOLLOW_EXECUTOR),
               params: { target: positions[0]! },
               evidenceRefs: ['owner-context:1'],
               contribution: ref(FOLLOW_CANDIDATE),
@@ -95,7 +92,7 @@ export function createMineclawFollowPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: FOLLOW_PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const positions = ownerPositions(input as unknown as PluginPlanningInput);
           if (positions.length === 0) return { verdict: 'unknown', evidenceRefs: [], reason: 'owner_location_unavailable', contribution: ref(FOLLOW_PREDICATE) };
           const within = positions.some(() => (input.evidence?.within ?? false));
@@ -111,15 +108,12 @@ export function createMineclawFollowPlugin(): PluginFactory {
           return {
             instanceId,
             contribution: ref(FOLLOW_EXECUTOR),
-            run: async (ctx) => {
-              if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-              const target = (ctx.facts[0]?.payload as { ownerPosition?: Record<string, unknown> } | undefined)?.ownerPosition;
-              if (!target) return { ok: false, cancelled: false, error: 'owner_location_unavailable' };
-              if (ctx.signal.aborted) return { ok: false, cancelled: true };
-              const receipt = await bodySubmit({ action: 'minecraft-system:move-to', target });
-              return (receipt as { ok?: boolean }).ok === false
-                ? { ok: false, cancelled: false, error: 'move_failed' }
-                : { ok: true, cancelled: false };
+            kind: 'sequence',
+            compile: (ctx) => {
+              const target = ctx.params.target as Record<string, unknown> | undefined;
+              return target
+                ? { ok: true, steps: [{ atomicId: 'move_to', args: { position: target } }] }
+                : { ok: false, error: 'owner_location_unavailable' };
             },
             halt: async () => undefined,
             close: async () => undefined,
@@ -171,6 +165,7 @@ export function createMineclawFollowPlugin(): PluginFactory {
             progressContributionId: FOLLOW_PROGRESS,
             resultContributionId: FOLLOW_RESULT,
             cancellable: true,
+            applicability: { outcomes: ['reach'], targetKinds: ['location'], taskFamilies: ['movement', 'follow'], criterionTypes: ['reached', 'predicate'] },
           },
           behaviorFactory,
         },

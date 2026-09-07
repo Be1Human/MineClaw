@@ -161,11 +161,10 @@ export class RegistrationTransaction {
     if (this.state !== 'prepared' && this.state !== 'validated') {
       throw pluginError('plugin_cancelled', `cannot commit from state ${this.state}`);
     }
-    const generationId = this.options.generationId ?? randomUUID();
     const cumulative = new Map<string, StagedContributionRecord>(expected.active.registry.byId);
     for (const [id, record] of this.staged) cumulative.set(id, record);
-    const record = buildActiveRecord({
-      generationId,
+    const draft = buildActiveRecord({
+      generationId: this.options.generationId ?? 'gen-pending',
       baseGenerationId: expected.generationId,
       parentGenerationId: expected.generationId,
       buildId: this.options.buildId,
@@ -173,6 +172,24 @@ export class RegistrationTransaction {
       manifests: [...expected.active.manifests.filter((m) => m.id !== this.manifest.id), this.manifest],
       cumulative,
       permissions: new Map([...expected.active.permissions, [this.manifest.id, this.permissions]]),
+    });
+    // Registry identity is content-addressed. Reconstructing the same released
+    // plugin graph in the same build after a process restart must yield the same
+    // snapshot ref; a process-local UUID would strand every persisted Goal and
+    // Operation in needs_rebind.
+    const generationId = this.options.generationId ?? `gen-${createHash('sha256')
+      .update(this.options.buildId)
+      .update(draft.graphHash)
+      .digest('hex').slice(0, 24)}`;
+    const record = generationId === draft.generationId ? draft : buildActiveRecord({
+      generationId,
+      baseGenerationId: draft.baseGenerationId,
+      parentGenerationId: draft.parentGenerationId,
+      buildId: draft.buildId,
+      manifest: this.manifest,
+      manifests: draft.manifests,
+      cumulative,
+      permissions: draft.permissions,
     });
     const drainingById = new Map(expected.drainingById);
     if (expected.generationId !== 'gen-bootstrap') {

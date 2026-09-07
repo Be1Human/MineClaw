@@ -12,6 +12,7 @@
  */
 
 import { extractItemFromDialogue, extractPositionFromDialogue } from './dialogueSlots.js';
+import type { GoalKnowledgePort } from './goalTargetKnowledge.js';
 
 /** 归一化所需的槽位声明子集（结构匹配 knowledge/types.SlotDefinition · 也兼容测试 stub） */
 export interface NormalizableSlot {
@@ -30,6 +31,8 @@ export interface NormalizeContext {
   /** 最近一条主人对话原文（dialogue 取值器用）· 无 memory 时返回空串 → 安全降级 clarify */
   recentOwnerText(): string;
   ownerName: string;
+  /** Fixed-Generation target knowledge supplied by the composition root. */
+  goalKnowledge?: GoalKnowledgePort;
   /** dialogue 取值器命中时回调（发 task.params_from_dialogue 事件用） */
   onDialogueFill?: (slotName: string, value: unknown) => void;
 }
@@ -49,7 +52,8 @@ const PROVIDERS: Record<string, (slot: NormalizableSlot, current: unknown, ctx: 
   dialogue(slot, current, ctx) {
     if (slot.type === 'item') {
       // 先用 LLM 已传的任何别名值（可能是中文），再退到最近一条主人对话
-      return extractItemFromDialogue(String(current ?? '')) ?? extractItemFromDialogue(ctx.recentOwnerText());
+      return extractItemFromDialogue(String(current ?? ''), ctx.goalKnowledge)
+        ?? extractItemFromDialogue(ctx.recentOwnerText(), ctx.goalKnowledge);
     }
     if (slot.type === 'location' || slot.type === 'position') {
       return extractPositionFromDialogue(ctx.recentOwnerText());

@@ -8,9 +8,7 @@
  *
  * 内置策略：
  *   FollowStrategy   FSM · 跟随 owner
- *   FarmStrategy     FSM · 种田
  *   ReflexStrategy   reflex · 反射反击
- *   GuardStrategy    BT  · 守卫区域（标杆实现）
  *
  * BT Runner（工厂函数）：
  *   seq, sel, parallel, cond, action, cooldown, timeLimit, inv, repeat
@@ -40,7 +38,4 @@ export {
 // ── 内置策略 ────────────────────────────────────────────────────
 export { FollowStrategy }       from './followStrategy.js';
 export type { FollowState }     from './followStrategy.js';
-export { FarmStrategy }         from './farmStrategy.js';
 export { ReflexStrategy }       from './reflexStrategy.js';
-export { GuardStrategy }        from './guard/GuardStrategy.js';
-export type { GuardConfig }     from './guard/GuardStrategy.js';

@@ -1,7 +1,7 @@
 import { jsonSnapshot } from '../../infra/jsonSnapshot.js';
 import { tuning } from '../../infra/tuning.js';
 import type { OperationCommand, OperationIdentity, OperationSnapshot, StopAcknowledgement } from '../contracts/bodyOperation.js';
-import type { OperationEffect, OperationReceipt } from '../contracts/operationReceipt.js';
+import type { OperationEffect, OperationReceipt, OperationReceiptSource } from '../contracts/operationReceipt.js';
 import type { FailureEnvelope } from '../contracts/failureEnvelope.js';
 import type { AuthorizedOperation, ExecutionClock, OperationHandle } from './ports/bodyExecution.js';
 import type { BodyOperationDriver, BoundOperationExecutor, ControlledExecutionContext, OperationOutcome } from './ports/controlledExecution.js';
@@ -63,11 +63,17 @@ export class OperationLifetime {
   constructor(private readonly options: {
     identity: OperationIdentity;
     operation: AuthorizedOperation;
+    source: OperationReceiptSource;
     resources: readonly string[];
     driver: BodyOperationDriver;
     clock: ExecutionClock;
     isCurrent(command: OperationCommand): boolean;
     onQuiesced(): void;
+    onCancelRequested(reason: string, at: number): void;
+    onEffect(effect: OperationEffect, at: number): void;
+    onStop(stop: StopAcknowledgement): void;
+    onTerminal(receipt: OperationReceipt): void;
+    onInDoubt(reason: string, at: number): void;
   }) {
     this.startedAt = options.clock.now();
     this.handle = Object.freeze({ operationId: options.identity.operationId, result: this.result.promise,
@@ -98,6 +104,8 @@ export class OperationLifetime {
   cancel(reason: string): void {
     if (this.stop || this.cancelReason) return;
     this.cancelReason = reason || 'cancelled';
+    try { this.options.onCancelRequested(this.cancelReason, this.options.clock.now()); }
+    catch (error) { this.stopErrors.push(`ledger_cancel:${String(error)}`); }
     if (this.state !== 'quarantined') this.state = 'cancelling';
     this.closeGate();
     this.stopAll();
@@ -218,6 +226,7 @@ export class OperationLifetime {
         if (this.stop) throw new Error('effect_after_quiescence');
         const copy = jsonSnapshot(effect);
         if (!copy.predicate?.id || !copy.predicate.version || !Array.isArray(copy.evidenceRefs)) throw new Error('invalid_operation_effect');
+        this.options.onEffect(copy, this.options.clock.now());
         this.effects.push(copy);
       },
     });
@@ -261,17 +270,26 @@ export class OperationLifetime {
   private tryDrain(): void {
     if (this.stop || !this.rootFinished || this.pending !== 0 || this.stopErrors.length) return;
     this.closeGate();
-    this.stop = jsonSnapshot({ ...this.options.identity, state: 'quiesced', at: this.options.clock.now() });
+    const stop: StopAcknowledgement = jsonSnapshot({ ...this.options.identity, state: 'quiesced' as const, at: this.options.clock.now() });
+    try { this.options.onStop(stop); }
+    catch (error) {
+      this.stopErrors.push(`ledger_stop:${String(error)}`);
+      this.quarantine();
+      return;
+    }
+    this.stop = stop;
     if (this.stopTimer !== undefined) this.options.clock.clearTimeout(this.stopTimer);
     this.state = 'settled';
     this.options.onQuiesced();
-    this.drained.resolve(this.stop);
+    this.drained.resolve(stop);
     this.publish(this.cancelReason ? 'cancelled' : this.outcome.ok ? 'succeeded' : 'failed');
   }
 
   private quarantine(): void {
     if (this.stop) return;
     this.state = 'quarantined';
+    try { this.options.onInDoubt(this.stopErrors.join('; ') || this.cancelReason || 'stop_unconfirmed', this.options.clock.now()); }
+    catch { /* The result remains in_doubt even when persistence itself failed. */ }
     this.publish('in_doubt');
   }
 
@@ -280,10 +298,20 @@ export class OperationLifetime {
     this.published = true;
     const observedFailure = this.cancelReason ? failure(this.cancelReason) : this.outcome.failure
       ?? (status === 'in_doubt' ? failure('stop_unconfirmed', this.stopErrors.join('; ')) : undefined);
-    this.result.resolve(jsonSnapshot({ ...this.options.identity, schema: 'mineclaw.operation-receipt/v2', status,
+    const receipt: OperationReceipt = jsonSnapshot({ ...this.options.identity, schema: 'mineclaw.operation-receipt/v2' as const,
+      source:this.options.source,status,
       stop: this.stop, noOp: this.effectsStarted === 0 && this.effects.length === 0,
       effects: this.effects, evidenceRefs: [...new Set(this.effects.flatMap(effect => effect.evidenceRefs))],
       ...(observedFailure ? { failure: observedFailure } : {}), ...(this.outcome.details ? { details: this.outcome.details } : {}),
-      startedAt: this.startedAt, completedAt: this.options.clock.now() }));
+      startedAt: this.startedAt, completedAt: this.options.clock.now() });
+    try {
+      if (status === 'in_doubt') this.options.onInDoubt(observedFailure?.detail ?? observedFailure?.code ?? 'operation_in_doubt', receipt.completedAt);
+      else this.options.onTerminal(receipt);
+      this.result.resolve(receipt);
+    } catch (error) {
+      const persistenceFailure = failure('stop_unconfirmed', `operation ledger terminal write failed: ${String(error)}`);
+      try { this.options.onInDoubt(persistenceFailure.detail ?? persistenceFailure.code, receipt.completedAt); } catch { /* already fail-closed */ }
+      this.result.resolve(jsonSnapshot({ ...receipt, status: 'in_doubt', failure: persistenceFailure }));
+    }
   }
 }

@@ -13,7 +13,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.combat';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.combat.goal.combat-target';
 const CANDIDATE = 'mineclaw.combat.planning.combat-candidates';
 const PREDICATE = 'mineclaw.combat.verification.target-dead';
@@ -30,8 +29,6 @@ export function createMineclawCombatPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -47,7 +44,7 @@ export function createMineclawCombatPlugin(): PluginFactory {
           // 实体观察端口尚未装配：显式 unavailable，绝不猜测实体。
           const supplied = input.params?.target;
           if (!supplied) return { status: 'unavailable', candidates: [], reason: 'entity_observation_unavailable' };
-          return { status: 'complete', candidates: [{ candidateId: `combat:${String((supplied as { id?: string }).id ?? 'target')}`, operationContribution: ref(OPERATION), params: { target: supplied }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
+          return { status: 'complete', candidates: [{ candidateId: `combat:${String((supplied as { id?: string }).id ?? 'target')}`, operationContribution: ref(EXECUTOR), params: { target: supplied }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
         },
       };
 
@@ -59,7 +56,7 @@ export function createMineclawCombatPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const dead = (input.evidence?.entityDead as boolean | undefined) === true;
           return { verdict: dead ? 'satisfied' : 'unknown', evidenceRefs: [], reason: dead ? undefined : 'entity_death_unverified', contribution: ref(PREDICATE) };
         },
@@ -71,17 +68,15 @@ export function createMineclawCombatPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `combat-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const target = (ctx.facts[0]?.payload as { target?: Record<string, unknown> } | undefined)?.target;
-            if (!target) return { ok: false, cancelled: false, error: 'entity_observation_unavailable' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const move = await bodySubmit({ action: 'minecraft-system:move-to', target });
-            if ((move as { ok?: boolean }).ok === false) return { ok: false, cancelled: false, error: 'move_failed' };
-            const attack = await bodySubmit({ action: 'minecraft-system:attack', target });
-            return (attack as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'attack_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const target = ctx.params.target as Record<string, unknown> | undefined;
+            return target
+              ? { ok: true, steps: [
+                  { atomicId: 'move_to', args: { position: target } },
+                  { atomicId: 'attack', args: { target } },
+                ] }
+              : { ok: false, error: 'entity_observation_unavailable' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -129,6 +124,7 @@ export function createMineclawCombatPlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['defeat'], targetKinds: ['entity'], taskFamilies: ['combat'], criterionTypes: ['entity_dead', 'predicate'] },
           },
           behaviorFactory,
         },

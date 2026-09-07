@@ -34,6 +34,12 @@ import type {
 } from '../../infra/llmTrace/index.js';
 import { asProviderResult } from './usage.js';
 import { DEFAULT_LLM_API, type LlmApi } from '../../../../llm/api.js';
+import {
+  ModelContextProfileResolver,
+  type ModelContextProfileBindingV1,
+  type ModelContextProfileResolution,
+} from '../../../../llm/modelContextProfile.js';
+import type { ExactModelRequest } from './apiCodec.js';
 
 export interface LLMClientConfig {
   /** Global configuration id; legacy/inline clients use `inline`. */
@@ -44,6 +50,8 @@ export interface LLMClientConfig {
   api?: LlmApi;
   /** 显式指定 function calling 模型；不按模型名猜测。 */
   toolModel?: string;
+  /** 模型物理容量的显式版本化绑定；缺省时只允许精确 Catalog/discovery 解析。 */
+  contextProfile?: ModelContextProfileBindingV1;
 }
 
 export interface PreparedLlmRouteSnapshot {
@@ -54,17 +62,28 @@ export interface PreparedLlmRouteSnapshot {
   readonly model: string;
   readonly credential: string;
   readonly toolModel?: string;
+  readonly contextProfile: ModelContextProfileResolution;
 }
 
-export function prepareLlmRoute(config: LLMClientConfig): PreparedLlmRouteSnapshot {
-  return Object.freeze({
+export function prepareLlmRoute(
+  config: LLMClientConfig,
+  profileResolver: ModelContextProfileResolver = new ModelContextProfileResolver(),
+): PreparedLlmRouteSnapshot {
+  const identity = {
     routeId: config.routeId?.trim() || 'inline',
     adapterId: 'openai-http' as const,
     api: config.api ?? DEFAULT_LLM_API,
     baseUrl: config.baseUrl,
     model: config.model,
+  };
+  return Object.freeze({
+    ...identity,
     credential: config.apiKey,
     ...(config.toolModel ? { toolModel: config.toolModel } : {}),
+    contextProfile: profileResolver.resolve(
+      { ...identity, model: config.toolModel ?? config.model },
+      config.contextProfile,
+    ),
   });
 }
 
@@ -83,12 +102,24 @@ export interface CallWithToolsArgs {
 
 export interface LLMClientRuntimeOptions {
   traceRecorder?: LlmTraceRecorderPort;
+  contextProfileResolver?: ModelContextProfileResolver;
   now?: () => Date;
   createId?: () => string;
 }
 
+/** Opaque, immutable input captured before governed preflight measurement. */
+export interface PreparedGovernedToolCall {
+  readonly exact: Readonly<ExactModelRequest>;
+  readonly args: CallWithToolsArgs;
+  /** Internal frozen dispatch identity; third-party test transports may own dispatch differently. */
+  readonly provider?: OpenAICompatibleProvider;
+  readonly providerRequest?: LLMToolCallOptions;
+  readonly request?: LlmRequestEnvelopeV1;
+}
+
 export class LLMClient {
   private providers: LLMProvider[] = [];
+  private readonly governedCalls = new WeakSet<object>();
   private readonly config: PreparedLlmRouteSnapshot;
   private readonly traceRecorder?: LlmTraceRecorderPort;
   private readonly now: () => Date;
@@ -100,7 +131,7 @@ export class LLMClient {
     private readonly log: (category: string, message: string) => void,
     options: LLMClientRuntimeOptions = {},
   ) {
-    this.config = prepareLlmRoute(config);
+    this.config = prepareLlmRoute(config, options.contextProfileResolver);
     this.traceRecorder = options.traceRecorder;
     this.now = options.now ?? (() => new Date());
     this.createId = options.createId ?? randomUUID;
@@ -343,6 +374,132 @@ export class LLMClient {
     return Object.freeze({ ...this.config });
   }
 
+  /**
+   * Builds the exact wire request used by context governance. The returned
+   * arguments are detached from caller-owned arrays so measurement and later
+   * dispatch cannot observe different message/tool surfaces.
+   */
+  prepareGovernedToolCall(args: CallWithToolsArgs): PreparedGovernedToolCall {
+    const route = this.prepareCall();
+    const provider = this.providers.find(candidate => candidate.matches(route.baseUrl));
+    if (!route.credential || !route.baseUrl) throw new Error('LLM is not configured');
+    if (!(provider instanceof OpenAICompatibleProvider) || !provider.callWithTools) {
+      throw new Error('exact governed tool-call preparation is unavailable for the selected provider');
+    }
+    const toolChoice: NonNullable<CallWithToolsArgs['toolChoice']> = args.toolChoice ?? 'auto';
+    const detached: CallWithToolsArgs = Object.freeze({
+      ...args,
+      messages: frozenJsonClone(args.messages),
+      tools: frozenJsonClone(args.tools),
+      toolChoice: frozenJsonClone(toolChoice),
+      temperature: args.temperature ?? 0.1,
+      maxTokens: args.maxTokens ?? 512,
+      timeoutMs: args.timeoutMs ?? 90_000,
+      ...(args.traceContext ? { traceContext: frozenJsonClone(args.traceContext) } : {}),
+    });
+    const canonicalCall: CanonicalLlmCall = {
+      messages: canonicalizeChatMessages(detached.messages),
+      tools: canonicalizeChatTools(detached.tools),
+      toolChoice: detached.tools.length
+        ? (typeof toolChoice === 'object' ? { name: toolChoice.function.name } : toolChoice)
+        : undefined,
+      temperature: detached.temperature,
+      maxTokens: detached.maxTokens,
+      timeoutMs: detached.timeoutMs,
+      signal: detached.signal,
+    };
+    const providerRequest: LLMToolCallOptions = Object.freeze({
+      routeId: route.routeId,
+      api: route.api,
+      apiKey: route.credential,
+      baseUrl: route.baseUrl,
+      model: this.resolveToolModel(route),
+      messages: detached.messages,
+      tools: detached.tools,
+      toolChoice,
+      temperature: detached.temperature,
+      maxTokens: detached.maxTokens,
+      timeoutMs: detached.timeoutMs,
+      signal: detached.signal,
+    });
+    const exact = deepFreezeJson(jsonClone(prepareOpenAIRequest(providerRequest, canonicalCall).exact));
+    const request: LlmRequestEnvelopeV1 = deepFreezeJson({
+      provider: provider.name,
+      api: route.api,
+      routeId: route.routeId,
+      baseUrlOrigin: safeBaseUrlOrigin(route.baseUrl),
+      model: providerRequest.model,
+      path: exact.path,
+      body: jsonClone(exact.body) as LlmTraceJsonValue,
+      ...(exact.replay ? { replay: jsonClone(exact.replay) } : {}),
+      messages: jsonClone(detached.messages) as unknown as LlmTraceJsonValue[],
+      tools: jsonClone(detached.tools) as unknown as LlmTraceJsonValue[],
+      toolChoice: jsonClone(toolChoice) as unknown as LlmTraceJsonValue,
+      temperature: providerRequest.temperature,
+      maxTokens: providerRequest.maxTokens,
+      timeoutMs: detached.timeoutMs ?? 90_000,
+      context: detached.traceContext?.contextSources ?? { selected: [], omitted: [] },
+    });
+    const prepared = Object.freeze({
+      exact, args: detached, provider, providerRequest, request,
+    });
+    this.governedCalls.add(prepared);
+    return prepared;
+  }
+
+  /** Dispatches the detached surface represented by prepareGovernedToolCall. */
+  async dispatchPreparedGovernedToolCall(prepared: PreparedGovernedToolCall): Promise<LLMToolCallResult | null> {
+    if (!this.governedCalls.has(prepared) || !prepared.provider || !prepared.providerRequest || !prepared.request) {
+      throw new Error('prepared governed tool call does not belong to this LLMClient');
+    }
+    const startedAt = performance.now();
+    const callId = await this.recordRequest(prepared.request, prepared.args.traceContext);
+    if (callId === null) {
+      prepared.args.onError?.({ kind: 'trace_unavailable' });
+      return null;
+    }
+    try {
+      const providerResult = asProviderResult(await prepared.provider.callWithTools(prepared.providerRequest));
+      const result = providerResult.value ? {
+        ...providerResult.value,
+        usage: jsonClone(providerResult.usage),
+        ...(providerResult.canonical ? { canonical: jsonClone(providerResult.canonical) } : {}),
+      } : null;
+      await this.recordTerminal({
+        type: 'llm.response.recorded', callId, context: prepared.args.traceContext,
+        payload: {
+          content: result?.content ?? '',
+          toolCalls: jsonClone(result?.toolCalls ?? []) as unknown as LlmTraceJsonValue,
+          empty: !result,
+          durationMs: elapsedMs(startedAt),
+          usage: jsonClone(providerResult.usage) as unknown as LlmTraceJsonValue,
+          ...(providerResult.finishReason ? { finishReason: providerResult.finishReason } : {}),
+        },
+      });
+      return result;
+    } catch (error) {
+      if (prepared.args.signal?.aborted && isAbortError(error)) {
+        await this.recordTerminal({
+          type: 'llm.call.cancelled', callId, context: prepared.args.traceContext,
+          payload: { reason: prepared.args.traceContext?.abortReason ?? 'caller_abort', durationMs: elapsedMs(startedAt) },
+        });
+        return null;
+      }
+      const failure = failureFromError(error);
+      await this.recordTerminal({
+        type: 'llm.call.failed', callId, context: prepared.args.traceContext,
+        payload: failurePayload(failure, startedAt),
+      });
+      prepared.args.onError?.(failure);
+      return null;
+    }
+  }
+
+  /** Frozen before any async boundary; governed callers fail closed when unresolved. */
+  contextProfile(): ModelContextProfileResolution {
+    return this.config.contextProfile;
+  }
+
   private resolveToolModel(route: PreparedLlmRouteSnapshot): string {
     return route.toolModel ?? route.model;
   }
@@ -461,6 +618,18 @@ function failurePayload(failure: LLMFailure, startedAt: number): Record<string, 
 
 function jsonClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function frozenJsonClone<T>(value: T): T {
+  return deepFreezeJson(jsonClone(value));
+}
+
+function deepFreezeJson<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreezeJson(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 function hashRequest(request: LlmRequestEnvelopeV1): string {

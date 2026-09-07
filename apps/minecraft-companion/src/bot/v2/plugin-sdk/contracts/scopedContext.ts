@@ -42,6 +42,8 @@ export interface PluginConstructionContext {
   readonly systemPorts?: Readonly<Record<string, unknown>>;
   /** Services published by already-activated plugins (e.g. system observation ports), resolved by dependency order. */
   readonly services?: Readonly<Record<string, unknown>>;
+  /** Immutable release/data-package resources captured by discovery and fixed to this plugin version. */
+  readonly packageContents?: ReadonlyMap<string, string>;
   readonly signal?: AbortSignal;
 }
 

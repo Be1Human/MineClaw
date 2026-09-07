@@ -1,0 +1,31 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.agent-guidance
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies: {}
+permissions: []
+contributions:
+  - { kind: skill, id: mineclaw.agent-guidance.skill.owner-memory, version: 1.0.0, entryRef: skills/主人记忆/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.task-management, version: 1.0.0, entryRef: skills/任务管理/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.agriculture-sowing, version: 1.0.0, entryRef: skills/农活种植/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.landmark-navigation, version: 1.0.0, entryRef: skills/去地标/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.crafting, version: 1.0.0, entryRef: skills/合成造物/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.location-memory, version: 1.0.0, entryRef: skills/地点记忆/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.world-perception, version: 1.0.0, entryRef: skills/感知世界/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.agriculture-harvest, version: 1.0.0, entryRef: skills/成熟农田归仓/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.item-search, version: 1.0.0, entryRef: skills/找东西/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.skill-evolution, version: 1.0.0, entryRef: skills/技能进化/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.exploration, version: 1.0.0, entryRef: skills/探索找路/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.clarification, version: 1.0.0, entryRef: skills/沟通澄清/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.capability-index, version: 1.0.0, entryRef: skills/能力索引/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.resource-decision, version: 1.0.0, entryRef: skills/资源决策/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.follow-owner, version: 1.0.0, entryRef: skills/跟随主人/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.owner-protection, version: 1.0.0, entryRef: skills/保护我/SKILL.md }
+  - { kind: skill, id: mineclaw.agent-guidance.skill.gathering, version: 1.0.0, entryRef: skills/采集材料/SKILL.md }
+  - kind: knowledge
+    id: mineclaw.agent-guidance.knowledge.agriculture-basics
+    version: 1.0.0
+    contentRef: src/bot/v2/plugins/builtin/agent-guidance/agriculture-knowledge.md
+    contentSchema: { format: mineclaw.domain-knowledge/v1, mediaType: text/markdown }

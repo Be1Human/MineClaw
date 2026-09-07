@@ -4,7 +4,7 @@ import { GoalAgentProductionPerceptionPort } from '../../../../../../../apps/min
 import { GoalAgentRoundToolRuntime } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundTools.js';
 import { createGoalAgentState } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentState.js';
 import { __setTuningOverride } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
-import type { CapabilityWorldFactProvider } from '../../../../../../../apps/minecraft-companion/src/bot/v2/capabilities/types.js';
+import type { RuntimeWorldFactProvider } from '../../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/runtimeProjection.js';
 import type { WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 
 function world(): WorldStateView {
@@ -13,10 +13,10 @@ function world(): WorldStateView {
     entities: [], inventory: { items: [], held: null, freeSlots: 36 }, taskContext: null };
 }
 const request = { providerId: 'test.fact', version: '1', params: { radius: 2 } };
-function harness(observe?: CapabilityWorldFactProvider['observe']) {
+function harness(observe?: RuntimeWorldFactProvider['observe']) {
   let scans = 0;
   const snapshot = world();
-  const provider: CapabilityWorldFactProvider = { id: 'test.fact', version: '1',
+  const provider: RuntimeWorldFactProvider = { id: 'test.fact', version: '1',
     inputSchema: { type: 'object', properties: { radius: { type: 'integer', minimum: 1, maximum: 4 } }, required: ['radius'], additionalProperties: false },
     observe: observe ?? (({ world: current, params }) => { scans += 1; return {
       providerId: 'test.fact', version: '1', observedAt: current.timestamp, complete: true, truncated: false,

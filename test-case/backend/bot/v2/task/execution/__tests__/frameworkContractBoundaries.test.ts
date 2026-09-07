@@ -113,7 +113,7 @@ test('A01/A04: all consumers import shared contracts directly; replaced export a
 });
 
 test('A04: production contracts cannot advertise an unused optional controlled context or receipt', () => {
-  for (const module of ['atomic/atomics.ts', 'behavior/types.ts', 'task/strategy/strategyExecutor.ts', 'task/goalRunner/actionPresentation.ts',
+  for (const module of ['atomic/atomics.ts', 'task/strategy/strategyExecutor.ts', 'task/goalRunner/actionPresentation.ts',
     'task/goalAgent/ports/executionPort.ts', 'task/goalAgent/goalAgentState.ts', 'task/execution/bodyActionService.ts']) {
     const visit = (node: ts.Node): void => {
       if ((ts.isPropertySignature(node) || ts.isParameter(node)) && node.questionToken && ts.isIdentifier(node.name)) {
@@ -169,6 +169,30 @@ const goldenInput = {
   "profileId": "test-profile",
   "goalText": "种一格",
   "requestRef": "request-golden",
+  "intent": {
+    "outcome": "composed",
+    "target": {
+      "kind": "state",
+      "surface": "种一格",
+      "registryId": "test:crop",
+      "quantity": 1
+    }
+  },
+  "source": {
+    "snapshot": {
+      "generationId": "gen-golden",
+      "buildId": "build-golden",
+      "graphHash": "graph-golden"
+    },
+    "contributions": [
+      {
+        "pluginId": "mineclaw.test",
+        "pluginVersion": "1.0.0",
+        "contributionId": "mineclaw.test.goal.crop",
+        "contributionVersion": "1.0.0"
+      }
+    ]
+  },
   "successCriteria": [
     {
       "type": "predicate",
@@ -187,6 +211,12 @@ const goldenInput = {
     ],
     "bindings": [
       {
+        "contribution": {
+          "pluginId": "mineclaw.test",
+          "pluginVersion": "1.0.0",
+          "contributionId": "mineclaw.test.goal.crop",
+          "contributionVersion": "1.0.0"
+        },
         "id": "plot",
         "version": "1",
         "kind": "region",
@@ -212,15 +242,15 @@ const goldenInput = {
   },
   "createdAt": "2026-08-31T00:00:00.000Z"
 } satisfies Omit<GoalContractV2, 'contentHash'>;
-const goldenCanonical = "{\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"goalId\":\"goal-golden\",\"goalText\":\"种一格\",\"profileId\":\"test-profile\",\"requestRef\":\"request-golden\",\"schema\":\"mineclaw.goal/v2\",\"scope\":{\"bindings\":[{\"dimension\":\"overworld\",\"evidenceRefs\":[\"world:plot\"],\"id\":\"plot\",\"kind\":\"region\",\"mutationAllowed\":true,\"required\":true,\"requiredPredicates\":[{\"args\":{\"x\":1,\"z\":2},\"id\":\"test.crop\",\"version\":\"1\"}],\"summary\":\"test plot\",\"version\":\"1\"}],\"dimension\":\"overworld\",\"targetRefs\":[\"plot\"]},\"successCriteria\":[{\"args\":{\"x\":1,\"z\":2},\"predicate\":\"test.crop\",\"predicateVersion\":\"1\",\"type\":\"predicate\"}]}";
+const goldenCanonical = '{"createdAt":"2026-08-31T00:00:00.000Z","goalId":"goal-golden","goalText":"种一格","intent":{"outcome":"composed","target":{"kind":"state","quantity":1,"registryId":"test:crop","surface":"种一格"}},"profileId":"test-profile","requestRef":"request-golden","schema":"mineclaw.goal/v2","scope":{"bindings":[{"contribution":{"contributionId":"mineclaw.test.goal.crop","contributionVersion":"1.0.0","pluginId":"mineclaw.test","pluginVersion":"1.0.0"},"dimension":"overworld","evidenceRefs":["world:plot"],"id":"plot","kind":"region","mutationAllowed":true,"required":true,"requiredPredicates":[{"args":{"x":1,"z":2},"id":"test.crop","version":"1"}],"summary":"test plot","version":"1"}],"dimension":"overworld","targetRefs":["plot"]},"source":{"contributions":[{"contributionId":"mineclaw.test.goal.crop","contributionVersion":"1.0.0","pluginId":"mineclaw.test","pluginVersion":"1.0.0"}],"snapshot":{"buildId":"build-golden","generationId":"gen-golden","graphHash":"graph-golden"}},"successCriteria":[{"args":{"x":1,"z":2},"predicate":"test.crop","predicateVersion":"1","type":"predicate"}]}';
 
-test('A02: canonical JSON, goal hash and fixed-key signature input match the pre-refactor golden bytes', () => {
+test('A02: canonical JSON, goal hash and fixed-key signature input match the formal-goal golden bytes', () => {
   const canonical = JSON.stringify(jsonSnapshot(goldenInput));
   assert.equal(canonical, goldenCanonical);
-  assert.equal(createHash('sha256').update(canonical).digest('hex'), 'af448d0bc299d46f7b127683a140d8d0040e5a5213f1cfdff5d0ea28d490a369');
-  assert.equal(createHmac('sha256', 'fixed-test-key').update(canonical).digest('hex'), '8c4960041bca7d18d38ef54b7184e735ddf6470c0299871a155bd6923aaba045');
+  assert.equal(createHash('sha256').update(canonical).digest('hex'), '18e3faf5b8caf9d47234fd6ec00a6dc9181d82f7e2996e01095f0d8dc864add6');
+  assert.equal(createHmac('sha256', 'fixed-test-key').update(canonical).digest('hex'), 'e93dc20b1b307939022a3e4a39e840269332c3605165eb3d5ff4327378d8604b');
   const goal = freezeGoalContractV2(goldenInput);
-  assert.equal(goal.contentHash, 'af448d0bc299d46f7b127683a140d8d0040e5a5213f1cfdff5d0ea28d490a369');
+  assert.equal(goal.contentHash, '18e3faf5b8caf9d47234fd6ec00a6dc9181d82f7e2996e01095f0d8dc864add6');
   assert.equal(goalContractV2Hash(JSON.parse(JSON.stringify(goal))), goal.contentHash);
   const reverseKeys = (value: unknown): unknown => Array.isArray(value) ? value.map(reverseKeys) : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reverseKeys(item)])) : value;

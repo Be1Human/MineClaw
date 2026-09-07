@@ -133,7 +133,7 @@ export class GoalAgentRoundLoop {
 
   restoreActive(options: GoalAgentRoundRunOptions = {}): Promise<GoalAgentStateV1[]> {
     return Promise.all(this.options.store.listActive()
-      .filter(state => state.mode === 'planned_goal')
+      .filter(state => state.mode === 'planned_goal' && state.phase !== 'needs_rebind')
       .map(state => this.run(state.sessionId, options)));
   }
 
@@ -284,7 +284,7 @@ export class GoalAgentRoundLoop {
     if (!Number.isInteger(maxRounds) || maxRounds < 1) throw new Error('maxRounds must be a positive integer');
     let state = this.requireExisting(sessionId);
     for (let round = 0; round < maxRounds; round += 1) {
-      if (isGoalAgentTerminalPhase(state.phase) || state.phase === 'paused_owner') return state;
+      if (isGoalAgentTerminalPhase(state.phase) || state.phase === 'paused_owner' || state.phase === 'needs_rebind') return state;
       if (state.progress?.waiting) {
         if (this.nowMs() < Math.min(state.progress.waiting.nextCheckAt, state.progress.waiting.deadlineAt)) return state;
         try { state = await this.pollWaiting(state); }
@@ -355,7 +355,13 @@ export class GoalAgentRoundLoop {
           next.activeNode = 'round';
         }
         const catalogVersion = [...new Set(this.options.capabilities?.list().flatMap(value => 'catalogVersion' in value ? [value.catalogVersion] : []) ?? [])].sort().join('|');
-        const progressTransition = this.progressGuard.afterRound(next, this.nowMs(), catalogVersion, receipts.some(value => value.name === 'action_execute'));
+        const progressTransition = await this.progressGuard.afterRound(
+          next,
+          this.nowMs(),
+          catalogVersion,
+          receipts.some(value => value.name === 'action_execute'),
+          controller.signal,
+        );
         if (progressTransition) appendTimeline(next, 'transition', progressTransition, next.verdict?.evidenceRefs ?? [], { progressMode: next.progress?.mode });
         // Persist notification dedupe in the same checkpoint as the decision, before publishing it.
         const feedback = this.evaluateOwnerFeedback(next, receipts);
@@ -442,7 +448,7 @@ export class GoalAgentRoundLoop {
       } finally { controller.signal.removeEventListener('abort', rejectAbort); }
     }
     if (controller.signal.aborted) return this.requireExisting(next.sessionId);
-    const transition = this.progressGuard.pollWaiting(next, this.nowMs());
+    const transition = await this.progressGuard.pollWaiting(next, this.nowMs(), controller.signal);
     if (next.terminal && next.progress) { next.progress.waiting = null; next.progress.mode = next.terminal.outcome === 'completed' ? 'running' : 'failed'; }
     appendTimeline(next, 'observation', transition ?? 'world wait verified', observation?.evidenceRefs ?? [], { source: 'bounded_world_wait', modelInvoked: false });
     const state = this.options.store.commit({ expectedRevision: current.revision, expectedEpoch: current.epoch, state: next,

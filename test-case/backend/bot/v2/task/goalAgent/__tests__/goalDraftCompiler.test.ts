@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, beforeEach, afterEach } from 'node:test';
-import { GoalDraftCompiler } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalDraftCompiler.js';
+import { GoalCompiler } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalCompiler.js';
 import { GoalAgentRoundToolRuntime } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundTools.js';
 import { GoalAgentRoundLoop } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentRoundLoop.js';
 import { GoalAgentSessionStore } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentSessionStore.js';
@@ -22,27 +22,29 @@ function fixture() {
     meta: { schemaVersion: 2, sessionId: 'interaction', messageId: 'request', correlationId: 'correlation', conversationId: 'conversation',
       sequence: 1, emittedAt: acceptedAt, idempotencyKey: 'request' },
     origin: 'player_message', originalText: '把这个田种一下', requestText: '把这个田种一下', requestKind: 'task', constraints: ['仅已有耕地'],
-  } });
+  }, snapshotRef: { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' } });
   state.world.latest = { tick: 1, timestamp: now, self: { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0, health: 20, maxHealth: 20, food: 20, isOnGround: true },
     owner: null, environment: { dimension: 'overworld', timeOfDay: 1000, isDay: true, isRaining: false },
     entities: [], inventory: { items: [], held: null, freeSlots: 36 }, taskContext: null } satisfies WorldStateView;
   const ref = { id: 'test.crop_present', version: '1', args: { fieldRef: 'field:one', count: 4 } };
-  const binding: GoalScopeBinding = { id: 'field:one', version: 'geometry-1', kind: 'region', summary: 'confirmed field',
+  const contribution = { pluginId: 'mineclaw.test', pluginVersion: '1.0.0', contributionId: 'mineclaw.test.goal.field', contributionVersion: '1.0.0' };
+  const predicateContribution = { pluginId: 'mineclaw.test', pluginVersion: '1.0.0', contributionId: 'mineclaw.test.verification.crop', contributionVersion: '1.0.0' };
+  const binding: GoalScopeBinding = { contribution, id: 'field:one', version: 'geometry-1', kind: 'region', summary: 'confirmed field',
     dimension: 'overworld', region: { min: { x: 1, y: 64, z: 1 }, max: { x: 2, y: 64, z: 2 } },
     mutationAllowed: true, required: true, requiredPredicates: [ref], evidenceRefs: ['field:confirmed'] };
-  const predicate: GoalPredicateEvaluator = { id: ref.id, version: ref.version,
+  const predicate: GoalPredicateEvaluator = { contribution: predicateContribution, id: ref.id, version: ref.version,
     argumentSchema: { type: 'object', additionalProperties: false, required: ['fieldRef', 'count'], properties: {
       fieldRef: { type: 'string', minLength: 1 }, count: { type: 'integer', minimum: 1 },
     } }, evaluate: () => ({ status: 'unknown', detail: 'not verified' }) };
   const draft: GoalDraft = { schema: 'mineclaw.goal-draft/v1', requestRef: state.requestId,
     success: { allOf: [ref] }, scope: { dimension: 'overworld', targetRefs: [binding.id], allowedMutationRegion: binding.region } };
-  const compiler = new GoalDraftCompiler({ predicates: () => [predicate], bindings: () => [binding] });
-  const compile = (value: unknown = draft) => compiler.compile({ draft: value, state, profileId: 'test', goalId: 'goal-1', acceptedAt });
+  const compiler = new GoalCompiler({ predicates: () => [predicate], bindings: () => [binding] });
+  const compile = (value: unknown = draft) => compiler.compile({ input: { kind: 'draft', draft: value }, state, profileId: 'test', goalId: 'goal-1', acceptedAt });
   return { state, draft, binding, predicate, compiler, compile, acceptedAt };
 }
 
-test('U05: a registered predicate and observed binding compile without any target template', () => {
-  const f = fixture(), result = f.compile();
+test('U05: a registered predicate and observed binding compile without any target template', async () => {
+  const f = fixture(), result = await f.compile();
   assert.equal(result.rootGoal.schema, 'mineclaw.goal/v2');
   assert.equal(result.rootGoal.goalText, f.state.request.originalText);
   assert.deepEqual(result.rootGoal.scope.allowedMutationRegion, f.binding.region);
@@ -54,7 +56,7 @@ test('U05: a registered predicate and observed binding compile without any targe
   assert.throws(() => { (result.rootGoal.successCriteria[0]!.args as any).count = 1; });
 });
 
-test('U06: malformed drafts, unknown predicates, unbound targets and narrowed/expanded scopes reject without mutation', () => {
+test('U06: malformed drafts, unknown predicates, unbound targets and narrowed/expanded scopes reject without mutation', async () => {
   const f = fixture();
   const variants = [
     { ...f.draft, script: 'dig()' }, { ...f.draft, requestRef: 'other' },
@@ -67,31 +69,31 @@ test('U06: malformed drafts, unknown predicates, unbound targets and narrowed/ex
     { ...f.draft, scope: { ...f.draft.scope, allowedMutationRegion: { ...f.binding.region!, max: { x: 99, y: 64, z: 99 } } } },
     { ...f.draft, scope: { ...f.draft.scope, allowedMutationRegion: { ...f.binding.region!, max: { x: 1, y: 64, z: 1 } } } },
   ];
-  for (const invalid of variants) assert.throws(() => f.compile(invalid));
+  for (const invalid of variants) await assert.rejects(f.compile(invalid));
   assert.equal(f.state.rootGoal, null);
   assert.equal(f.state.budget.actions, 0);
 });
 
-test('U06: stale world, duplicate targets, missing required predicates and runtime limits fail closed', () => {
+test('U06: stale world, duplicate targets, missing required predicates and runtime limits fail closed', async () => {
   const f = fixture();
-  assert.throws(() => f.compile({ ...f.draft, scope: { ...f.draft.scope, targetRefs: ['field:one', 'field:one'] } }), /duplicate/);
+  await assert.rejects(f.compile({ ...f.draft, scope: { ...f.draft.scope, targetRefs: ['field:one', 'field:one'] } }), /duplicate/);
   f.state.world.latest!.timestamp -= 6000;
-  assert.throws(() => f.compile(), /fresh_world/);
+  await assert.rejects(f.compile(), /fresh_world/);
   f.state.world.latest!.timestamp += 6000;
   __setTuningOverride({ goalComposition: { enabled: true, maxRegionVolume: 1 } });
-  assert.throws(() => f.compile(), /region_limit/);
+  await assert.rejects(f.compile(), /region_limit/);
   __setTuningOverride({ goalComposition: { enabled: true, maxDraftBytes: 1 } });
-  assert.throws(() => f.compile(), /size_limit/);
+  await assert.rejects(f.compile(), /size_limit/);
   __setTuningOverride({ goalComposition: { enabled: true, maxTargets: -1 } });
-  assert.throws(() => f.compile(), /invalid_goal_composition_limits/);
+  await assert.rejects(f.compile(), /invalid_goal_composition_limits/);
 });
 
-test('U05: root signature covers binding geometry/version and not the acceptedAt baseline', () => {
-  const f = fixture(), initial = f.compile();
-  const later = f.compiler.compile({ draft: f.draft, state: f.state, profileId: 'test', goalId: 'goal-2', acceptedAt: new Date(Date.parse(f.acceptedAt) + 1).toISOString() });
+test('U05: root signature covers binding geometry/version and not the acceptedAt baseline', async () => {
+  const f = fixture(), initial = await f.compile();
+  const later = await f.compiler.compile({ input: { kind: 'draft', draft: f.draft }, state: f.state, profileId: 'test', goalId: 'goal-2', acceptedAt: new Date(Date.parse(f.acceptedAt) + 1).toISOString() });
   assert.equal(later.signature.key, initial.signature.key);
-  const changed = new GoalDraftCompiler({ predicates: () => [f.predicate], bindings: () => [{ ...f.binding, version: 'geometry-2' }] });
-  assert.notEqual(changed.compile({ draft: f.draft, state: f.state, profileId: 'test', goalId: 'goal-3', acceptedAt: f.acceptedAt }).signature.key, initial.signature.key);
+  const changed = new GoalCompiler({ predicates: () => [f.predicate], bindings: () => [{ ...f.binding, version: 'geometry-2' }] });
+  assert.notEqual((await changed.compile({ input: { kind: 'draft', draft: f.draft }, state: f.state, profileId: 'test', goalId: 'goal-3', acceptedAt: f.acceptedAt })).signature.key, initial.signature.key);
 });
 
 test('U05/U08: goal_create composed mode uses the real port, bumps state schema and remains idempotent', async () => {
@@ -112,7 +114,7 @@ test('U08: store preserves v2 contract and rejects rewritten roots, downgrade an
   const f = fixture(), store = new GoalAgentSessionStore(':memory:');
   try {
     store.create(f.state);
-    const compiled = f.compile(), next = structuredClone(f.state);
+    const compiled = await f.compile(), next = structuredClone(f.state);
     next.schema = GOAL_AGENT_STATE_SCHEMA_V2; next.rootGoal = compiled.rootGoal;
     next.goal.definition = compiled.goal; next.goal.signature = compiled.signature; next.revision = 1;
     const saved = store.commit({ expectedRevision: 0, expectedEpoch: 1, state: next });
@@ -125,14 +127,14 @@ test('U08: store preserves v2 contract and rejects rewritten roots, downgrade an
     const legacy = fixture().state; legacy.sessionId = 'legacy'; legacy.rootGoal = {
       schema: 'mineclaw.goal/v1', goalId: 'v1', profileId: 'test', goalText: 'old root', createdAt: f.acceptedAt,
       successCriteria: [{ type: 'inventory', item: 'stick', count: 1 }],
-    }; store.create(legacy);
+    }; legacy.phase = 'needs_rebind'; store.create(legacy);
     const reinterpreted = structuredClone(legacy); reinterpreted.schema = GOAL_AGENT_STATE_SCHEMA_V2; reinterpreted.rootGoal = compiled.rootGoal; reinterpreted.revision = 1;
     assert.throws(() => store.commit({ expectedRevision: 0, expectedEpoch: 1, state: reinterpreted }), /cannot_be_reinterpreted/);
   } finally { store.close(); }
 });
 
-test('U08: disabling new composed goals does not prevent cancelling a stored v2 session', async () => {
-  const f = fixture(), compiled = f.compile();
+test('U08: removed dual-track switch cannot disable unified compilation and cancellation remains available', async () => {
+  const f = fixture(), compiled = await f.compile();
   f.state.schema = GOAL_AGENT_STATE_SCHEMA_V2; f.state.rootGoal = compiled.rootGoal;
   f.state.goal.definition = compiled.goal; f.state.goal.signature = compiled.signature;
   const store = new GoalAgentSessionStore(':memory:');
@@ -140,7 +142,7 @@ test('U08: disabling new composed goals does not prevent cancelling a stored v2 
   try {
     loop.create(f.state);
     __setTuningOverride({ goalComposition: { enabled: false } });
-    assert.throws(() => fixture().compile(), /disabled/);
+    assert.equal((await fixture().compile()).rootGoal.schema, 'mineclaw.goal/v2');
     const cancelled = await loop.cancel(f.state.sessionId, 'owner stopped');
     assert.equal(cancelled.terminal?.outcome, 'cancelled');
     assert.equal(cancelled.rootGoal?.schema, 'mineclaw.goal/v2');
@@ -148,20 +150,20 @@ test('U08: disabling new composed goals does not prevent cancelling a stored v2 
   } finally { loop.dispose(); store.close(); }
 });
 
-test('U05: world_observe exposes code bindings, and the committed scope survives history compaction', async () => {
+test('U05: world_observe exposes code bindings, and the committed scope stays on the required state surface', async () => {
   const f = fixture();
   const runtime = new GoalAgentRoundToolRuntime({ profileId: 'test', now: () => f.acceptedAt,
     tools: { goals: f.compiler, perception: { observe: async () => structuredClone(f.state.world.latest!) } } });
   const observed = await runtime.execute({ id: 'observe', name: 'world_observe', arguments: {} }, f.state, new AbortController().signal);
   assert.equal(observed.content.requestRef, f.state.requestId);
   assert.deepEqual(observed.content.goalBindings, [f.binding]);
-  assert.equal(observed.content.composedGoalsEnabled, true);
+  assert.equal(observed.content.unifiedGoalCompiler, true);
   const created = await runtime.execute({ id: 'create', name: 'goal_create', arguments: { mode: 'composed', draft: f.draft } }, f.state, new AbortController().signal);
   assert.equal(created.content.ok, true);
-  const context = new GoalAgentContextCompiler({ maxHistoryCharacters: 2000 }).compile({ state: f.state, node: 'round', instruction: 'continue',
+  const context = new GoalAgentContextCompiler().compile({ state: f.state, node: 'round', instruction: 'continue',
     historyMessages: [{ role: 'user', content: 'old'.repeat(1000) }] });
-  const compacted = JSON.parse(context.compaction!.summary.split('\n').slice(1).join('\n'));
-  assert.deepEqual(compacted.scope, (f.state.rootGoal as any).scope);
-  assert.equal(compacted.goalSchema, 'mineclaw.goal/v2');
-  assert.ok(context.messages.some(message => message.content.includes('Immutable composed goal:')));
+  assert.ok(context.messages.some(message => message.content.includes('Immutable formal goal:')));
+  const stateSegment = context.segments.find(segment => segment.kind === 'dynamic_state');
+  assert.equal(stateSegment?.retention, 'required');
+  assert.match(JSON.stringify(stateSegment?.messages), new RegExp((f.state.rootGoal as any).scope.dimension));
 });

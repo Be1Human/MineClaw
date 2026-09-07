@@ -1,4 +1,5 @@
 import type { FactRegion } from './worldFact.js';
+import type { ContributionRef } from '../../plugin-sdk/identity.js';
 
 export interface PredicateRef {
   readonly id: string;
@@ -19,6 +20,8 @@ export interface GoalDraft {
 
 /** Code-owned interpretation of an observed, authorized target, never supplied by the model. */
 export interface GoalScopeBinding {
+  /** Exact provider contribution that produced and owns this binding. */
+  readonly contribution: ContributionRef;
   readonly id: string;
   readonly version: string;
   readonly kind: 'item' | 'entity' | 'region' | 'container' | 'self';

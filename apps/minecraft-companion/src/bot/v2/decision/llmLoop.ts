@@ -36,9 +36,12 @@ import type {
   LlmTraceRecorderPort,
   TraceContextSourceRef,
 } from '../infra/llmTrace/index.js';
+import type { BaseSystemPrompt } from './baseSystemPrompt.js';
 
 export interface LLMLoopConfig {
   systemPrompt: string;
+  /** Stable base-system identity used to reconcile the exact outbound surface. */
+  baseSystem?: BaseSystemPrompt;
   /** FEAT-CROSS-12 · 根据当前消息动态选择世界书并组装角色卡。 */
   characterBlock?: (userMessage: string) => string;
   /** 每个 turn 现读的机器运行态；不得用静态 prompt 猜测身体或玩家在线状态。 */
@@ -232,7 +235,7 @@ export class LLMToolLoop {
         callId,
         agent: 'mainbrain',
         modelCallIndex: rounds,
-        contextSources: mainBrainContextManifest(messages, permittedTools.length),
+        contextSources: mainBrainContextManifest(messages, permittedTools.length, this.cfg.baseSystem),
         abortReason: 'new_owner_message_or_runtime_stop',
       };
       const resp = await this.llm.callWithTools({
@@ -865,23 +868,25 @@ function sanitizeStoredAssistant(value: unknown, callId?: string): LLMChatMessag
 function mainBrainContextManifest(
   messages: readonly LLMChatMessage[],
   toolCount: number,
+  baseSystem?: BaseSystemPrompt,
 ): { selected: TraceContextSourceRef[]; omitted: [] } {
   const selected: TraceContextSourceRef[] = [];
   if (messages.length > 0) {
     selected.push({
       kind: 'mainbrain_system',
-      ref: 'mainbrain:compiled-system/current-turn',
+      ref: baseSystem?.id ?? 'mainbrain:compiled-system/current-turn',
+      ...(baseSystem ? { version: baseSystem.version, contentHash: baseSystem.hash } : {}),
       characters: messages[0]!.content.length,
       messageIndexes: [0],
     });
   }
-  if (messages.length > 2) {
-    const indexes = messages.slice(1, -1).map((_message, index) => index + 1);
+  for (let index = 1; index < Math.max(1, messages.length - 1); index += 1) {
+    const message = messages[index]!;
     selected.push({
-      kind: 'conversation_tool_history',
-      ref: `mainbrain:projected-history:${indexes.length}`,
-      characters: indexes.reduce((total, index) => total + (messages[index]?.content.length ?? 0), 0),
-      messageIndexes: indexes,
+      kind: message.role === 'tool' ? 'tool_result' : message.role === 'assistant' ? 'assistant_tool_call' : 'runtime_or_history_context',
+      ref: `mainbrain:message:${index}:${message.role}`,
+      characters: message.content.length,
+      messageIndexes: [index],
     });
   }
   if (messages.length > 1) {

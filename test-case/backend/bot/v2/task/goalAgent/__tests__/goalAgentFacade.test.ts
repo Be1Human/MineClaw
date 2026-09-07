@@ -4,6 +4,9 @@ import { test } from 'node:test';
 import type { GoalReportV2, GoalRequestV2 } from '../../../../../../../apps/minecraft-companion/src/bot/v2/decision/goalAgentPort/contracts.js';
 import type { WorldStateView } from '../../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
 import { GoalAgent } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgent.js';
+import { createGoalAgentTestModelClient } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/goalAgent/goalAgentModelRuntime.js';
+
+const TEST_SNAPSHOT = { generationId: 'gen-test', buildId: 'build-test', graphHash: 'graph-test' } as const;
 
 function request():GoalRequestV2 {
   return {
@@ -31,7 +34,8 @@ test('GoalAgent facade owns submission, status, reports and request idempotency'
   let modelCalls=0;
   const agent=new GoalAgent({
     profileId:'test',stateDbPath:':memory:',
-    modelClient:{
+    getSnapshotRef: () => TEST_SNAPSHOT,
+    modelClient:createGoalAgentTestModelClient({
       async callWithTools(args){
         modelCalls+=1;
         const sessionId=args.traceContext?.goalSessionId;
@@ -42,7 +46,7 @@ test('GoalAgent facade owns submission, status, reports and request idempotency'
         };
         return {content:'背包里有 2 个橡木原木。',toolCalls:[]};
       },
-    },
+    }),
     tools:{perception:{async observe(){return world();}}},
     publishReport:report=>reports.push(report),
   });
@@ -89,12 +93,13 @@ test('persistent monitor survives restore without planned pump and invokes cogni
   const agent = new GoalAgent({
     profileId: 'persistent-test',
     stateDbPath: ':memory:',
-    modelClient: {
+    getSnapshotRef: () => TEST_SNAPSHOT,
+    modelClient: createGoalAgentTestModelClient({
       async callWithTools() {
         modelCalls += 1;
         return { content: '{"decision":"continue","summary":"owner moved"}', toolCalls: [] };
       },
-    },
+    }),
     tools: { perception: { async observe() { return structuredClone(observed); } } },
   });
   try {

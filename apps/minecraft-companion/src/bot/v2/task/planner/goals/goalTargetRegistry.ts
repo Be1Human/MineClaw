@@ -1,5 +1,4 @@
 import {
-  DEFAULT_GOAL_TARGETS,
   InMemoryGoalKnowledgePort,
   normalizeGoalRegistryId,
   type GoalTargetCriterionTemplate,
@@ -13,7 +12,7 @@ export type { GoalTargetCriterionTemplate, GoalTargetDefinition };
 export class GoalTargetRegistry {
   private readonly definitions = new Map<string, GoalTargetDefinition>();
 
-  constructor(definitions: readonly GoalTargetDefinition[] = DEFAULT_GOAL_TARGETS) {
+  constructor(definitions: readonly GoalTargetDefinition[]) {
     for (const definition of definitions) this.register(definition);
   }
 

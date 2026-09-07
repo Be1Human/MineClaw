@@ -81,6 +81,22 @@ test('BUG-CROSS-73 · migrates missing mode and preserves persistent monitor mod
   assertGoalAgentStateV1(persistent);
 });
 
+test('U11: a pre-source goal/v2 remains readable but is downgraded to needs_rebind instead of using the live Generation', () => {
+  const legacy = createGoalAgentState({ sessionId: 'goal-old-v2', interactionSessionId: 'interaction-1', request: request() });
+  legacy.schema = 'mineclaw.goal-agent-state/v2';
+  legacy.rootGoal = {
+    schema: 'mineclaw.goal/v2', goalId: 'old', profileId: 'test', goalText: 'old goal', requestRef: legacy.requestId,
+    successCriteria: [{ type: 'inventory', item: 'wheat', count: 1 }], scope: { dimension: 'overworld', targetRefs: ['plot'], bindings: [] },
+    createdAt: legacy.createdAt, contentHash: 'old-hash',
+  } as unknown as NonNullable<typeof legacy.rootGoal>;
+  const migrated = migrateGoalAgentStateV1(legacy);
+  assert.equal(migrated.schema, 'mineclaw.goal-agent-state/v1');
+  assert.equal(migrated.rootGoal?.schema, 'mineclaw.goal/v1');
+  assert.equal(migrated.phase, 'needs_rebind');
+  assert.equal(migrated.interpretation.lastValidationError, 'needs_rebind:legacy_goal_equivalence_unproven');
+  assertGoalAgentStateV1(migrated);
+});
+
 test('rejects terminal phase without a terminal payload', () => {
   const state = createGoalAgentState({
     sessionId: 'goal-1', interactionSessionId: 'interaction-1', request: request(),

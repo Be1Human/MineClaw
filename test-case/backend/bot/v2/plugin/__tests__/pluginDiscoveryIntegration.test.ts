@@ -143,6 +143,7 @@ test('U28 完整执行贡献经内核注册并保留身份与权限', async () =
           progressContributionId: 'mineclaw.oven.planning.progress',
           resultContributionId: 'mineclaw.oven.result.bake',
           cancellable: true,
+          applicability: { outcomes: ['composed'], targetKinds: ['state'], taskFamilies: ['oven'], criterionTypes: ['predicate'] },
         },
       },
       {
@@ -159,7 +160,7 @@ test('U28 完整执行贡献经内核注册并保留身份与权限', async () =
     {
       kind: 'execution', id: 'mineclaw.oven.execution.bake', version: '1.0.0',
       operation: (manifestation.contributions.find((c) => c.kind === 'execution') as Record<string, unknown>).operation,
-      behaviorFactory: { id: 'mineclaw.oven.execution.bake', version: '1.0.0', create: () => ({ instanceId: 'i1', contribution: { pluginId: 'x', pluginVersion: 'x', contributionId: 'x', contributionVersion: 'x' }, run: async () => ({ ok: true, cancelled: false }), halt: async () => undefined, close: async () => undefined, settled: true }) },
+      behaviorFactory: { id: 'mineclaw.oven.execution.bake', version: '1.0.0', create: () => ({ kind: 'adaptive', instanceId: 'i1', contribution: { pluginId: 'x', pluginVersion: 'x', contributionId: 'x', contributionVersion: 'x' }, run: async () => ({ ok: true, cancelled: false }), halt: async () => undefined, close: async () => undefined, settled: true }) },
     },
     {
       kind: 'planning', id: 'mineclaw.oven.planning.candidates', version: '1.0.0',
@@ -208,6 +209,7 @@ test('I08 事务失败包不污染其他包，且零部分状态', async () => {
           progressContributionId: 'mineclaw.broken.progress.x',
           resultContributionId: 'mineclaw.broken.result.x',
           cancellable: true,
+          applicability: { outcomes: ['composed'], targetKinds: ['state'], taskFamilies: ['broken'], criterionTypes: ['predicate'] },
         },
       },
     ],

@@ -13,7 +13,6 @@ import type { DecisionPolicy } from '../../task/decisionPolicy.js';
 import type { EventBusV2 } from '../../infra/eventBus.js';
 import type { MemoryV2 } from '../../infra/memory.js';
 import type { BotMemoryStore } from '../../infra/botMemory.js';
-import type { AgentSkillRegistry } from '../../skills/skillRegistry.js';
 import type { LLMToolSchema } from '../../cognitive/llm/types.js';
 import type { GoalAgentPort } from '../../decision/goalAgentPort/goalAgentPort.js';
 
@@ -102,8 +101,6 @@ export interface ToolDeps {
       includeEvidence?: boolean;
     }): unknown;
   };
-  /** FEAT-L7-11 · self-improving · save_skill 工具写盘+热注册用 */
-  skillRegistry?: AgentSkillRegistry;
   /** FEAT-CROSS-07 · 固化策略库 · manage_strategy 工具用（主人主权：列/禁用/删/认可） */
   strategyStore?: {
     list(): Array<{ id: string; name: string; description: string; lifecycle: { state: string; confidence: number } }>;
@@ -150,7 +147,7 @@ export interface ToolDefinition {
   terminal?: 'end_turn' | 'ask_master';
   /** true = 可被调用但不暴露给 LLM（propose_chat 内部通路） */
   hidden?: boolean;
-  /** true = 仅元工具（invoke_skill）：registry 只出 schema，执行由 loop 拦截 */
+  /** true = 仅元工具：registry 只出 schema，执行由认知循环拦截 */
   metaOnly?: boolean;
   execute(input: Record<string, unknown>, ctx: ToolContext): unknown;
 }

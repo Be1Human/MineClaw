@@ -1,4 +1,5 @@
 import type { ActionProposal } from '../../atomic/contracts/atomicContractRegistry.js';
+import { isDeepStrictEqual } from 'node:util';
 import type { GoalRequestV2 } from '../../decision/goalAgentPort/contracts.js';
 import type { WorldStateView } from '../../types.js';
 import type { GoalContractV1 } from '../contracts/goalContract.js';
@@ -45,6 +46,7 @@ export type GoalAgentPhase =
   | 'ingress'
   | 'running'
   | 'paused_owner'
+  | 'needs_rebind'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -289,9 +291,13 @@ export function assertGoalAgentStateV1(state: GoalAgentStateV1): void {
   if (state.schema !== GOAL_AGENT_STATE_SCHEMA_V1 && state.schema !== GOAL_AGENT_STATE_SCHEMA_V2) throw new Error(`unsupported GoalAgent state schema: ${state.schema}`);
   if (state.rootGoal && !['mineclaw.goal/v1', 'mineclaw.goal/v2'].includes(state.rootGoal.schema)) throw new Error('unsupported_goal_contract_schema');
   if (state.rootGoal?.schema === 'mineclaw.goal/v2') {
-    if (state.schema !== GOAL_AGENT_STATE_SCHEMA_V2) throw new Error('composed_goal_requires_state_v2');
+    if (state.schema !== GOAL_AGENT_STATE_SCHEMA_V2) throw new Error('formal_goal_requires_state_v2');
     assertGoalContractV2(state.rootGoal);
-  } else if (state.schema === GOAL_AGENT_STATE_SCHEMA_V2) throw new Error('state_v2_requires_composed_goal');
+    if (!state.snapshotRef || !isDeepStrictEqual(state.snapshotRef, state.rootGoal.source.snapshot)) throw new Error('formal_goal_snapshot_mismatch');
+  } else if (state.schema === GOAL_AGENT_STATE_SCHEMA_V2) throw new Error('state_v2_requires_formal_goal');
+  else if (state.rootGoal?.schema === 'mineclaw.goal/v1' && !state.terminal && state.phase !== 'needs_rebind') {
+    throw new Error('legacy_goal_must_need_rebind');
+  }
   if (state.mode !== 'planned_goal' && state.mode !== 'persistent_monitor') {
     throw new Error(`unsupported GoalAgent session mode: ${String(state.mode)}`);
   }
@@ -304,7 +310,7 @@ export function assertGoalAgentStateV1(state: GoalAgentStateV1): void {
   }
   if (!Number.isInteger(state.epoch) || state.epoch < 1) throw new Error('GoalAgent epoch must be >= 1');
   if (!Number.isInteger(state.revision) || state.revision < 0) throw new Error('GoalAgent revision must be >= 0');
-  if (!['ingress', 'running', 'paused_owner', 'completed', 'failed', 'cancelled', 'timed_out'].includes(state.phase)) {
+  if (!['ingress', 'running', 'paused_owner', 'needs_rebind', 'completed', 'failed', 'cancelled', 'timed_out'].includes(state.phase)) {
     throw new Error(`unsupported GoalAgent phase: ${String(state.phase)}`);
   }
   if (!['ingress', 'round', 'terminal'].includes(state.activeNode)) {
@@ -342,8 +348,22 @@ export function assertGoalAgentStateV1(state: GoalAgentStateV1): void {
 
 /** Upgrade persisted pre-Interpret checkpoints without changing their identity or revision. */
 export function migrateGoalAgentStateV1(state: GoalAgentStateV1): GoalAgentStateV1 {
-  // v2 never enters the permissive legacy migration that can clear an old goal.
-  if (state.schema === GOAL_AGENT_STATE_SCHEMA_V2) { assertGoalAgentStateV1(state); return state; }
+  // Pre-source goal/v2 records cannot prove which Registry Generation supplied
+  // their bindings/predicates. Preserve their visible semantics as a read-only
+  // legacy contract and require explicit rebind; never reinterpret against live Registry.
+  if (state.schema === GOAL_AGENT_STATE_SCHEMA_V2) {
+    try { assertGoalAgentStateV1(state); return state; }
+    catch (error) {
+      const root = state.rootGoal;
+      if (root?.schema !== 'mineclaw.goal/v2' || root.source?.snapshot && root.intent) throw error;
+      state.schema = GOAL_AGENT_STATE_SCHEMA_V1;
+      state.rootGoal = {
+        schema: 'mineclaw.goal/v1', goalId: root.goalId, profileId: root.profileId, goalText: root.goalText,
+        successCriteria: structuredClone([...root.successCriteria]), constraints: root.constraints ? structuredClone([...root.constraints]) : undefined,
+        contextRef: `legacy-v2:${root.contentHash}`, createdAt: root.createdAt,
+      };
+    }
+  }
   const legacy = state as GoalAgentStateV1 & {
     mode?: GoalAgentSessionMode;
     interpretation?: GoalAgentStateV1['interpretation'];
@@ -389,8 +409,14 @@ export function migrateGoalAgentStateV1(state: GoalAgentStateV1): GoalAgentState
   delete legacy.context.eventCursor;
   delete legacy.context.summary;
   delete legacy.reflection;
+  if (state.rootGoal?.schema === 'mineclaw.goal/v1' && !state.terminal) {
+    state.phase = 'needs_rebind';
+    state.activeNode = 'round';
+    state.interpretation.lastValidationError = 'needs_rebind:legacy_goal_equivalence_unproven';
+    state.interpretation.clarificationReason = 'legacy_goal_requires_explicit_rebind';
+  }
   const legacyPhase = String(state.phase);
-  if (!['ingress', 'running', 'paused_owner', 'completed', 'failed', 'cancelled', 'timed_out'].includes(legacyPhase)) {
+  if (!['ingress', 'running', 'paused_owner', 'needs_rebind', 'completed', 'failed', 'cancelled', 'timed_out'].includes(legacyPhase)) {
     state.phase = 'running';
   }
   const legacyNode = String(state.activeNode);

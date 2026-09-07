@@ -12,7 +12,6 @@ import type { PluginResultProjection } from '../../../plugin-sdk/contracts/resul
 import type { ContributionRef } from '../../../plugin-sdk/identity.js';
 
 const PLUGIN_ID = 'mineclaw.delivery';
-const SERVICE_BODY = 'body.submit';
 const GOAL = 'mineclaw.delivery.goal.deliver-to-owner';
 const CANDIDATE = 'mineclaw.delivery.planning.deliver-candidates';
 const PREDICATE = 'mineclaw.delivery.verification.delivered';
@@ -40,8 +39,6 @@ export function createMineclawDeliveryPlugin(): PluginFactory {
   return {
     entryKey: `plugins/builtin/${PLUGIN_ID}`,
     create: (context): readonly PluginContribution[] => {
-      const bodySubmit = (context.services ?? {})[SERVICE_BODY] as ((request: Record<string, unknown>) => Promise<Record<string, unknown>>) | undefined;
-
       const bindingProvider: PluginBindingProvider = {
         id: GOAL,
         list: async (input) => {
@@ -56,7 +53,7 @@ export function createMineclawDeliveryPlugin(): PluginFactory {
         list: async (input) => {
           const positions = ownerPositions(asRecords(input.facts));
           if (positions.length === 0) return { status: 'unavailable', candidates: [], reason: 'owner_location_unavailable' };
-          return { status: 'complete', candidates: [{ candidateId: 'deliver:toss', operationContribution: ref(OPERATION), params: { target: positions[0]! }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
+          return { status: 'complete', candidates: [{ candidateId: 'deliver:toss', operationContribution: ref(EXECUTOR), params: { target: positions[0]! }, evidenceRefs: [], contribution: ref(CANDIDATE) }] };
         },
       };
 
@@ -68,7 +65,7 @@ export function createMineclawDeliveryPlugin(): PluginFactory {
       const predicate: PluginPredicateEvaluator = {
         id: PREDICATE,
         version: '1.0.0',
-        evaluate: async (input) => {
+        evaluate: (input) => {
           const tossed = (input.evidence?.tossed as boolean | undefined) === true;
           return { verdict: tossed ? 'satisfied' : 'unknown', evidenceRefs: [], reason: tossed ? undefined : 'toss_not_verified', contribution: ref(PREDICATE) };
         },
@@ -80,17 +77,15 @@ export function createMineclawDeliveryPlugin(): PluginFactory {
         create: (lease): PluginBehaviorInstance => ({
           instanceId: `deliver-${lease.goalId}`,
           contribution: ref(EXECUTOR),
-          run: async (ctx) => {
-            if (!bodySubmit) return { ok: false, cancelled: false, error: 'body_submit_service_missing' };
-            const target = (ctx.facts[0]?.payload as { ownerPosition?: Record<string, unknown> } | undefined)?.ownerPosition;
-            if (!target) return { ok: false, cancelled: false, error: 'owner_location_unavailable' };
-            if (ctx.signal.aborted) return { ok: false, cancelled: true };
-            const move = await bodySubmit({ action: 'minecraft-system:move-to', target });
-            if ((move as { ok?: boolean }).ok === false) return { ok: false, cancelled: false, error: 'move_failed' };
-            const toss = await bodySubmit({ action: 'minecraft-system:toss', target });
-            return (toss as { ok?: boolean }).ok === false
-              ? { ok: false, cancelled: false, error: 'toss_failed' }
-              : { ok: true, cancelled: false };
+          kind: 'sequence',
+          compile: (ctx) => {
+            const target = ctx.params.target as Record<string, unknown> | undefined;
+            return target
+              ? { ok: true, steps: [
+                  { atomicId: 'move_to', args: { position: target } },
+                  { atomicId: 'toss_item', args: { target } },
+                ] }
+              : { ok: false, error: 'owner_location_unavailable' };
           },
           halt: async () => undefined,
           close: async () => undefined,
@@ -138,6 +133,7 @@ export function createMineclawDeliveryPlugin(): PluginFactory {
             progressContributionId: PROGRESS,
             resultContributionId: RESULT,
             cancellable: true,
+            applicability: { outcomes: ['deliver'], targetKinds: ['item'], taskFamilies: ['delivery'], criterionTypes: ['item_delivered', 'predicate'] },
           },
           behaviorFactory,
         },

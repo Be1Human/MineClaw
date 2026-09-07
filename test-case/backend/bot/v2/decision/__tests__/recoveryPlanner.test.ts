@@ -27,7 +27,6 @@ import type { Diagnosis } from '../../../../../../apps/minecraft-companion/src/b
 
 function makeState(overrides: Partial<SupervisorState> = {}): SupervisorState {
   return {
-    suspendedByDanger: new Set<string>(),
     ongoingRecoveries: new Map<string, string>(),
     recentDiagnoses: [],
     lastProgressTick: new Map<string, number>(),

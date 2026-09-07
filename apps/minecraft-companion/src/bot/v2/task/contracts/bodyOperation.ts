@@ -1,11 +1,11 @@
 import type { BoundGoalScope } from './goalDraft.js';
+import type { GoalCriterionRef } from './goalPlanOperation.js';
 import type { ContributionRef, RegistrySnapshotRef } from '../../plugin-sdk/identity.js';
 
 /** An owner is an incarnation, not merely a task or policy name. */
 export type ExecutionOwner =
   | { readonly kind: 'goal'; readonly taskId: string; readonly sessionId: string; readonly epoch: number; readonly planRevision: number }
-  | { readonly kind: 'task'; readonly taskId: string; readonly ownerEpoch: number }
-  | { readonly kind: 'safety'; readonly policyId: string; readonly ownerEpoch: number };
+  | { readonly kind: 'task'; readonly taskId: string; readonly ownerEpoch: number };
 
 /**
  * Body command. `ref.contribution` is the exact contribution identity copied
@@ -25,6 +25,8 @@ export interface OperationIntent {
   readonly operationId: string;
   readonly owner: ExecutionOwner;
   readonly command: OperationCommand;
+  /** Fixed postconditions from the committed plan node; recovery never invents them from a newer plugin generation. */
+  readonly expectedEffects: readonly GoalCriterionRef[];
   readonly scope: BoundGoalScope;
   readonly deadlineAt: number;
   readonly budget: { readonly maxActions: number };

@@ -1,9 +1,8 @@
 export { TaskRegistry } from './taskRegistry.js';
 export type { TaskDefinition, SlotDefinition, CookbookEntry } from './types.js';
 export {
-  DEFAULT_GOAL_TARGETS,
   InMemoryGoalKnowledgePort,
-  defaultGoalKnowledge,
+  ProjectedGoalKnowledgePort,
 } from './goalTargetKnowledge.js';
 export type {
   GoalKnowledgePort,

@@ -8,7 +8,6 @@ import {
   sanitizeUserVisibleThinking,
 } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/identitySemantics.js';
 import { goalAgentTools } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/tools/defs/goalAgentTools.js';
-import { skillTools } from '../../../../../../apps/minecraft-companion/src/bot/v2/decision/tools/defs/skillTools.js';
 
 describe('CROSS-001 · 单一伙伴身份语义', () => {
   it('识别自有任务被写成外部执行者', () => {
@@ -57,13 +56,10 @@ describe('CROSS-001 · 单一伙伴身份语义', () => {
     assert.doesNotMatch(visible, /系统|SubAgent|task-372|running/);
   });
 
-  it('模型可见工具把 skill 与目标循环描述为自己的内部能力', () => {
+  it('模型可见工具把目标循环描述为自己的内部能力', () => {
     const submit = goalAgentTools.find(tool => tool.name === 'submit_goal_request');
-    const invoke = skillTools.find(tool => tool.name === 'invoke_skill');
     assert.match(submit?.description ?? '', /你的内部执行循环/);
     assert.match(submit?.description ?? '', /仍然是你在做/);
     assert.doesNotMatch(submit?.description ?? '', /派给任务系统|goalAgent 自己/);
-    assert.match(invoke?.description ?? '', /你的一个内部 skill/);
-    assert.match(invoke?.description ?? '', /仍然是你在做/);
   });
 });

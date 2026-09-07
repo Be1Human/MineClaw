@@ -134,6 +134,7 @@ export class PluginHost {
       plugin: pkg.identity,
       ...(pkg.manifest.kind === 'system' && this.config.systemPorts !== undefined ? { systemPorts: this.config.systemPorts } : {}),
       ...(services.size > 0 ? { services: Object.freeze({ ...Object.fromEntries(services) }) } : {}),
+      ...(pkg.dataContents ? { packageContents: pkg.dataContents } : {}),
       ...(pkg.manifest.kind === 'system' ? { signal: new AbortController().signal } : {}),
     });
   }
@@ -155,6 +156,12 @@ function dataPluginFactory(pkg: DiscoveredPluginPackage): PluginFactory {
   );
   return {
     entryKey: `data/${pkg.identity.pluginId}`,
-    create: () => declarations.map((declaration) => toDataContribution(declaration as ManifestContribution & { kind: 'knowledge' | 'skill' })),
+    create: () => declarations.map((declaration) => {
+      const ref = declaration.kind === 'skill' ? declaration.entryRef : declaration.contentRef;
+      return toDataContribution(
+        declaration as ManifestContribution & { kind: 'knowledge' | 'skill' },
+        pkg.dataContents?.get(ref),
+      );
+    }),
   };
 }

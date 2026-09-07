@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test, afterEach } from 'node:test';
 import { BodyExecutionRuntime, BodyAdmissionError } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/bodyExecutionRuntime.js';
 import { ExecutionAuthority } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/executionAuthority.js';
+import { OperationLedger } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/operationLedger.js';
 import { __setTuningOverride } from '../../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { ExecutionOwner, OperationCommand, OperationIntent } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/contracts/bodyOperation.js';
 import type { ExecutionClock, ExecutionGrant } from '../../../../../../../apps/minecraft-companion/src/bot/v2/task/execution/ports/bodyExecution.js';
@@ -28,13 +29,12 @@ class Clock implements ExecutionClock {
 const owners: ExecutionOwner[] = [
   { kind: 'goal', taskId: 'task', sessionId: 'session', epoch: 1, planRevision: 2 },
   { kind: 'task', taskId: 'task', ownerEpoch: 1 },
-  { kind: 'safety', policyId: 'policy', ownerEpoch: 1 },
 ];
 const contribution = (id: string) => ({ pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: id, contributionVersion: '1.0.0' });
 const TEST_SNAPSHOT = { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' };
 const command = (id = 'move'): OperationCommand => ({ ref: { id, contribution: contribution(id) }, snapshot: TEST_SNAPSHOT, args: { position: { x: 1, y: 64, z: 1 } } });
 const intent = (id = 'op', patch: Partial<OperationIntent> = {}): OperationIntent => ({
-  operationId: id, owner: owners[0], command: command(),
+  operationId: id, owner: owners[0], command: command(), expectedEffects: [],
   scope: { dimension: 'overworld', targetRefs: ['plot'], bindings: [] },
   deadlineAt: 11000, budget: { maxActions: 20 }, priority: 10, preemption: 'none', ...patch,
 });
@@ -44,7 +44,7 @@ function fixture(bind: BodyOperationDriver['bind'] = () => ({ async run(context)
   const clock = new Clock(), authority = new ExecutionAuthority();
   let current = true, childAllowed = true, binds = 0;
   const driver: BodyOperationDriver = { resources: cmd => resources[cmd.ref.id], bind: (identity, cmd) => { binds++; return bind(identity, cmd); } };
-  const runtime = new BodyExecutionRuntime({ driver, authority, clock });
+  const runtime = new BodyExecutionRuntime({ driver, authority, ledger: new OperationLedger(':memory:'), clock });
   const authorize = (value: OperationIntent) => ({ intent: value, grant: authority.issue(value, { isCurrent: () => current, allowsChild: () => childAllowed }) });
   return { runtime, clock, authority, authorize, binds: () => binds, stale: () => { current = false; }, denyChildren: () => { childAllowed = false; } };
 }
@@ -290,6 +290,6 @@ test('S07: malformed owner, missing scope, expired deadline and incomplete assem
     intent('op', { scope: null as unknown as OperationIntent['scope'] })]) {
     assert.throws(() => f.runtime.submit(f.authorize(value)), /invalid_operation_intent|deadline_exceeded/);
   }
-  assert.throws(() => new BodyExecutionRuntime({ driver: {} as BodyOperationDriver, authority: f.authority }), /ports_required/);
+  assert.throws(() => new BodyExecutionRuntime({ driver: {} as BodyOperationDriver, authority: f.authority, ledger: new OperationLedger(':memory:') }), /ports_required/);
   assert.equal(f.binds(), 0); assert.equal(f.runtime.active().length, 0);
 });

@@ -6,12 +6,15 @@
  * hallucinated answer). Every decision carries matching evidence for audit.
  */
 import type { KnowledgeQueryV1 } from './goalAgentPort/knowledgeQueryContracts.js';
+import type { FactKind } from '../plugin-sdk/contracts/observation.js';
 
 export type FactIntentKind = 'chat' | 'knowledge_query' | 'task' | 'cancel';
 
 export interface FactIntentContext {
   readonly conversationMode?: 'idle' | 'active_task' | 'awaiting_player';
   readonly sessionAgeMs?: number;
+  /** A task capability already registered for this utterance outranks lexical world-query markers. */
+  readonly registeredTask?: boolean;
 }
 
 export interface IntentDecision {
@@ -41,6 +44,11 @@ export class FactIntentGate {
     const normalized = text.trim();
     const evidence: { rule: string; matched: string }[] = [];
     if (!normalized) return { intent: 'chat', evidence: [], leaning: 'chat' };
+
+    if (context.registeredTask === true) {
+      evidence.push({ rule: 'registered_task_capability', matched: normalized });
+      return { intent: 'task', evidence, leaning: 'task' };
+    }
 
     const isCancel = CANCEL_MARKERS.test(normalized) && !/什么|哪里|附近|多少/.test(normalized);
     if (isCancel && !QUERY_MARKERS.some(marker => marker.test(normalized)) && ACTION_MARKERS.some(marker => marker.test(normalized))) {
@@ -87,6 +95,34 @@ export class FactIntentGate {
 
 export interface KnowledgeQueryFactoryPort {
   create(decision: IntentDecision, input: { text: string; source: KnowledgeQueryV1['source'] }, snapshot: KnowledgeQueryV1['registryGeneration']): KnowledgeQueryV1;
+}
+
+export interface KnowledgeQueryDefaults {
+  readonly factKinds: readonly FactKind[];
+  readonly anchor: KnowledgeQueryV1['anchor'];
+}
+
+/** Resolve player language to the closed FactKind vocabulary, never to provider IDs. */
+export function resolveKnowledgeQueryDefaults(text: string): KnowledgeQueryDefaults {
+  const anchor: KnowledgeQueryV1['anchor'] = /(?:我这里|我这边|我身边|我附近|主人(?:这里|身边|附近))/.test(text)
+    ? { kind: 'owner' }
+    : { kind: 'bot_self' };
+  if (/(?:能观察什么|能看到什么|有什么能力|会观察什么|what can you (?:see|observe))/.test(text)) {
+    return { factKinds: ['capability_status'], anchor };
+  }
+  if (/(?:背包|物品栏|inventory)/i.test(text)) return { factKinds: ['inventory'], anchor };
+  if (/(?:作物|农作物|小麦|胡萝卜|马铃薯|甜菜|crop|wheat|carrot|potato|beetroot)/i.test(text)) {
+    return { factKinds: ['nearby_crops'], anchor };
+  }
+  if (/(?:实体|怪物|僵尸|骷髅|苦力怕|动物|羊|猪|牛|鸡|entity|mob)/i.test(text)) {
+    return { factKinds: ['nearby_entities'], anchor };
+  }
+  if (/(?:方块|矿物|石头|木头|block|ore)/i.test(text)) return { factKinds: ['nearby_blocks'], anchor };
+  if (/(?:主人|我).*(?:在哪|位置|坐标)|(?:我的位置|我的坐标)/.test(text)) return { factKinds: ['owner_location'], anchor: { kind: 'owner' } };
+  if (/(?:你).*(?:在哪|位置|坐标)|(?:你的位置|你的坐标)/.test(text)) return { factKinds: ['self_location'], anchor: { kind: 'bot_self' } };
+  // Generic “what is nearby” is an intentionally bounded world summary. The
+  // catalog decides which of these facts are actually installed and available.
+  return { factKinds: ['nearby_entities', 'nearby_blocks', 'nearby_crops'], anchor };
 }
 
 /** Deterministic factory producing a validated query skeleton (real anchor/scope resolution happens in the runner). */

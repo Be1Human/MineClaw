@@ -1,4 +1,13 @@
-export { LLMClient, type LLMClientConfig } from './LLMClient.js';
+export {
+  LLMClient,
+  prepareLlmRoute,
+  type LLMClientConfig,
+  type PreparedLlmRouteSnapshot,
+} from './LLMClient.js';
+export * from '../../../../llm/modelContextProfile.js';
+export * from './requestTokenMeter.js';
+export * from './contextBudget.js';
+export * from './contextGovernance.js';
 export type {
   LLMProvider,
   LLMCallOptions,

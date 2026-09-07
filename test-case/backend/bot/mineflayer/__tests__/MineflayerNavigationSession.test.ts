@@ -20,12 +20,14 @@ test('cancelled path placement drains equip and does not place a late block',asy
   await flush();assert.equal(bot.writes.includes('equip'),true);h.cancel('stop');equip.resolve();
   assert.equal((await h.result).status,'cancelled');assert.equal(bot.writes.includes('place'),false);
 });
-test('follow is ongoing at range and a disappearing target fails instead of succeeding',async()=>{
-  __setTuningOverride({navigationExecution:{controlTickMs:1}});
+test('follow settles at range as a finite body slice, while a disappearing target still fails',async()=>{
+  __setTuningOverride({navigationExecution:{controlTickMs:1},follow:{followSliceMs:5}});
   const f=navigationFixture();f.device.raw.entities[42]={position:f.device.bot.entity.position.clone(),id:42};
-  let settled=false;const h=f.start(nav=>nav.follow(42,2));void h.result.then(()=>{settled=true;});
-  await flush();assert.equal(settled,false);assert.equal(f.nav.isFollowing(42),true);
-  delete f.device.raw.entities[42];assert.equal((await h.result).status,'failed');assert.equal(f.nav.isFollowing(),false);
+  const h=f.start(nav=>nav.follow(42,2));
+  assert.equal((await h.result).status,'succeeded');assert.equal(f.nav.isFollowing(),false);
+  f.device.raw.entities[42]={position:f.device.bot.entity.position.offset(20,0,0),id:42};
+  const vanished=f.start(nav=>nav.follow(42,0,{totalTimeout:50}),undefined,'follow-vanished');await flush();delete f.device.raw.entities[42];
+  assert.equal((await vanished.result).status,'failed');assert.equal(f.nav.isFollowing(),false);
 });
 test('movement options forbid path excavation before even selecting a tool',async()=>{
   const bot=navigationBot();bot.planWithActions([{x:1,y:63,z:0}],[]);

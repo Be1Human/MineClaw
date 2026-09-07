@@ -22,9 +22,6 @@
  *   ⑱ placeBlock · 缺 itemName → fail
  *   ⑲ placeBlock · 缺 referencePosition → fail
  *   ㉓ placeBlock · 成功路径 · place_block.success 事件携带 source（上层进度推进契约）
- *   ⑳ invoke_behavior · 缺 behaviorRegistry → fail
- *   ㉑ invoke_behavior · skill not found → fail
- *   ㉒ invoke_behavior · 成功路径（skill 产生 say 子请求）
  */
 
 import { describe, it, beforeEach, before, after } from 'node:test';
@@ -33,8 +30,8 @@ import { runControlledAtomic as executeAtomic, type AtomicFixture as AtomicConte
 import { executeAtomic as unboundAtomic } from '../../../../../../apps/minecraft-companion/src/bot/v2/atomic/atomics.js';
 import { __setTuningOverride } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { ActionRequest } from '../../../../../../apps/minecraft-companion/src/bot/v2/types.js';
-import type { IBehaviorRegistry, IBehavior } from '../../../../../../apps/minecraft-companion/src/bot/v2/behavior/types.js';
 import type { RecipeInfo } from '../../../../../../apps/minecraft-companion/src/bot/adapter/types.js';
+import { MineflayerGameAdapter } from '../../../../../../apps/minecraft-companion/src/bot/mineflayer/MineflayerGameAdapter.js';
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -74,6 +71,7 @@ function makeMockNav(
 ) {
   const calls = {
     goto: 0,
+    follow: [] as Array<{ entityId: number; range: number; options: unknown }>,
     stop: 0,
     goals: [] as unknown[],
     movementOptions: [] as unknown[],
@@ -83,6 +81,11 @@ function makeMockNav(
       calls.goto += 1;
       if (gotoThrows) throw gotoThrows;
       calls.goals.push(goal);
+      return gotoResult;
+    },
+    follow: async (entityId: number, range: number, options?: unknown) => {
+      calls.follow.push({ entityId, range, options });
+      if (gotoThrows) throw gotoThrows;
       return gotoResult;
     },
     stop: () => { calls.stop += 1; },
@@ -143,6 +146,7 @@ function makeMockGame(opts: {
     sleep: [] as Array<{ x: number; y: number; z: number }>,
     wake: 0,
     consume: 0,
+    foodSelections: [] as Array<{ emergency?: boolean } | undefined>,
     smelt: [] as Array<{ pos: { x: number; y: number; z: number }; input: string; fuel: string; count: number }>,
     craft: [] as Array<{ item: string; count: number }>,
     mount: [] as number[],
@@ -198,7 +202,10 @@ function makeMockGame(opts: {
       calls.consume += 1;
       return opts.consumeReturns ?? true;
     },
-    findBestFood: () => opts.bestFood ?? null,
+    findBestFood: (selection?: { emergency?: boolean }) => {
+      calls.foodSelections.push(selection);
+      return opts.bestFood ?? null;
+    },
     // 熔炼（FEAT-L3-06）
     smelt: async (pos: { x: number; y: number; z: number }, input: string, fuel: string, count: number) => {
       calls.smelt.push({ pos, input, fuel, count });
@@ -281,26 +288,6 @@ function makeWorldState() {
   };
 }
 
-/** Minimal skill that produces a 'say' sub-request */
-function makeSaySkill(id: string): IBehavior {
-  return {
-    id,
-    kind: 'sequence', compile: (_ctx) => [makeReq({ id: 'sub-say', type: 'say', target: { text: 'hello from skill' } })],
-  };
-}
-
-/** Minimal BehaviorRegistry with a given skill */
-function makeRegistry(skill?: IBehavior): IBehaviorRegistry {
-  const map = new Map<string, IBehavior>();
-  if (skill) map.set(skill.id, skill);
-  return {
-    register: (s) => { map.set(s.id, s); },
-    get: (id) => map.get(id),
-    list: () => [...map.values()],
-    clear: () => { map.clear(); },
-  };
-}
-
 function makeCtx(overrides: Partial<AtomicContext> = {}): AtomicContext & {
   bus: ReturnType<typeof makeMockBus>;
   game: ReturnType<typeof makeMockGame>;
@@ -313,7 +300,6 @@ function makeCtx(overrides: Partial<AtomicContext> = {}): AtomicContext & {
     game: game as any,
     nav: nav as any,
     bus: bus as any,
-    behaviorRegistry: undefined,
     worldState: null,
     ...overrides,
     // keep typed refs
@@ -357,7 +343,7 @@ describe('executeAtomic', () => {
 
     it('② 缺 target.text → ok=false', async () => {
       const ctx: AtomicContext = {
-        game: makeMockGame() as any,
+        game: makeMockGame({ positions: [{ x: 10, y: 64, z: 20 }] }) as any,
         nav: makeMockNav() as any,
         bus: makeMockBus() as any,
       };
@@ -393,7 +379,7 @@ describe('executeAtomic', () => {
       const nav = makeMockNav({ ok: true });
       const bus = makeMockBus();
       const ctx: AtomicContext = {
-        game: makeMockGame() as any,
+        game: makeMockGame({ positions: [{ x: 10, y: 64, z: 20 }] }) as any,
         nav: nav as any,
         bus: bus as any,
       };
@@ -402,6 +388,35 @@ describe('executeAtomic', () => {
       assert.equal(result.ok, true);
       assert.equal(nav.calls.goto, 1);
       assert.ok(bus.events.some(e => e.type === 'atomic.move_to.end'));
+    });
+
+    it('高低差目标未真正到达时不得把导航 settled 当作成功', async () => {
+      const nav = makeMockNav({ ok: true });
+      const ctx: AtomicContext = {
+        game: makeMockGame({ positions: [{ x: 10, y: 58, z: 20 }] }) as any,
+        nav: nav as any,
+        bus: makeMockBus() as any,
+      };
+      const result = await executeAtomic(makeReq({ type: 'move_to', target: { position: { x: 10, y: 64, z: 20 } } }), ctx);
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'target_not_reached');
+    });
+
+    it('空中目标会解析到其附近的可站立格', async () => {
+      const nav = makeMockNav({ ok: true });
+      const blocks = {
+        '10,64,20': { name: 'air', boundingBox: 'empty' as const },
+        '10,65,20': { name: 'air', boundingBox: 'empty' as const },
+        '10,63,20': { name: 'stone', boundingBox: 'block' as const },
+      };
+      const ctx: AtomicContext = {
+        game: makeMockGame({ blocksByPos: blocks, positions: [{ x: 10, y: 64, z: 20 }] }) as any,
+        nav: nav as any,
+        bus: makeMockBus() as any,
+      };
+      const result = await executeAtomic(makeReq({ type: 'move_to', target: { position: { x: 10.8, y: 64.2, z: 20.4 } } }), ctx);
+      assert.equal(result.ok, true);
+      assert.deepEqual(nav.calls.goals[0], { type: 'block', position: { x: 10, y: 64, z: 20 }, range: 1 });
     });
 
     it('④b 缺少必需执行上下文时拒绝入口，不能通过裸 nav 或 Motor 调用', async () => {
@@ -451,6 +466,20 @@ describe('executeAtomic', () => {
       const result = await executeAtomic(makeReq({ type: 'follow_entity', target: {} }), ctx);
       assert.equal(result.ok, false);
       assert.ok(result.error?.includes('follow_entity requires target.entityId'));
+    });
+
+    it('⑦a 将范围与有限步骤时长交给动态导航，并记录完成事件', async () => {
+      const nav = makeMockNav({ ok: true, reason: 'follow_slice_complete' });
+      const bus = makeMockBus();
+      const ctx: AtomicContext = {
+        game: makeMockGame() as any,
+        nav: nav as any,
+        bus: bus as any,
+      };
+      const result = await executeAtomic(makeReq({ type: 'follow_entity', target: { entityId: 42, range: 4, durationMs: 125 } }), ctx);
+      assert.equal(result.ok, true);
+      assert.deepEqual(nav.calls.follow, [{ entityId: 42, range: 4, options: { totalTimeout: 125 } }]);
+      assert.ok(bus.events.some(event => event.type === 'atomic.follow.end' && (event.payload as { reason?: string }).reason === 'follow_slice_complete'));
     });
   });
 
@@ -861,109 +890,6 @@ describe('executeAtomic', () => {
     });
   });
 
-  // ─── invoke_behavior ──────────────────────────────────────
-
-  describe('invoke_behavior', () => {
-    it('⑳ 缺 behaviorRegistry → ok=false + no_registry', async () => {
-      const ctx: AtomicContext = {
-        game: makeMockGame() as any,
-        nav: makeMockNav() as any,
-        bus: makeMockBus() as any,
-        behaviorRegistry: undefined,
-        worldState: null,
-      };
-      const req = makeReq({ type: 'invoke_behavior', target: { behavior: 'some_skill' } });
-      const result = await executeAtomic(req, ctx);
-      assert.equal(result.ok, false);
-      assert.ok(result.error?.includes('behavior_not_found'));
-    });
-
-    it('㉑ skill not found in registry → ok=false + behavior_not_found', async () => {
-      const ctx: AtomicContext = {
-        game: makeMockGame() as any,
-        nav: makeMockNav() as any,
-        bus: makeMockBus() as any,
-        behaviorRegistry: makeRegistry(), // empty registry
-        worldState: makeWorldState() as any,
-      };
-      const req = makeReq({ type: 'invoke_behavior', target: { behavior: 'missing_skill' } });
-      const result = await executeAtomic(req, ctx);
-      assert.equal(result.ok, false);
-      assert.ok(result.error?.includes('behavior_not_found'));
-    });
-
-    it('㉒ 成功路径：skill 产生 say 子请求，bus 发布 invoke_behavior.success', async () => {
-      const skill = makeSaySkill('test_skill');
-      const bus = makeMockBus();
-      const game = makeMockGame();
-      const ctx: AtomicContext = {
-        game: game as any,
-        nav: makeMockNav() as any,
-        bus: bus as any,
-        behaviorRegistry: makeRegistry(skill),
-        worldState: makeWorldState() as any,
-      };
-      const req = makeReq({ type: 'invoke_behavior', target: { behavior: 'test_skill' } });
-      const result = await executeAtomic(req, ctx);
-      assert.equal(result.ok, true);
-      assert.equal(game.calls.chat.length, 0);
-      assert.ok(bus.events.some(e => e.type === 'brain.notice' && (e.payload as { detail?: string })?.detail === 'hello from skill'));
-      assert.ok(bus.events.some(e => e.type === 'behavior.success'));
-    });
-
-    it('自适应 skill 可在动作间读取最新世界并执行短原子', async () => {
-      const bus = makeMockBus();
-      const game = makeMockGame();
-      let reads = 0;
-      const world = makeWorldState() as any;
-      const skill: IBehavior = {
-        id: 'adaptive_skill',
-        kind: 'adaptive',
-        run: async runtime => {
-          runtime.getWorld();
-          reads++;
-          const result = await runtime.execute(makeReq({ id: 'adaptive-say', type: 'say', target: { text: 'adaptive' } }));
-          runtime.getWorld();
-          reads++;
-          return { ok: result.ok, details: { reads } };
-        },
-      };
-      const ctx: AtomicContext = {
-        game: game as any,
-        nav: makeMockNav() as any,
-        bus: bus as any,
-        behaviorRegistry: makeRegistry(skill),
-        worldState: world,
-      };
-      const result = await executeAtomic(makeReq({ type: 'invoke_behavior', target: { behavior: skill.id } }), ctx);
-      assert.equal(result.ok, true);
-      assert.equal(reads, 2);
-      assert.ok(bus.events.some(e => e.type === 'behavior.start'));
-      assert.ok(bus.events.some(e => e.type === 'behavior.success' && (e.payload as { reads?: number }).reads === 2));
-    });
-
-    it('自适应 skill 仍禁止嵌套 invoke_behavior', async () => {
-      const skill: IBehavior = {
-        id: 'nested_skill',
-        kind: 'adaptive',
-        run: async runtime => {
-          const nested = await runtime.execute(makeReq({ type: 'invoke_behavior', target: { behavior: 'other' } }));
-          return { ok: nested.ok, error: nested.error };
-        },
-      };
-      const ctx: AtomicContext = {
-        game: makeMockGame() as any,
-        nav: makeMockNav() as any,
-        bus: makeMockBus() as any,
-        behaviorRegistry: makeRegistry(skill),
-        worldState: makeWorldState() as any,
-      };
-      const result = await executeAtomic(makeReq({ type: 'invoke_behavior', target: { behavior: skill.id } }), ctx);
-      assert.equal(result.ok, false);
-      assert.match(result.error ?? '', /behavior_child_must_be_atomic/);
-    });
-  });
-
   // ─── eat（FEAT-L3-02） ─────────────────────────────────
 
   describe('eat', () => {
@@ -1004,6 +930,55 @@ describe('executeAtomic', () => {
       const r = await executeAtomic(makeReq({ type: 'eat', target: {} }), ctx);
       assert.equal(r.ok, false);
       assert.ok(bus.events.some(e => e.type === 'atomic.eat.fail'));
+    });
+
+    it('S14: emergency eat passes the selector hint but only reports consume evidence, never healed health', async () => {
+      const bus = makeMockBus();
+      const game = makeMockGame({ bestFood: 'golden_apple', consumeReturns: true });
+      const ctx: AtomicContext = {
+        game: game as any,
+        nav: makeMockNav() as any,
+        bus: bus as any,
+      };
+      const r = await executeAtomic(makeReq({ type: 'eat', target: { emergency: true } as never }), ctx);
+      assert.equal(r.ok, true);
+      assert.deepEqual(game.calls.foodSelections, [{ emergency: true }]);
+      const event = bus.events.find(e => e.type === 'atomic.eat.success');
+      assert.deepEqual(event?.payload, { source: 'test', item: 'golden_apple', emergency: true, food: 20 });
+      assert.equal('health' in (event?.payload as Record<string, unknown>), false);
+    });
+
+    it('S13: mineflayer emergency selection prioritizes full-hunger apples and rejects normal food when full', () => {
+      const bot = {
+        food: 20,
+        inventory: { items: () => [
+          { name: 'golden_apple', count: 1 },
+          { name: 'enchanted_golden_apple', count: 1 },
+          { name: 'cooked_beef', count: 3 },
+        ] },
+        registry: { foodsByName: {
+          golden_apple: { foodPoints: 4, saturation: 9.6 },
+          enchanted_golden_apple: { foodPoints: 4, saturation: 9.6 },
+          cooked_beef: { foodPoints: 8, saturation: 12.8 },
+        } },
+      };
+      const adapter = new MineflayerGameAdapter(() => bot as never);
+      assert.equal(adapter.findBestFood({ emergency: true }), 'enchanted_golden_apple');
+      assert.equal(adapter.findBestFood(), 'cooked_beef', 'ordinary eating reserves recovery apples');
+
+      const noApple = new MineflayerGameAdapter(() => ({
+        food: 20,
+        inventory: { items: () => [{ name: 'cooked_beef', count: 3 }] },
+        registry: { foodsByName: { cooked_beef: { foodPoints: 8, saturation: 12.8 } } },
+      }) as never);
+      assert.equal(noApple.findBestFood({ emergency: true }), null);
+
+      const hungryNoApple = new MineflayerGameAdapter(() => ({
+        food: 12,
+        inventory: { items: () => [{ name: 'cooked_beef', count: 3 }] },
+        registry: { foodsByName: { cooked_beef: { foodPoints: 8, saturation: 12.8 } } },
+      }) as never);
+      assert.equal(hungryNoApple.findBestFood({ emergency: true }), 'cooked_beef');
     });
   });
 
@@ -1693,7 +1668,7 @@ describe('executeAtomic', () => {
       const nav = makeMockNav({ ok: true });
       const bus = makeMockBus();
       const ctx: AtomicContext = {
-        game: makeMockGame() as any,
+        game: makeMockGame({ positions: [{ x: 50, y: 64, z: 50 }] }) as any,
         nav: nav as any,
         bus: bus as any,
       };
@@ -1707,16 +1682,16 @@ describe('executeAtomic', () => {
     });
   });
 
-  // ─── kite / block_with_shield / bow_shoot / crit_jump_attack（FEAT-L3-12） ─
+  // ─── combat_round / block_with_shield / bow_shoot / crit_jump_attack ─
 
-  describe('kite', () => {
+  describe('combat_round', () => {
     it('C1 缺 target.entityId → fail', async () => {
       const ctx: AtomicContext = {
         game: makeMockGame() as any,
         nav: makeMockNav() as any,
         bus: makeMockBus() as any,
       };
-      const r = await executeAtomic(makeReq({ type: 'kite', target: {} }), ctx);
+      const r = await executeAtomic(makeReq({ type: 'combat_round', target: {} }), ctx);
       assert.equal(r.ok, false);
       assert.ok(r.error?.includes('entityId'));
     });
@@ -1728,15 +1703,20 @@ describe('executeAtomic', () => {
         nav: makeMockNav() as any,
         bus: makeMockBus() as any,
       };
-      const r = await executeAtomic(makeReq({ type: 'kite', target: { entityId: 9 } }), ctx);
+      const r = await executeAtomic(makeReq({ type: 'combat_round', target: { entityId: 9 } }), ctx);
       assert.equal(r.ok, false);
       assert.ok(r.error?.includes('target_not_found'));
     });
 
-    it('C3 成功 → lookAt + attack + back=true/false 都调到', async () => {
+    it('C3 选择 DPS 更高的剑，确认手持后连续斩击并短撤步', async () => {
       const bus = makeMockBus();
       const game = makeMockGame({
         entity: { id: 5, name: 'creeper', position: { x: 1, y: 64, z: 1 } } as any,
+        heldItem: { name: 'cooked_beef' },
+        inventory: [
+          { name: 'netherite_axe', count: 1, slot: 10 },
+          { name: 'netherite_sword', count: 1, slot: 11 },
+        ],
       });
       const ctx: AtomicContext = {
         game: game as any,
@@ -1744,15 +1724,31 @@ describe('executeAtomic', () => {
         bus: bus as any,
       };
       const r = await executeAtomic(
-        makeReq({ type: 'kite', target: { entityId: 5, backDurationMs: 100 } }),
+        makeReq({ type: 'combat_round', target: { entityId: 5 } }),
         ctx,
       );
       assert.equal(r.ok, true);
-      assert.equal(game.calls.lookAt, 1);
-      assert.deepEqual(game.calls.attack, [5]);
+      assert.deepEqual(game.calls.equip, [{ name: 'netherite_sword', dest: 'hand' }]);
+      assert.equal(game.calls.lookAt, 3);
+      assert.deepEqual(game.calls.attack, [5, 5, 5]);
       assert.ok(game.calls.setControlState.some(c => c.key === 'back' && c.value === true));
       assert.ok(game.calls.setControlState.some(c => c.key === 'back' && c.value === false));
-      assert.ok(bus.events.some(e => e.type === 'atomic.kite.success'));
+      assert.ok(bus.events.some(e => e.type === 'atomic.combat_round.success'));
+    });
+
+    it('C4 装备确认失败时绝不攻击', async () => {
+      const bus = makeMockBus();
+      const game = makeMockGame({
+        entity: { id: 5, name: 'zombie', position: { x: 1, y: 64, z: 1 } } as any,
+        inventory: [{ name: 'netherite_sword', count: 1, slot: 11 }],
+        equipThrows: true,
+      });
+      const ctx: AtomicContext = { game: game as any, nav: makeMockNav() as any, bus: bus as any };
+      const r = await executeAtomic(makeReq({ type: 'combat_round', target: { entityId: 5 } }), ctx);
+      assert.equal(r.ok, false);
+      assert.match(r.error ?? '', /weapon_not_ready/);
+      assert.deepEqual(game.calls.attack, []);
+      assert.ok(bus.events.some(e => e.type === 'atomic.combat_round.weapon_not_ready'));
     });
   });
 

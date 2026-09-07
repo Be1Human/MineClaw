@@ -90,6 +90,6 @@ test('双层导航使用互动和角色交流并保持技术 ID', () => {
   assert.equal((appSource.match(/<TaskBarPanel/g) || []).length, 1);
   assert.doesNotMatch(appSource, /<V2StatusPanel|<CriticPanel/);
   assert.doesNotMatch(appSource, /fetch\('\/api\/v2\/(?:status|critic|supervisor-alerts)'\)/);
-  assert.match(appSource, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/v2\/supervisor-alerts/);
-  assert.match(appSource, /<AlertBanner :alerts="v2Alerts"/);
+  assert.doesNotMatch(appSource, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/v2\/supervisor-alerts/);
+  assert.doesNotMatch(appSource, /AlertBanner/);
 });

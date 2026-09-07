@@ -54,6 +54,7 @@ contributions:
       progressContributionId: mineclaw.gathering.progress.gather
       resultContributionId: mineclaw.gathering.result.gather
       cancellable: true
+      applicability: { outcomes: [obtain], targetKinds: [item], taskFamilies: [gathering, mining], criterionTypes: [inventory, predicate] }
   - kind: planning
     id: mineclaw.gathering.progress.gather
     version: 1.0.0

@@ -41,6 +41,15 @@ function invCount(game: GameView, name: string): number {
 function invTotal(game: GameView): number {
   return game.getInventoryItems().reduce((s, i) => s + i.count, 0);
 }
+function inventoryCounts(game: GameView): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const item of game.getInventoryItems()) counts[item.name] = (counts[item.name] ?? 0) + item.count;
+  return Object.freeze(counts);
+}
+function inventoryConsumed(before: Readonly<Record<string, number>>, game: GameView): boolean {
+  const now = inventoryCounts(game);
+  return Object.entries(before).some(([name, count]) => (now[name] ?? 0) < count);
+}
 
 /** 攻击类共用验真器：能读到目标血量就验掉血/消失，读不到(玩家)→unknown */
 const attackVerifier: AtomVerifier = {
@@ -136,12 +145,21 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
     },
   },
   eat: {
-    snapshot(_req, game) { return game.getFood(); },
-    verify(_req, game, before) {
-      const b = before as number;
-      if (b >= 20) return { status: 'pass' };  // 本就满
-      const now = game.getFood();
-      return now > b ? { status: 'pass' } : { status: 'fail', reason: `饱食未涨 (${b}→${now})` };
+    snapshot(_req, game) {
+      return Object.freeze({ food: game.getFood(), health: game.getHealth(), inventory: inventoryCounts(game) });
+    },
+    verify(req, game, before) {
+      const snapshot = before as { food: number; health: number; inventory: Readonly<Record<string, number>> };
+      const food = game.getFood();
+      const health = game.getHealth();
+      const consumed = inventoryConsumed(snapshot.inventory, game);
+      // `eat` confirms physical consumption (or an immediately observable
+      // recovery), never that a later natural-regeneration tick has completed.
+      if (food > snapshot.food || health > snapshot.health || consumed) return { status: 'pass' };
+      if (snapshot.food >= 20 && req.target?.emergency === true) {
+        return { status: 'fail', reason: '紧急恢复物品未消耗，满饥饿状态未产生可观察恢复' };
+      }
+      return { status: 'fail', reason: `进食无可观察效果：food ${snapshot.food}→${food}，health ${snapshot.health}→${health}` };
     },
   },
   // ── 战斗/钓鱼/穿甲（易 unknown，默认 observe）──

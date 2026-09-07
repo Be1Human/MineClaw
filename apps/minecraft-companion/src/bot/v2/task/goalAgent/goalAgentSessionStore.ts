@@ -11,6 +11,7 @@ import {
 } from './goalAgentState.js';
 import {
   GOAL_AGENT_SESSION_EVENT_SCHEMA_V1,
+  assertGoalAgentCompactionCheckpointV2,
   deriveGoalAgentMessages,
   latestGoalAgentCheckpoint,
   messageEventId,
@@ -301,6 +302,10 @@ export class GoalAgentSessionStore implements GoalAgentSessionStorePort, GoalAge
   }
 
   private recordCompactionInternal(input: GoalAgentCompactionCheckpointInput): GoalAgentSessionEventV1 | null {
+    const lastEvent = this.db.prepare(`
+      SELECT MAX(seq) AS seq FROM goal_agent_session_events WHERE session_id = ?
+    `).get(input.sessionId) as { seq: number | null };
+    assertGoalAgentCompactionCheckpointV2(input, this.messageCount(input.sessionId), lastEvent.seq ?? 0);
     const latest = this.db.prepare(`
       SELECT payload_json FROM goal_agent_session_events
       WHERE session_id = ? AND type = 'compaction.checkpoint'
@@ -308,7 +313,8 @@ export class GoalAgentSessionStore implements GoalAgentSessionStorePort, GoalAge
     `).get(input.sessionId) as { payload_json: string } | undefined;
     if (latest) {
       const payload = JSON.parse(latest.payload_json) as Record<string, unknown>;
-      if (payload.summary === input.summary && payload.throughMessageIndex === input.throughMessageIndex) return null;
+      if (payload.schema === input.schema && payload.sourceDigest === input.sourceDigest
+        && payload.throughMessageIndex === input.throughMessageIndex) return null;
     }
     if (!Number.isInteger(input.throughMessageIndex) || input.throughMessageIndex < 1
       || input.throughMessageIndex > this.messageCount(input.sessionId)) {
@@ -322,9 +328,16 @@ export class GoalAgentSessionStore implements GoalAgentSessionStorePort, GoalAge
       stateRevision: input.stateRevision,
       epoch: input.epoch,
       payload: {
-        summary: input.summary,
+        schema: input.schema,
+        summary: structuredClone(input.summary),
         omittedMessages: input.omittedMessages,
         throughMessageIndex: input.throughMessageIndex,
+        coveredEventSeq: structuredClone(input.coveredEventSeq),
+        profileRef: input.profileRef,
+        policyRevision: input.policyRevision,
+        tokensBefore: input.tokensBefore,
+        tokensAfter: input.tokensAfter,
+        sourceDigest: input.sourceDigest,
         rawMessagesRetained: this.messageCount(input.sessionId),
       },
     });

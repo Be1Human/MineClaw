@@ -135,3 +135,14 @@ test('QR-06 answer_player 永不自动创建/恢复任务（无任务副作用�
   // Run 面没有任何任务暴露：仅验证结构后可作集合保证。
   assert.ok(answer instanceof Promise);
 });
+
+test('QR-07 capability_status 来自当前 Observation Catalog，不依赖模型自述', async () => {
+  const current = catalog();
+  const answer = await new QueryRunner({
+    ...current,
+    listAvailableFactKinds: () => ['nearby_crops', 'inventory'],
+  }).run(query(['capability_status']), new AbortController().signal);
+  assert.equal(answer.outcome, 'answered');
+  assert.deepEqual(answer.facts[0]?.payload.entries, ['inventory', 'nearby_crops']);
+  assert.match(answer.evidenceRefs[0]?.ref ?? '', /^registry:/);
+});

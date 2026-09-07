@@ -4,12 +4,14 @@
  * 与 MainBrain 对称的"被动反馈侧"：
  *   - 吃 EventBus 的 Critical / Recoverable 事件
  *   - 监督 L6 任务执行（卡死/超时/异常）
- *   - 调用 L6.TaskRuntime.pause/resume 落地，不亲自动手
+ *   - 调用 L6.TaskRuntime 的恢复接口落地，不亲自动手
  *
- * 当前场景（跟着我）的核心责任：
- *   ① 苦力怕来袭 → 暂停 FollowTask · 记断点
- *   ② Reflex 反击完毕（danger_cleared 事件）→ 恢复 FollowTask
- *   ③ 任务卡死（task.long_running 30s 没进展）→ 诊断并触发恢复
+ * 当前责任：
+ *   ① 任务卡死（task.long_running 30s 没进展）→ 诊断并触发恢复
+ *   ② 工具损坏 / 前置条件丢失 → 面向当前任务的恢复建议
+ *
+ * 遇敌不属于 Supervisor：它不能暂停、恢复或抢占任务。危险路由由
+ * HazardDecisionService 和 Activity 声明共同决定，身体动作仍由当前任务执行通道处理。
  *
  * 架构：onEvent/watchdog → decide() 纯函数 → commit() 副作用执行
  */
@@ -52,7 +54,6 @@ export class RuntimeSupervisor {
 
   /** Supervisor 全量状态（decide() 只读 · commit() 写） */
   private readonly state: SupervisorState = {
-    suspendedByDanger: new Set<string>(),
     ongoingRecoveries: new Map<string, string>(),
     recentDiagnoses: [],
     lastProgressTick: new Map<string, number>(),
@@ -172,17 +173,12 @@ export class RuntimeSupervisor {
       injector: this.injector,
     });
 
-    // BUG-L7-02 · 危险解除持续轮询：每次 watchdog tick 检查是否可恢复
-    if (this.state.suspendedByDanger.size > 0) {
-      this.tryClearDanger();
-    }
   }
 
   /** 当前状态快照（供调试 / inspect 接口使用） */
   inspect(): SupervisorInspect {
     const { state } = this;
     return {
-      suspendedByDanger: Array.from(state.suspendedByDanger),
       ongoingRecoveries: Object.fromEntries(state.ongoingRecoveries),
       recentDiagnoses: [...state.recentDiagnoses],
       lastProgressTick: Object.fromEntries(state.lastProgressTick),
@@ -194,9 +190,12 @@ export class RuntimeSupervisor {
   // ─────────────── 订阅 ───────────────
 
   private subscribe(): void {
-    // Critical: under_attack → 暂停 Follow
+    // Critical non-hazard events may still require diagnosis/recovery. Hazard events
+    // are deliberately ignored here so they cannot mutate TaskRuntime.
     this.unsubs.push(
-      this.bus.onLevel('critical', ev => this.onEvent(ev)),
+      this.bus.onLevel('critical', ev => {
+        if (ev.type !== 'under_attack' && ev.type !== 'danger_cleared') this.onEvent(ev);
+      }),
     );
     // Recoverable: tool_broken / stuck / inventory_full / 任务卡死
     this.unsubs.push(
@@ -211,18 +210,6 @@ export class RuntimeSupervisor {
           this.state.lastProgressTick.delete(taskId);
           this.state.recoveryAttempts.delete(taskId);
         }
-      }),
-    );
-    // 自定义：danger_cleared（外部由其它模块或 atomic 在反击成功后发）
-    this.unsubs.push(
-      this.bus.on('danger_cleared', ev => this.onEvent(ev)),
-    );
-    // 自定义：atomic.attack 成功后 emit · 用来推断 danger_cleared（最简化）
-    this.unsubs.push(
-      this.bus.on('atomic.attack', () => {
-        // 简化版：每次反击都尝试触发"危险解除"判断
-        // 真实实现应当看 hostile 还在不在视野
-        setTimeout(() => this.tryClearDanger(), 300);
       }),
     );
   }
@@ -248,17 +235,4 @@ export class RuntimeSupervisor {
     });
   }
 
-  private tryClearDanger(): void {
-    // 看 WorldState 里附近 16 格内还有没有 hostile · 没有才算解除
-    const world = this.perception.getWorldState();
-    if (!world) return;
-    const stillThreat = world.entities.some(
-      e => e.category === 'hostile' && e.distance <= this.cfg.HOSTILE_CLEAR_RANGE,
-    );
-    if (stillThreat) return;
-    if (this.state.suspendedByDanger.size === 0) return;
-    this.bus.publish('danger_cleared', 'info', {
-      reason: 'no_hostile_in_range',
-    });
-  }
 }

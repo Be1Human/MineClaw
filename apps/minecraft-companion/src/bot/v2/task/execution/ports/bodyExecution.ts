@@ -13,6 +13,8 @@ export interface AuthorizedOperation {
 export interface ExecutionAuthorityPort {
   /** Rechecked at admission and before/after every effect and child step. */
   allows(operation: AuthorizedOperation, command: OperationCommand): boolean;
+  /** Stable digest of the exact intent bound to this opaque grant. */
+  grantHash(operation: AuthorizedOperation): string | null;
 }
 
 export interface OperationHandle {

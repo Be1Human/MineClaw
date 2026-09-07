@@ -2,11 +2,10 @@ import { createHash } from 'node:crypto';
 import { jsonSnapshot } from '../../infra/jsonSnapshot.js';
 import { tuning } from '../../infra/tuning.js';
 import type { GoalProgressState } from '../contracts/goalProgress.js';
-import { legacyProgressFacts } from './legacyProgressFacts.js';
 import { observationIsFresh } from '../goalRunner/worldFactValidation.js';
 import { stableJson } from './goalAgentJson.js';
 import type { GoalAgentStateV1 } from './goalAgentState.js';
-import type { GoalProgressGuidance, GoalProgressPolicyPort } from './ports/goalProgressPort.js';
+import type { GoalProgressContributionPort, GoalProgressGuidance, GoalProgressReading } from './ports/goalProgressPort.js';
 
 export function goalProgress(state: GoalAgentStateV1): GoalProgressState {
   return state.progress ??= { schema: 'mineclaw.goal-progress/v1', mode: 'running', rounds: 0, noProgressRounds: 0, totalNoProgressRounds: 0,
@@ -16,16 +15,27 @@ export function goalProgress(state: GoalAgentStateV1): GoalProgressState {
 
 /** One deterministic guard on committed round state; not a second planner or runner. */
 export class GoalProgressGuard {
-  constructor(private readonly policy?: GoalProgressPolicyPort) {}
+  constructor(private readonly source?: GoalProgressContributionPort) {}
 
-  afterRound(state: GoalAgentStateV1, now: number, catalogVersion: string, acted: boolean): string | null {
+  async afterRound(state: GoalAgentStateV1, now: number, catalogVersion: string, acted: boolean, signal: AbortSignal): Promise<string | null> {
     const progress = goalProgress(state); progress.catalogVersion = catalogVersion;
     progress.rounds++; progress.inactiveRounds = acted ? 0 : progress.inactiveRounds + 1;
     if (state.terminal || state.phase === 'paused_owner' || state.mode !== 'planned_goal') return null;
     const cfg = tuning().goalProgress;
     if (!cfg.enabled) return null;
     if (!validConfig()) return this.fail(state, 'invalid_progress_guard_configuration', now);
-    const fingerprint = this.fingerprint(state);
+    // Progress Contributions are operation-scoped. Before formalization there is
+    // no valid provider to query, but interpretation still has a bounded round
+    // budget so repeated prose/cognition cannot spin forever.
+    if (!state.rootGoal) {
+      progress.noProgressRounds++; progress.totalNoProgressRounds++;
+      return progress.noProgressRounds >= cfg.noProgressRounds
+        ? this.fail(state, 'goal_not_formalized_after_bounded_rounds', now)
+        : null;
+    }
+    const reading = await this.read(state, signal, now);
+    if (!reading) return this.fail(state, 'progress_contribution_unavailable', now);
+    const fingerprint = this.fingerprint(state, reading);
     const fresh = fingerprint !== progress.fingerprint && !progress.seenFingerprints.includes(fingerprint);
     const initialized = progress.fingerprint !== null;
     progress.fingerprint = fingerprint;
@@ -40,8 +50,8 @@ export class GoalProgressGuard {
     progress.noProgressRounds++; progress.totalNoProgressRounds++;
     if (progress.mode === 'recovery' && progress.rounds - progress.recoveryStartedRound < cfg.recoveryRounds) return null;
     if (progress.noProgressRounds < cfg.noProgressRounds) return null;
-    const guidance = this.guidance(state);
-    if (guidance) return this.applyGuidance(state, guidance, now);
+    const guidance = reading.guidance;
+    if (guidance) return this.applyGuidance(state, guidance, reading, now);
     if (progress.recoveryAttempts >= cfg.maxRecoveryAttempts || state.budget.recoveries >= state.budget.maxRecoveries) {
       return this.fail(state, 'no_validated_path_after_bounded_recovery', now);
     }
@@ -52,7 +62,7 @@ export class GoalProgressGuard {
     return 'bounded_recovery';
   }
 
-  pollWaiting(state: GoalAgentStateV1, now: number): string | null {
+  async pollWaiting(state: GoalAgentStateV1, now: number, signal: AbortSignal): Promise<string | null> {
     const progress = goalProgress(state), wait = progress.waiting;
     if (!wait || state.terminal) return null;
     if (!validConfig()) return this.fail(state, 'invalid_progress_guard_configuration', now);
@@ -60,9 +70,11 @@ export class GoalProgressGuard {
     wait.deadlineAt = Math.min(wait.deadlineAt, progress.waitStartedAt! + cfg.maxWaitMs);
     if (now >= wait.deadlineAt || wait.checks >= cfg.maxWaitChecks) return this.fail(state, 'world_wait_budget_exhausted', now, wait.evidenceRefs);
     wait.checks++;
-    const fingerprint = this.fingerprint(state);
-    const guidance = this.guidance(state);
-    if (guidance && guidance.kind !== 'wait') return this.applyGuidance(state, guidance, now);
+    const reading = await this.read(state, signal, now);
+    if (!reading) return this.fail(state, 'progress_contribution_unavailable', now);
+    const fingerprint = this.fingerprint(state, reading);
+    const guidance = reading.guidance;
+    if (guidance && guidance.kind !== 'wait') return this.applyGuidance(state, guidance, reading, now);
     if (fingerprint !== wait.fingerprint && !progress.seenFingerprints.includes(fingerprint)) {
       if (progress.seenFingerprints.length >= cfg.maxFingerprints) return this.fail(state, 'progress_history_budget_exceeded', now);
       progress.fingerprint = fingerprint; progress.seenFingerprints.push(fingerprint); progress.noProgressRounds = 0;
@@ -73,11 +85,27 @@ export class GoalProgressGuard {
     return 'wait_checked_no_progress';
   }
 
-  private guidance(state: Readonly<GoalAgentStateV1>): GoalProgressGuidance | null {
-    return this.policy?.assess(state) ?? null;
+  private async read(state: Readonly<GoalAgentStateV1>, signal: AbortSignal, now: number): Promise<GoalProgressReading | null> {
+    if (!this.source || !state.snapshotRef) return null;
+    let reading: GoalProgressReading;
+    try { reading = await this.source.read(state, signal); }
+    catch (error) {
+      if (signal.aborted) throw error;
+      return null;
+    }
+    if (signal.aborted) throw signal.reason ?? new Error('progress_read_cancelled');
+    const snapshot = state.snapshotRef;
+    if (reading.snapshot.generationId !== snapshot.generationId
+      || reading.snapshot.buildId !== snapshot.buildId
+      || reading.snapshot.graphHash !== snapshot.graphHash) return null;
+    if (!reading.contribution.pluginId || !reading.contribution.pluginVersion
+      || !reading.contribution.contributionId || !reading.contribution.contributionVersion
+      || !Number.isFinite(reading.observedAt)
+      || !observationIsFresh(reading.observedAt, now, tuning().goalEvidence.maxWorldAgeMs)) return null;
+    return reading;
   }
 
-  private applyGuidance(state: GoalAgentStateV1, guidance: GoalProgressGuidance, now: number): string {
+  private applyGuidance(state: GoalAgentStateV1, guidance: GoalProgressGuidance, reading: GoalProgressReading, now: number): string {
     const progress = goalProgress(state);
     if (!guidance.reason?.trim() || !guidance.evidenceRefs?.length) return this.fail(state, 'progress_guidance_without_evidence', now);
     if (guidance.kind === 'unsupported') return this.fail(state, `unsupported_capability:${guidance.reason}`, now, guidance.evidenceRefs);
@@ -97,17 +125,17 @@ export class GoalProgressGuard {
     const deadlineAt = progress.waitStartedAt + cfg.maxWaitMs;
     if (now >= deadlineAt) return this.fail(state, 'world_wait_budget_exhausted', now, guidance.evidenceRefs);
     progress.mode = 'waiting_world';
-    progress.waiting = { key: guidance.key, reason: guidance.reason, fingerprint: this.fingerprint(state), deadlineAt,
+    progress.waiting = { key: guidance.key, reason: guidance.reason, fingerprint: this.fingerprint(state, reading), deadlineAt,
       nextCheckAt: Math.min(now + cfg.waitPollMs, deadlineAt), checks: progress.waiting?.checks ?? 0, evidenceRefs: [...guidance.evidenceRefs] };
     state.verdict = { decision: 'continue', summary: guidance.reason, machineCriteriaSatisfied: false, ownerActionable: false, retryable: true, evidenceRefs: [...guidance.evidenceRefs] };
     return 'bounded_world_wait';
   }
 
-  private fingerprint(state: Readonly<GoalAgentStateV1>): string {
+  private fingerprint(state: Readonly<GoalAgentStateV1>, reading: GoalProgressReading): string {
     const completed = state.plan.graph?.nodes.filter(node => node.state === 'satisfied').map(node => node.goal.metadata?.structuredSuccessCriteria ?? node.postconditions) ?? [];
     return createHash('sha256').update(stableJson({ root: state.goal.signature?.key ?? state.rootGoal ?? state.requestId,
-      catalog: state.progress?.catalogVersion ?? '', completed: completed.map(stableJson).sort(),
-      facts: stripTelemetry(this.policy?.project(state) ?? legacyProgressFacts(state)),
+      snapshot: reading.snapshot, contribution: reading.contribution,
+      completed: completed.map(stableJson).sort(), facts: stripTelemetry(reading.semanticState),
     })).digest('hex');
   }
 

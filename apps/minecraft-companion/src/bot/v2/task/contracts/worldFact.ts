@@ -14,6 +14,8 @@ export interface WorldFact<TValue = unknown> {
   readonly bounds: Readonly<Record<string, unknown>>;
   readonly value: TValue;
   readonly evidenceRefs: readonly string[];
+  /** Exact versioned plugin fact retained for generation-pinned verification. */
+  readonly pluginFact?: import('../../plugin-sdk/contracts/observation.js').PluginObservationFact;
 }
 
 /** Code-owned prerequisite bound from already schema-validated predicate arguments. */

@@ -35,16 +35,24 @@ export class ProactiveTickScheduler implements ITickable {
   private running = false;
   private readonly backoffUntil = new Map<string, number>();
   private readonly now: () => number;
+  private capabilities: readonly RegisteredProactiveTickCapability[];
 
   constructor(private readonly options: ProactiveTickSchedulerOptions) {
     this.preferences = options.preferences ?? {};
+    this.capabilities = options.capabilities;
     this.now = options.now ?? Date.now;
-    this.options.stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog(options.capabilities, this.preferences));
+    this.options.stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog(this.capabilities, this.preferences));
+  }
+
+  /** Atomically replace the catalog after a Registry Generation activates. */
+  setCapabilities(capabilities: readonly RegisteredProactiveTickCapability[]): void {
+    this.capabilities = Object.freeze([...capabilities]);
+    this.options.stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog(this.capabilities, this.preferences));
   }
 
   setPreferences(preferences: ProactiveCapabilityPreferences): void {
     this.preferences = preferences;
-    this.options.stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog(this.options.capabilities, preferences));
+    this.options.stateStore.reconcileCatalog(resolveProactiveCapabilityCatalog(this.capabilities, preferences));
   }
 
   onTick(ctx: TickContext): void {
@@ -55,7 +63,7 @@ export class ProactiveTickScheduler implements ITickable {
 
   async run(ctx: TickContext): Promise<void> {
     const now = this.now();
-    const catalog = resolveProactiveCapabilityCatalog(this.options.capabilities, this.preferences);
+    const catalog = resolveProactiveCapabilityCatalog(this.capabilities, this.preferences);
     this.options.stateStore.reconcileCatalog(catalog);
     const catalogById = new Map(catalog.map(entry => [entry.id, entry]));
     const evaluations = new Map<string, ProactiveTickEvaluation>();
@@ -67,7 +75,7 @@ export class ProactiveTickScheduler implements ITickable {
       const existing = this.options.stateStore.get(initialLease.capabilityId);
       if (existing) this.options.stateStore.recordEvaluation(initialLease.capabilityId, release, now);
     }
-    for (const capability of this.options.capabilities) {
+    for (const capability of this.capabilities) {
       const entry = catalogById.get(capability.manifest.id)!;
       if (!entry.enabled || !shouldRun(entry.rate, ctx.tick)) continue;
       const blockedUntil = this.backoffUntil.get(entry.id) ?? 0;

@@ -2,6 +2,7 @@ import type { WorldStateView } from '../../types.js';
 import type { Goal, GoalSuccessCriterion } from '../contracts/goalTypes.js';
 import type { WorldFact, WorldFactRequirement } from '../contracts/worldFact.js';
 import type { GoalScopeBinding } from '../contracts/goalDraft.js';
+import type { ContributionRef } from '../../plugin-sdk/identity.js';
 import { evaluateRegisteredPredicate } from './goalPredicateEvaluation.js';
 
 export interface GoalCriteriaEvaluation {
@@ -38,6 +39,8 @@ export interface GoalCriterionEvidence {
 }
 
 export interface GoalPredicateEvaluator {
+  /** Exact verification contribution resolved from the Goal snapshot. */
+  readonly contribution: ContributionRef;
   readonly id: string;
   readonly version?: string;
   readonly argumentSchema?: Readonly<Record<string, unknown>>;

@@ -14,6 +14,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { PerceptionPipeline } from '../../../../../../apps/minecraft-companion/src/bot/v2/perception/pipeline.js';
+import { categorizeEntity } from '../../../../../../apps/minecraft-companion/src/bot/v2/perception/entityClassification.js';
 import { EventBusV2 } from '../../../../../../apps/minecraft-companion/src/bot/v2/infra/eventBus.js';
 import type { GameAdapter } from '../../../../../../apps/minecraft-companion/src/bot/adapter/GameAdapter.js';
 import type { RawEntity, RawItem, Unsubscribe } from '../../../../../../apps/minecraft-companion/src/bot/adapter/types.js';
@@ -267,6 +268,60 @@ describe('PerceptionPipeline', () => {
     // passive 内按距离升序：cow(3) < pig(7)
     assert.equal(view.entities[1].name, 'cow');
     assert.equal(view.entities[2].name, 'pig');
+  });
+
+  it('F18 · 主人可见时保留并优先主人最近的 hostile，即使它离守卫很远', () => {
+    const owner: RawEntity = { id: 900, name: 'player', username: OWNER, type: 'player', position: { x: 100, y: 64, z: 0 } };
+    const nearestOwnerThreat: RawEntity = { id: 901, name: 'zombie', type: 'mob', position: { x: 100.5, y: 64, z: 0 } };
+    const otherThreats: RawEntity[] = Array.from({ length: 33 }, (_, index) => ({
+      id: index + 1, name: 'zombie', type: 'mob', position: { x: index + 1, y: 64, z: 0 },
+    }));
+    const view = new PerceptionPipeline(makeMockGame({ entities: [owner, nearestOwnerThreat, ...otherThreats] }), new EventBusV2(), { ownerName: OWNER }).perceive();
+
+    assert.equal(view.entities.length, 32);
+    const hostiles = view.entities.filter(entity => entity.category === 'hostile');
+    assert.equal(hostiles[0]?.id, 901);
+    assert.ok(hostiles.some(entity => entity.id === 901));
+  });
+
+  it('F18 · 主人不可见时 hostile 仍按守卫距离排序', () => {
+    const entities: RawEntity[] = [
+      { id: 1, name: 'zombie', type: 'mob', position: { x: 9, y: 64, z: 0 } },
+      { id: 2, name: 'zombie', type: 'mob', position: { x: 2, y: 64, z: 0 } },
+    ];
+    const view = new PerceptionPipeline(makeMockGame({ entities }), new EventBusV2(), { ownerName: OWNER }).perceive();
+    assert.deepEqual(view.entities.map(entity => entity.id), [2, 1]);
+  });
+
+  it('敌对分类以适配器 hostile 类型为准，并覆盖全部原版敌对变种', () => {
+    const hostileNames = [
+      'blaze', 'bogged', 'breeze', 'cave_spider', 'creeper', 'drowned',
+      'elder_guardian', 'enderman', 'endermite', 'evoker', 'ghast', 'giant',
+      'guardian', 'hoglin', 'husk', 'illusioner', 'magma_cube', 'phantom',
+      'piglin', 'piglin_brute', 'pillager', 'ravager', 'shulker', 'silverfish',
+      'skeleton', 'slime', 'stray', 'vex', 'vindicator', 'warden', 'witch',
+      'wither', 'wither_skeleton', 'zoglin', 'zombie', 'zombie_villager', 'zombified_piglin',
+    ];
+    for (const name of hostileNames) {
+      assert.equal(categorizeEntity({ id: 1, name, type: 'mob', position: { x: 0, y: 64, z: 0 } }), 'hostile', name);
+    }
+
+    // End-to-end pipeline coverage uses a small sample because WorldState
+    // intentionally retains only the closest 32 entities.
+    const entities: RawEntity[] = ['drowned', 'zombie_villager'].map((name, index) => ({
+      id: index + 1,
+      name,
+      // Fallback path used by adapters that do not populate `type: hostile`.
+      type: 'mob',
+      position: { x: index + 1, y: 64, z: 0 },
+    }));
+    entities.push({ id: 999, name: 'server_added_enemy', type: 'hostile', position: { x: 99, y: 64, z: 0 } });
+
+    const view = new PerceptionPipeline(makeMockGame({ entities }), new EventBusV2(), { ownerName: OWNER }).perceive();
+
+    assert.equal(view.entities.length, entities.length);
+    assert.ok(view.entities.every(entity => entity.category === 'hostile'));
+    assert.equal(view.entities.find(entity => entity.name === 'drowned')?.category, 'hostile');
   });
 
   it('BUG-CROSS-69 · 地面物品身份进入 WorldStateView', () => {

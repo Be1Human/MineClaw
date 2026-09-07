@@ -22,6 +22,12 @@ function createRuntime(): { runtime: V2Runtime; bot: ReturnType<typeof createMoc
 }
 
 describe('BUG-CROSS-32 · V2Runtime stop', () => {
+  it('未 start 的 Runtime 也关闭其拥有的存储，重复 stop 安全', () => {
+    const { runtime } = createRuntime();
+    assert.doesNotThrow(() => runtime.stop());
+    assert.doesNotThrow(() => runtime.stop());
+  });
+
   it('先终止 MainBrain，再取消任务并关闭异步队列；重复 stop 安全', () => {
     const { runtime, bot } = createRuntime();
     runtime.start();

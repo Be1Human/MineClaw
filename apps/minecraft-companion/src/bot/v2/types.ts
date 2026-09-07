@@ -198,8 +198,8 @@ export type ActionType =
   | 'mount'
   | 'dismount'
   | 'vehicle_goto'
-  // FEAT-L3-12 战斗完善：拉怪 / 格挡 / 弓箭 / 暴击跳劈
-  | 'kite'
+  // 近战战斗回合 / 格挡 / 弓箭 / 暴击跳劈
+  | 'combat_round'
   | 'block_with_shield'
   | 'bow_shoot'
   | 'crit_jump_attack'
@@ -229,6 +229,16 @@ export interface ActionRequest {
     position?: Vec3;
     /** move_to/goto_position 的到达半径；省略时保持默认 1 格。 */
     range?: number;
+    /**
+     * `move_to` 的导航目标形状。`xz` 忽略终点 Y，先完成跨地形/水域的
+     * 水平转移；它只由高级移动 Behavior 的恢复阶段使用。
+     */
+    navigationGoal?: 'precise' | 'xz';
+    /**
+     * `move_to` 的寻路档位。`recovery` 开启受控的 free-motion 边，供
+     * 高级移动 Behavior 在普通路径不存在时恢复；常规调用始终是 standard。
+     */
+    navigationProfile?: 'standard' | 'recovery';
     text?: string; // for 'say'
     itemName?: string; // for 'equip' / 'place_block'
     behavior?: string; // for 'invoke_behavior' — skill id to look up in BehaviorRegistry
@@ -241,10 +251,10 @@ export interface ActionRequest {
     needTable?: boolean; // for 'craft' — whether a crafting table is required
     tablePos?: Vec3; // for 'craft' — crafting table position; for 'smelt' — furnace position
     fuelName?: string; // for 'smelt' — fuel item (coal/charcoal/planks…)
-    durationMs?: number; // for 'walk' — how long to walk forward (ms); also reused by 'fish' / 'block_with_shield'
-    backDurationMs?: number; // for 'kite' — how long to walk backwards after the swing (ms)
+    durationMs?: number; // for 'walk' / bounded 'follow_entity' — physical step duration (ms); also reused by 'fish' / 'block_with_shield'
     drawMs?: number; // for 'bow_shoot' — how long to charge the bow (ms)
-    forceRepath?: boolean; // for 'follow_entity' — BUG-L5-02：强制重设 GoalFollow（绕过幂等 no-op），跟手重算
+    /** `eat` 的恢复模式：允许选择可在满饥饿时生效的紧急恢复物品（如金苹果）。 */
+    emergency?: boolean;
   };
   /** 前置条件 · 名字列表，Arbitrator 来 WorldState 查 */
   preconditions: string[];

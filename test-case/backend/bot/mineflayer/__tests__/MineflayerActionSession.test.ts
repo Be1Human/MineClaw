@@ -6,6 +6,7 @@ import { SwitchableGameAdapter } from '../../../../../apps/minecraft-companion/s
 import { NullGameAdapter } from '../../../../../apps/minecraft-companion/src/bot/adapter/NullGameAdapter.js';
 import { BodyExecutionRuntime } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/bodyExecutionRuntime.js';
 import { ExecutionAuthority } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/executionAuthority.js';
+import { OperationLedger } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/operationLedger.js';
 import { __setTuningOverride } from '../../../../../apps/minecraft-companion/src/bot/v2/infra/tuning.js';
 import type { BoundGameActions, GameActions } from '../../../../../apps/minecraft-companion/src/bot/adapter/GameActions.js';
 import type { GameAdapter } from '../../../../../apps/minecraft-companion/src/bot/adapter/GameAdapter.js';
@@ -34,7 +35,7 @@ function fakeBot(overrides: Record<string, unknown> = {}): Bot {
 function fixture(game: GameAdapter, run: (actions: GameActions) => Promise<void>) {
   const authority = new ExecutionAuthority();
   let session!: BoundGameActions;
-  const runtime = new BodyExecutionRuntime({ authority, driver: {
+  const runtime = new BodyExecutionRuntime({ authority, ledger: new OperationLedger(':memory:'), driver: {
     resources: () => ['body'],
     bind: () => {
       let bound: BoundGameActions | null = null;
@@ -46,7 +47,7 @@ function fixture(game: GameAdapter, run: (actions: GameActions) => Promise<void>
   } });
   const start = (id = 'op') => {
     const intent: OperationIntent = { operationId: id, owner: { kind: 'task', taskId: 'task', ownerEpoch: 1 },
-      command: { ref: { id: 'fixture', contribution: { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: 'fixture', contributionVersion: '1.0.0' } }, snapshot: { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' }, args: {} },
+      command: { ref: { id: 'fixture', contribution: { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: 'fixture', contributionVersion: '1.0.0' } }, snapshot: { generationId: 'gen-test', buildId: 'test-build', graphHash: 'test-graph' }, args: {} }, expectedEffects: [],
       scope: { dimension: 'overworld', targetRefs: [], bindings: [] },
       deadlineAt: Date.now() + 60_000, budget: { maxActions: 5 }, priority: 1, preemption: 'none' };
     return runtime.submit({ intent, grant: authority.issue(intent, { isCurrent: () => true, allowsChild: () => false }) });

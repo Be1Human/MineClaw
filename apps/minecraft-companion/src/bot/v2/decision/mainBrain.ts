@@ -21,7 +21,8 @@ import {
   type HistoryEntry,
 } from './llmLoop.js';
 import { buildMainBrainToolRegistry, type MainBrainToolDeps, type ToolRegistry } from './tools/index.js';
-import { buildMainBrainSystemPrompt, formatConversationHistory, sanitizeRoleContext } from './systemPrompt.js';
+import { formatConversationHistory, sanitizeRoleContext } from './systemPrompt.js';
+import { buildBaseSystemPrompt } from './baseSystemPrompt.js';
 import { tuning } from '../infra/tuning.js';
 import type { EventBusV2 } from '../infra/eventBus.js';
 import { detectAddress } from '../cognitive/addressDetector.js';
@@ -44,6 +45,10 @@ import {
   buildGamePresenceContext,
   type GamePresenceState,
 } from '../gamePresenceContext.js';
+import { FactIntentGate, KnowledgeQueryFactory, resolveKnowledgeQueryDefaults } from './factIntentGate.js';
+import type { KnowledgeQueryPortV1 } from './knowledgeQueryPort.js';
+import { composeTurn } from './knowledgeAnswerBridge.js';
+import type { RegistrySnapshotRef } from '../plugin-sdk/identity.js';
 
 export { isTaskCancellationRequest, stripTaskCancellationPrefix } from './ownerControlIntent.js';
 
@@ -97,6 +102,12 @@ export interface MainBrainDeps extends MainBrainToolDeps {
   llmTraceRecorder?: LlmTraceRecorderPort;
   /** FEAT-CROSS-25 · 与 GoalAgent 共用的主动能力只读快照。 */
   getProactiveCapabilitiesContext?: () => string;
+  /** FEAT-CROSS-28 · 独立于任务 Loop 的只读知识查询入口。 */
+  knowledgeQueryPort?: KnowledgeQueryPortV1;
+  /** FEAT-CROSS-28 · 查询固定到当前已发布插件代；未就绪返回 null。 */
+  getRegistrySnapshot?: () => RegistrySnapshotRef | null;
+  /** Registered task discovery is authoritative over lexical fact-query heuristics. */
+  isRegisteredTaskIntent?: (message: string) => boolean;
 }
 
 export class MainBrain {
@@ -165,6 +176,11 @@ export class MainBrain {
   private readonly memory: MemoryV2 | null;
   private readonly goalAgentPort: MainBrainDeps['goalAgentPort'];
   private readonly llmTraceRecorder: LlmTraceRecorderPort | null;
+  private readonly knowledgeQueryPort: KnowledgeQueryPortV1 | null;
+  private readonly getRegistrySnapshot: (() => RegistrySnapshotRef | null) | null;
+  private readonly isRegisteredTaskIntent: ((message: string) => boolean) | null;
+  private readonly factIntentGate = new FactIntentGate();
+  private knowledgeQuerySequence = 0;
   /** FEAT-L6-04：本轮 IDLE 检测到的连败 escalate（_fireIdleTriggers 置位 · spawnIdleTurn 消费）*/
   private pendingEscalate: { triggerId: string; reason: string; count: number } | null = null;
   /** BUG-CROSS-01 修④：徒劳任务标记（v2Runtime futility_watch 置位 · spawnIdleTurn 消费）。
@@ -195,6 +211,9 @@ export class MainBrain {
     this.onOwnerCancellation = deps.onOwnerCancellation ?? null;
     this.goalAgentPort = deps.goalAgentPort;
     this.llmTraceRecorder = deps.llmTraceRecorder ?? null;
+    this.knowledgeQueryPort = deps.knowledgeQueryPort ?? null;
+    this.getRegistrySnapshot = deps.getRegistrySnapshot ?? null;
+    this.isRegisteredTaskIntent = deps.isRegisteredTaskIntent ?? null;
     this.isEmbodied = deps.isEmbodied ?? (() => deps.embodied !== false);
     this.getGamePresence = deps.getGamePresence
       ?? (() => ({ embodied: this.isEmbodied(), ownerObservation: 'unknown' }));
@@ -213,12 +232,13 @@ export class MainBrain {
         persona: cfg.persona,
         characterCardMode: !!cfg.characterCard,
       };
-      const systemPrompt = buildMainBrainSystemPrompt(promptParams);
+      const baseSystem = buildBaseSystemPrompt(promptParams);
       this.llmLoop = new LLMToolLoop(
         deps.llm,
         this.toolRegistry,
         {
-          systemPrompt,
+          systemPrompt: baseSystem.content,
+          baseSystem,
           maxRounds: cfg.maxRounds ?? 8,
           bus: this.bus,
           characterBlock: cfg.characterPrompt,
@@ -952,6 +972,13 @@ export class MainBrain {
         recordTurn(result);
         return { pendingAskMaster: false };
       }
+      if (turnKind === 'owner' && this.knowledgeQueryPort && this.getRegistrySnapshot) {
+        const knowledgeResult = await this.tryHandleKnowledgeQuery(message, turnId, abortSignal);
+        if (knowledgeResult) {
+          recordTurn(knowledgeResult);
+          return { pendingAskMaster: false };
+        }
+      }
       // LLM 模式（一切经大脑决策 · 无旁路，保证"脑子和手脚一致"）
       if (this.llmLoop) {
         const wasPending = this.pendingHistory !== null;
@@ -1153,6 +1180,56 @@ export class MainBrain {
     if (result.pendingAskMaster) this.pendingConversation = botEntry;
     this.chatMemory?.recordMessage({ id: botEntry.id, sessionId: this.chatSessionId, role: 'bot', content: botEntry.content, timestamp: botEntry.timestamp });
     this.chatMemory?.maybeFlush(this.chatSessionId);
+  }
+
+  private async tryHandleKnowledgeQuery(
+    message: string,
+    turnId: string,
+    abortSignal?: AbortSignal,
+  ): Promise<{ pendingAskMaster: false; botReply: string } | null> {
+    const knowledgeQueryPort = this.knowledgeQueryPort;
+    if (!knowledgeQueryPort) return null;
+    const decision = this.factIntentGate.classify(message, {
+      registeredTask: this.isRegisteredTaskIntent?.(message) ?? false,
+    });
+    this.bus.publish('knowledge.intent.classified', 'info', { turnId, decision });
+    if (!this.factIntentGate.isKnowledgeTurn(decision)) return null;
+    const snapshot = this.getRegistrySnapshot?.();
+    if (!snapshot) {
+      const botReply = '我的实时观察能力还在初始化，现在不能可靠读取周围信息，请稍后再问一次。';
+      this.speechGateway.commit(botReply, 'say');
+      this.bus.publish('knowledge.query.unavailable', 'recoverable', { turnId, reason: 'registry_not_ready' });
+      return { pendingAskMaster: false, botReply };
+    }
+    const defaults = resolveKnowledgeQueryDefaults(message);
+    const query = new KnowledgeQueryFactory({
+      factKinds: defaults.factKinds,
+      anchor: defaults.anchor,
+      scope: {
+        radius: tuning().knowledgeQuery.defaultRadius,
+        maxResults: tuning().knowledgeQuery.maxResultsPerFact,
+        maxBlocks: tuning().knowledgeQuery.maxResultsPerFact,
+        budgetRef: 'tuning.knowledgeQuery',
+      },
+      freshness: { maxAgeMs: tuning().knowledgeQuery.maxFreshnessMs },
+    }).create(decision, { text: message, source: 'player' }, snapshot, this.knowledgeQuerySequence++);
+    this.bus.publish('knowledge.query.submitted', 'info', { turnId, query });
+    try {
+      await knowledgeQueryPort.submitKnowledgeQuery(query, abortSignal);
+      const answer = knowledgeQueryPort.check(query.requestId)?.answer;
+      if (!answer) throw new Error('knowledge_answer_missing');
+      const composed = composeTurn(answer, message);
+      this.bus.publish('knowledge.answer.received', 'info', { turnId, query, answer, contextEvent: composed.event });
+      this.speechGateway.commit(composed.speech, 'say');
+      await knowledgeQueryPort.acknowledgePlayerReply(answer.replyKey);
+      return { pendingAskMaster: false, botReply: composed.speech };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const botReply = `现在无法取得这部分世界信息（${reason}），请稍后再试。`;
+      this.bus.publish('knowledge.query.failed', 'recoverable', { turnId, requestId: query.requestId, reason });
+      this.speechGateway.commit(botReply, 'say');
+      return { pendingAskMaster: false, botReply };
+    }
   }
 
   private _resolvePendingConversation(entry: ConversationEntry | null): void {

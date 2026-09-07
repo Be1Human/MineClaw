@@ -1,4 +1,4 @@
-import type { GameAdapter } from './GameAdapter.js';
+import type { FoodSelectionOptions, GameAdapter } from './GameAdapter.js';
 import type { BoundGameActions, DeviceExecutionScope } from './GameActions.js';
 import type {
   ChestOpResult,
@@ -115,7 +115,7 @@ export class SwitchableGameAdapter implements GameAdapter {
   getOxygen(): number { return this.target.getOxygen(); }
   chat(message: string): void { this.target.chat(message); }
   getBlockProperties(pos: Vec3): Record<string, string> | null { return this.target.getBlockProperties(pos); }
-  findBestFood(): string | null { return this.target.findBestFood(); }
+  findBestFood(options?: Readonly<FoodSelectionOptions>): string | null { return this.target.findBestFood(options); }
   findNearbyBed(maxDistance: number): Vec3 | null { return this.target.findNearbyBed(maxDistance); }
   getCraftRecipes(itemName: string, withTable: boolean): RecipeInfo[] { return this.target.getCraftRecipes(itemName, withTable); }
   getItemSource(itemName: string): ItemSource | null { return this.target.getItemSource(itemName); }

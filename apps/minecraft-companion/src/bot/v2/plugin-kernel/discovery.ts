@@ -29,6 +29,7 @@ export interface BuiltinIndexPlugin {
   readonly entryKey: string;
   readonly manifest: Record<string, unknown>;
   readonly factory: PluginFactory;
+  readonly dataContents?: ReadonlyMap<string, string>;
 }
 
 export interface BuiltinPluginIndex {
@@ -74,6 +75,7 @@ export async function discoverPlugins(input: PluginDiscoveryInput): Promise<Plug
         identity: { pluginId: manifest.id, pluginVersion: manifest.version },
         manifest,
         factory: entry.factory,
+        ...(entry.dataContents ? { dataContents: entry.dataContents } : {}),
         source: 'builtin',
       });
     } catch (error) {

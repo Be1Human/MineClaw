@@ -71,7 +71,7 @@ export function createMineclawInventoryPlugin(): PluginFactory {
         registryId: 'mineclaw.inventory.goal.item-available',
         goalKind: 'item' as const,
         aliases: ['材料', '资源', '物资', '工具'],
-        successCriteria: [{ type: 'inventory' as const, item: '$item', count: '$count' }],
+        successCriteria: [{ type: 'inventory' as const, item: '$item', count: '$count' as const }],
       };
       return [
         {

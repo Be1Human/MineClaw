@@ -23,6 +23,7 @@ import { findPitExit, isTrappedInPit } from '../navigation/pitGeometry.js';
 import { tuning } from '../infra/tuning.js';
 import { RecipeResolver, pickFuel } from '../knowledge/recipeResolver.js';
 import { ATOM_VERIFIERS, resolvePlacement, type AtomVerifier, type VerifyVerdict } from './verifiers.js';
+import { isHostileEntityName } from '../perception/entityClassification.js';
 
 export interface AtomicContext {
   game: GameView;
@@ -153,8 +154,8 @@ async function dispatch(
         return await dismountAtomic(req, ctx, start);
       case 'vehicle_goto':
         return await moveTo(req, ctx, start); // FEAT-L3-09 · alias to moveTo（已挂载时由 pathfinder 驱动载具）
-      case 'kite':
-        return await kiteAtomic(req, ctx, start);
+      case 'combat_round':
+        return await combatRoundAtomic(req, ctx, start);
       case 'block_with_shield':
         return await blockWithShieldAtomic(req, ctx, start);
       case 'bow_shoot':
@@ -208,50 +209,113 @@ async function moveTo(
     && requestedRange >= 0 && requestedRange <= 8
     ? requestedRange
     : 1;
+  const navigationGoal = req.target.navigationGoal === 'xz' ? 'xz' : 'precise';
+  const navigationProfile = req.target.navigationProfile === 'recovery' ? 'recovery' : 'standard';
+  // A recovery route is never the default.  It is entered only by the
+  // behavior-level mover after a normal route reported noPath, so normal task
+  // navigation keeps the conservative movement contract.
+  if (navigationProfile === 'recovery') {
+    ctx.nav.setMovementOptions({
+      canDig: false,
+      canPlace: true,
+      allowParkour: true,
+      allowSprinting: true,
+      allowFreeMotion: true,
+    });
+  }
   // 短中距：pathfinder 直连，硬上限 = budget
-  const result = await ctx.nav.goto(
-      { type: 'block', position: pos, range },
+  let result = await ctx.nav.goto(
+      navigationGoal === 'xz'
+        ? { type: 'xz', x: pos.x, z: pos.z }
+        : { type: 'block', position: pos, range },
       { thinkTimeout: 5000, totalTimeout: budget },
     );
 
-  ctx.bus.publish('atomic.move_to.end', 'info', { ok: result.ok, reason: result.reason });
+  // Navigation adapters report that their goal lifecycle settled, which is
+  // weaker than the public move_to contract.  In particular, a player entity
+  // coordinate can be in mid-air above a lower floor.  Do not turn that into a
+  // fake success: the caller must receive a recoverable failure instead.
+  let reached = result.ok && (navigationGoal === 'xz'
+    ? reachedHorizontally(ctx.game.getPosition(), originalTarget, range)
+    : reachedPosition(ctx.game.getPosition(), originalTarget, range));
+  if (!reached && navigationGoal === 'precise' && canRecoverVertically(ctx, originalTarget, result.ok ? 'target_not_reached' : result.reason)) {
+    const current = ctx.game.getPosition();
+    const climb = Math.ceil(originalTarget.y - current.y - tuning().atomic.navigationArrivalVerticalTolerance);
+    const vertical = await pillarUpAtomic({
+      ...req,
+      type: 'pillar_up',
+      target: { count: climb },
+    }, ctx, start);
+    if (vertical.ok) {
+      const retryTarget = resolveNavigationTarget(originalTarget, ctx.game, req.source === 'gather_block');
+      result = await ctx.nav.goto({ type: 'block', position: retryTarget, range }, { thinkTimeout: 5000, totalTimeout: budget });
+      reached = result.ok && reachedPosition(ctx.game.getPosition(), originalTarget, range);
+    }
+  }
+  const error = result.ok && !reached ? 'target_not_reached' : result.reason || 'nav_failed';
+
+  ctx.bus.publish('atomic.move_to.end', 'info', { ok: result.ok && reached, reason: error, navigationGoal, navigationProfile });
   return {
-    ok: result.ok,
+    ok: result.ok && reached,
     request: req,
     durationMs: Date.now() - start,
-    error: result.ok ? undefined : result.reason || 'nav_failed',
+    error: result.ok && reached ? undefined : error,
   };
 }
 
 /**
- * BUG-L5-01 · 跟随主人 —— 幂等非阻塞动态目标。
- *
- * 旧实现把 GoalFollow（pathfinder 动态常驻目标）当一次性 `goto().await + 30s 超时` 调，
- * 导致跟随阻塞 30s、声明 5s 失配、上层被迫加 stuck-detector 兜底（还死锁）。
- *
- * 新实现：调 nav.startFollow 设一次 dynamic GoalFollow，pathfinder 后台持续驱动
- * （进 range 自停、owner 动自追、永不 timeout），**立即返回**，不占执行锁。
- * FollowStrategy 每 tick 重新提交本 atomic 即幂等维持跟随；离开跟随态发 stop_follow。
+ * `follow_entity` resolves one finite dynamic navigation step. GoalFollow reads
+ * the live entity position throughout the step, then returns on arrival or at
+ * the configured slice boundary so the caller can re-observe before continuing.
  */
-/** Interactable blocks are not standable destinations. */
+/**
+ * Resolve an arbitrary position (including a player/entity coordinate in air)
+ * to a nearby place where a bot can stand.  This belongs to the common atomic
+ * layer so every caller shares the same physical success contract.
+ */
 function resolveNavigationTarget(target: Vec3, game: GameView, allowLowerApproach = false): Vec3 {
   const getBlockAt = (game as Partial<GameView>).getBlockAt;
   if (typeof getBlockAt !== 'function') return target;
-  const block = getBlockAt.call(game, target);
-  if ((!block || block.boundingBox !== 'block') && !allowLowerApproach) return target;
-  const verticalOffsets = allowLowerApproach ? [0, -1, -2, -3] : [0];
+  const cfg = tuning().atomic;
+  const verticalSearch = Math.max(0, Math.floor(cfg.navigationTargetVerticalSearch));
+  const horizontalSearch = Math.max(0, Math.floor(cfg.navigationTargetHorizontalSearch));
+  const verticalOffsets = [0];
+  for (let step = 1; step <= verticalSearch; step += 1) verticalOffsets.push(-step, step);
+  const horizontalOffsets: Array<readonly [number, number]> = [];
+  for (let dx = -horizontalSearch; dx <= horizontalSearch; dx += 1) {
+    for (let dz = -horizontalSearch; dz <= horizontalSearch; dz += 1) horizontalOffsets.push([dx, dz]);
+  }
+  horizontalOffsets.sort(([leftX, leftZ], [rightX, rightZ]) => (leftX * leftX + leftZ * leftZ) - (rightX * rightX + rightZ * rightZ));
+  const base = { x: Math.floor(target.x), y: Math.floor(target.y), z: Math.floor(target.z) };
   for (const dy of verticalOffsets) {
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const position = { x: target.x + dx, y: target.y + dy, z: target.z + dz };
+    for (const [dx, dz] of horizontalOffsets) {
+      const position = { x: base.x + dx, y: base.y + dy, z: base.z + dz };
       const foot = getBlockAt.call(game, position);
       const head = getBlockAt.call(game, { ...position, y: position.y + 1 });
       const ground = getBlockAt.call(game, { ...position, y: position.y - 1 });
-      if (foot?.boundingBox === 'empty' && head?.boundingBox === 'empty' && ground?.boundingBox === 'block') {
-        return position;
-      }
+      if (foot?.boundingBox === 'empty' && head?.boundingBox === 'empty' && ground?.boundingBox === 'block') return position;
     }
   }
   return target;
+}
+
+function reachedHorizontally(current: Vec3, target: Vec3, range: number): boolean {
+  return Math.hypot(current.x - target.x, current.z - target.z) <= range + tuning().atomic.navigationArrivalHorizontalSlack;
+}
+
+function reachedPosition(current: Vec3, target: Vec3, range: number): boolean {
+  return reachedHorizontally(current, target, range)
+    && Math.abs(current.y - target.y) <= tuning().atomic.navigationArrivalVerticalTolerance;
+}
+
+function canRecoverVertically(ctx: AtomicContext, target: Vec3, reason: string | undefined): boolean {
+  if (!/(?:no[_ ]?path|nopath|target_not_reached)/i.test(reason ?? '')) return false;
+  const current = ctx.game.getPosition();
+  const cfg = tuning().atomic;
+  const requiredHeight = target.y - current.y - cfg.navigationArrivalVerticalTolerance;
+  if (requiredHeight <= 0 || requiredHeight > cfg.navigationVerticalRecoveryMaxHeight) return false;
+  if (Math.hypot(target.x - current.x, target.z - current.z) > cfg.navigationVerticalRecoveryHorizontalRange) return false;
+  return ctx.game.getInventoryItems().some(item => PILLAR_BLOCKS.includes(item.name) && item.count > 0);
 }
 
 async function followEntity(
@@ -261,9 +325,14 @@ async function followEntity(
 ): Promise<ExecutionResult> {
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'follow_entity requires target.entityId');
-  const range = tuning().follow.followRange;
-  ctx.bus.publish('atomic.follow.start', 'info', { entityId: id });
-  const result = await ctx.nav.follow(id, range);
+  const configured = tuning().follow;
+  const range = typeof req.target?.range === 'number' ? req.target.range : configured.followRange;
+  const durationMs = typeof req.target?.durationMs === 'number' ? req.target.durationMs : configured.followSliceMs;
+  if (!Number.isFinite(range) || range < 0) return fail(req, start, 'follow_entity target.range must be a finite non-negative number');
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return fail(req, start, 'follow_entity target.durationMs must be a positive number');
+  ctx.bus.publish('atomic.follow.start', 'info', { entityId: id, range, durationMs });
+  const result = await ctx.nav.follow(id, range, { totalTimeout: durationMs });
+  ctx.bus.publish('atomic.follow.end', result.ok ? 'info' : 'recoverable', { entityId: id, range, durationMs, ok: result.ok, reason: result.reason });
   return { ok: result.ok, request: req, durationMs: Date.now() - start, error: result.reason };
 }
 
@@ -308,10 +377,12 @@ function say(req: ActionRequest, ctx: AtomicContext, start: number): ExecutionRe
 // ───────────────────────── eat / sleep / wake（FEAT-L3-02） ─────────────────────────
 
 async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
-  // 食物：优先用指定的，否则自动挑背包里最值得吃的
-  const itemName = req.target?.itemName ?? ctx.game.findBestFood();
+  // Food selection is only a choice of consumable.  A successful consume does
+  // not prove that health has recovered; regeneration remains an observation.
+  const emergency = isEmergencyEat(req);
+  const itemName = req.target?.itemName ?? ctx.game.findBestFood({ emergency });
   if (!itemName) return fail(req, start, 'eat: no food in inventory');
-  ctx.bus.publish('atomic.eat.start', 'info', { source: req.source, item: itemName });
+  ctx.bus.publish('atomic.eat.start', 'info', { source: req.source, item: itemName, emergency });
   try {
     await ctx.actions.equip(itemName, 'hand');
     const ok = await ctx.actions.consume();
@@ -322,8 +393,12 @@ async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promi
   } catch (e) {
     return fail(req, start, `eat_failed:${(e as Error).message}`);
   }
-  ctx.bus.publish('atomic.eat.success', 'info', { source: req.source, item: itemName, food: ctx.game.getFood() });
+  ctx.bus.publish('atomic.eat.success', 'info', { source: req.source, item: itemName, emergency, food: ctx.game.getFood() });
   return { ok: true, request: req, durationMs: Date.now() - start };
+}
+
+function isEmergencyEat(req: ActionRequest): boolean {
+  return req.target?.emergency === true;
 }
 
 /**
@@ -384,14 +459,8 @@ async function sleepAtomic(req: ActionRequest, ctx: AtomicContext, start: number
   return { ok: true, request: req, durationMs: Date.now() - start };
 }
 
-/** 与 perception/pipeline.ts 的 hostile 分类同源 */
-const HOSTILE_MOB_NAMES = [
-  'zombie', 'skeleton', 'creeper', 'spider', 'witch', 'enderman',
-  'husk', 'drowned', 'pillager', 'vindicator', 'phantom', 'slime',
-];
-
 function isHostile(name: string): boolean {
-  return HOSTILE_MOB_NAMES.some(h => name.includes(h));
+  return isHostileEntityName(name);
 }
 
 /** 检查床周围是否有敌对生物（mineflayer 服务端逻辑：床 ±8 格内有怪就睡不了）。 */
@@ -621,22 +690,24 @@ async function equipItem(
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'equip requires target.itemName');
   try {
-    await ctx.actions.equip(itemName, 'hand');
-    // BUG-CROSS-80 · equip 后主动等待服务器同步手持（约 1.5s），失败即结构化失败，
-    // 不再把"手持未变"留给后置验真消耗恢复预算。
-    const observeStarted=Date.now();
-    while (Date.now()-observeStarted < tuning().deviceActions.equipObserveTimeoutMs) {
-      if (ctx.game.getHeldItem()?.name === itemName) break;
-      await ctx.execution.wait(tuning().deviceActions.equipObservePollMs);
-    }
-    if (ctx.game.getHeldItem()?.name !== itemName) {
-      return fail(req, start, `equip_unverified: 手持为 ${ctx.game.getHeldItem()?.name ?? '空'}，期望 ${itemName}`);
-    }
+    await ensureWeaponReady(ctx, itemName);
     ctx.bus.publish('atomic.equip', 'info', { item: itemName });
     return { ok: true, request: req, durationMs: Date.now() - start };
   } catch (e) {
     return fail(req, start, (e as Error).message);
   }
+}
+
+/** Shared readiness contract: native equip is not a combat receipt until view confirms the hand. */
+async function ensureWeaponReady(ctx: AtomicContext, itemName: string): Promise<void> {
+  await ctx.actions.equip(itemName, 'hand');
+  const observeStarted = Date.now();
+  while (Date.now() - observeStarted < tuning().deviceActions.equipObserveTimeoutMs) {
+    if (ctx.game.getHeldItem()?.name === itemName) return;
+    await ctx.execution.wait(tuning().deviceActions.equipObservePollMs);
+  }
+  const held = ctx.game.getHeldItem()?.name ?? '空';
+  throw new Error(`equip_unverified: 手持为 ${held}，期望 ${itemName}`);
 }
 
 // ───────────────────────── place_block / dig / look_at ─────────────────────────
@@ -721,7 +792,7 @@ async function placeBlock(
       `place_block_unsettled: ${itemName} inventory ${inventoryBefore}→${inventoryAfter}, block ${blockBefore ?? 'unknown'}→${blockAfter ?? 'unknown'}`,
     );
   }
-  // ⑤ emit success event · 必须带 source · 上层 Strategy（如 FarmStrategy）靠它推进进度
+  // ⑤ emit success event · 必须带 source · 上层插件执行贡献据此推进进度
   ctx.bus.publish('atomic.place_block.success', 'info', {
     source: req.source,
     item: itemName,
@@ -1921,32 +1992,73 @@ async function dismountAtomic(
   return { ok: true, request: req, durationMs: Date.now() - start };
 }
 
-// ───────────────────────── 战斗完善 · FEAT-L3-12 ─────────────────────────
+// ───────────────────────── 受控近战回合 ─────────────────────────
+
+type CombatWeaponProfile = Readonly<{ name: string; damage: number; cooldownMs: number }>;
+
+function selectCombatWeapon(ctx: AtomicContext): CombatWeaponProfile | null {
+  const profiles = tuning().combatRound.weaponProfiles;
+  const candidates = ctx.game.getInventoryItems()
+    .filter(item => item.count > 0)
+    .map(item => {
+      const profile = profiles[item.name];
+      return profile && Number.isFinite(profile.damage) && profile.damage > 0
+        && Number.isFinite(profile.cooldownMs) && profile.cooldownMs > 0
+        ? { name: item.name, damage: profile.damage, cooldownMs: profile.cooldownMs }
+        : null;
+    })
+    .filter((value): value is CombatWeaponProfile => value !== null)
+    .sort((left, right) => right.damage / right.cooldownMs - left.damage / left.cooldownMs
+      || left.cooldownMs - right.cooldownMs
+      || left.name.localeCompare(right.name));
+  return candidates[0] ?? null;
+}
 
 /**
- * kite · 砍一刀立刻后退（拉怪/挂创可贴用）。
+ * combat_round · one finite body operation: verified weapon, effective strike
+ * burst paced by that weapon's full-charge cooldown, then a brief reset step.
  */
-async function kiteAtomic(
+async function combatRoundAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
 ): Promise<ExecutionResult> {
   const id = req.target?.entityId;
-  if (id == null) return fail(req, start, 'kite requires target.entityId');
-  const ent = ctx.game.getEntityById(id);
-  if (!ent) return fail(req, start, 'kite_failed:target_not_found');
-  const backMs = Math.min(Math.max(req.target?.backDurationMs ?? 600, 100), 2500);
-
-  await ctx.actions.lookAt(ent.position, true);
-  await ctx.actions.attack(id);
-  ctx.bus.publish('atomic.kite.swing', 'info', { source: req.source, entityId: id, target: ent.name });
-  await ctx.actions.setControlState('back', true);
+  if (id == null) return fail(req, start, 'combat_round requires target.entityId');
+  if (!ctx.game.getEntityById(id)) return fail(req, start, 'combat_round_failed:target_not_found');
+  const weapon = selectCombatWeapon(ctx);
+  if (!weapon) return fail(req, start, 'combat_round_failed:no_usable_melee_weapon');
+  const config = tuning().combatRound;
+  const minSwings = Math.max(1, Math.floor(config.minSwings));
+  const maxSwings = Math.max(minSwings, Math.floor(config.maxSwings));
+  const retreatMs = Math.max(0, Math.floor(config.retreatDurationMs));
   try {
-    await ctx.execution.wait(backMs);
+    await ensureWeaponReady(ctx, weapon.name);
+  } catch (error) {
+    ctx.bus.publish('atomic.combat_round.weapon_not_ready', 'recoverable', { source: req.source, entityId: id, weapon: weapon.name, error: String(error) });
+    return fail(req, start, `combat_round_failed:weapon_not_ready:${String(error)}`);
+  }
+  ctx.bus.publish('atomic.combat_round.start', 'info', { source: req.source, entityId: id, weapon: weapon.name, cooldownMs: weapon.cooldownMs, minSwings, maxSwings });
+  let swings = 0;
+  try {
+    while (swings < maxSwings) {
+      const target = ctx.game.getEntityById(id);
+      if (!target) break;
+      await ctx.actions.lookAt(target.position, true);
+      await ctx.actions.attack(id);
+      swings += 1;
+      ctx.bus.publish('atomic.combat_round.swing', 'info', { source: req.source, entityId: id, target: target.name, weapon: weapon.name, swing: swings });
+      if (swings < maxSwings && ctx.game.getEntityById(id)) await ctx.execution.wait(weapon.cooldownMs);
+    }
+    if (swings === 0) return fail(req, start, 'combat_round_failed:target_lost');
+    if (retreatMs > 0 && ctx.game.getEntityById(id)) {
+      await ctx.actions.setControlState('back', true);
+      await ctx.execution.wait(retreatMs);
+    }
   } finally {
     await ctx.actions.setControlState('back', false);
   }
-  ctx.bus.publish('atomic.kite.success', 'info', { source: req.source, entityId: id, backMs });
+  ctx.bus.publish('atomic.combat_round.success', 'info', { source: req.source, entityId: id, weapon: weapon.name, swings, targetPresent: ctx.game.getEntityById(id) !== null });
   return { ok: true, request: req, durationMs: Date.now() - start };
 }
 
