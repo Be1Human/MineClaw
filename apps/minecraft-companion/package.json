@@ -53,7 +53,7 @@
                     "plugin:index":  "node scripts/plugin-index.mjs"
                 },
     "dependencies":  {
-                         "@modelcontextprotocol/sdk":  "^1.29.0",
+                         "@modelcontextprotocol/sdk":  "^1.30.0",
                          "better-sqlite3":  "^12.9.0",
                          "dotenv":  "^17.4.2",
                          "express":  "^5.1.0",
