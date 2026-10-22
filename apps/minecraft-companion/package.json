@@ -76,7 +76,7 @@
                             "electron-builder":  "^26.15.3",
                             "electron-vite":  "^5.0.0",
                             "tsx":  "^4.21.0",
-                            "typescript":  "^6.0.3",
+                            "typescript":  "^7.0.2",
                             "vite":  "^7.3.5"
                         },
     "build":  {
