@@ -1,3 +1,4 @@
+import { effectUnknown, isExecutionSettlement } from '../../plugin-sdk/contracts/executionResult.js';
 import type { EventBusV2 } from '../../infra/eventBus.js';
 import type { OperationCommand, OperationIdentity } from '../contracts/bodyOperation.js';
 import type { BodyOperationDriver, BoundOperationExecutor } from './ports/controlledExecution.js';
@@ -56,7 +57,7 @@ export class GameBodyDriver implements BodyOperationDriver {
         if (command.ref.id.startsWith('behavior:')) {
           const resolved = this.deps.behaviorResolver.resolve(command.snapshot, command.ref.contribution);
           if (resolved.status === 'in_doubt') {
-            return { ok: false, failure: failureFromLegacy(resolved.reason, { origin: 'behavior', stage: 'preparing' }) };
+            return { status: 'failed', failure: failureFromLegacy(resolved.reason, { origin: 'behavior', stage: 'preparing' }) };
           }
           const lease = behaviorLease(context);
           behavior = resolved.value.factory.create(lease, createScopedHostContext(
@@ -86,8 +87,9 @@ export class GameBodyDriver implements BodyOperationDriver {
               operationId: context.operationId,
               ...(result.details ?? {}),
             });
-            return { ok: result.ok, ...(result.details ? { details: result.details } : {}),
-              ...(!result.ok ? { failure: failureFromLegacy(result.error ?? (result.cancelled ? 'behavior_cancelled' : 'behavior_failed'), { origin: 'behavior', stage: 'executing' }) } : {}) };
+            return result.ok
+              ? { status: 'succeeded', ...(result.details ? { details: result.details } : {}) }
+              : { status: 'failed', failure: failureFromLegacy(result.error ?? (result.cancelled ? 'behavior_cancelled' : 'behavior_failed'), { origin: 'behavior', stage: 'executing' }), ...(result.details ? { details: result.details } : {}) };
           } finally {
             await behavior.close();
           }
@@ -95,7 +97,7 @@ export class GameBodyDriver implements BodyOperationDriver {
         const atomicId = command.ref.id.slice(7);
         const entry = this.deps.atomicResolver.resolve(command.snapshot, atomicId);
         if (entry.status === 'in_doubt') {
-          return { ok: false, failure: failureFromLegacy(entry.reason, { origin: 'atomic', stage: 'preparing' }) };
+          return { status: 'failed', failure: failureFromLegacy(entry.reason, { origin: 'atomic', stage: 'preparing' }) };
         }
         // 参数合同与执行器来自同一个固定 Generation entry。验证、执行、审计
         // 不得分别查询不同目录，也不得绕过插件执行器回到框架内置 switch。
@@ -126,14 +128,11 @@ export class GameBodyDriver implements BodyOperationDriver {
           atomicExecutionContextAdapter(context, cleanup => { cleanups.push(cleanup); }),
           context.signal,
         );
-        context.assertCurrent('plugin_atomic_after_execute');
-        const ok = result.ok !== false;
-        return {
-          ok,
-          ...(ok ? { details: result } : {
-            failure: failureFromLegacy(String(result.error ?? 'plugin_atomic_failed')),
-          }),
+        if (!isExecutionSettlement(result)) return {
+          status: 'in_doubt', failure: effectUnknown('invalid_plugin_atomic_settlement'),
         };
+        // Lifetime captures the readback before applying its cancellation fence.
+        return result;
       },
       stop: async reason => {
         stopped = true;
@@ -200,5 +199,6 @@ async function submitPluginAtomic(
     },
   });
   context.assertCurrent('plugin_behavior_after_child');
-  return { ok: outcome.ok, ...(outcome.failure ? { error: failureDetail(outcome.failure) } : {}), ...(outcome.details ?? {}) };
+  return { ...(outcome.details ?? {}), status: outcome.status, ok: outcome.status === 'succeeded',
+    ...(outcome.status !== 'succeeded' ? { failure: outcome.failure, error: failureDetail(outcome.failure) } : {}) };
 }

@@ -1,3 +1,4 @@
+import type { ExecutionSettlement } from './executionResult.js';
 /**
  * Execution contract (kernel design §5.2 table).
  * Execution contributions register factories, never shared stateful instances.
@@ -202,7 +203,7 @@ export interface AtomicExecutionContext {
 export interface PluginAtomicExecutor {
   readonly id: string;
   readonly version: string;
-  execute(response: AtomicExecutionCommand, context: AtomicExecutionContext, signal: AbortSignal): Promise<Readonly<Record<string, unknown>>>;
+  execute(response: AtomicExecutionCommand, context: AtomicExecutionContext, signal: AbortSignal): Promise<ExecutionSettlement>;
 }
 
 /**

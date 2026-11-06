@@ -165,3 +165,5 @@ export {
   type ContractSuiteResult,
   type ContractFailure,
 } from './testing/sharedContractSuite.js';
+
+export { type ExecutionSettlement } from './contracts/executionResult.js';

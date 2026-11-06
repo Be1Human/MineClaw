@@ -761,6 +761,15 @@ export class V2Runtime {
 
     const runtimeGetWorld = () => this.perception.getWorldState() ?? this.perception.perceive();
     const observationPorts = createRuntimeObservationPorts(runtimeGetWorld, cfg.game);
+    // One production verifier is shared by GoalAgent and FastBrain declarations.
+    const goalVerificationPort = new GoalAgentProductionVerificationPort(
+      () => this.deliveryReceipts,
+      () => this.depositReceipts,
+      () => this.placementReceipts,
+      state => state.snapshotRef ? this.runtimeProjection().predicateEvaluators(state.snapshotRef, state) : [],
+      async (state, world, signal) => state.snapshotRef
+        ? this.runtimeProjection().observeAll(state.snapshotRef, world, signal) : [],
+    );
     this.pluginKernelReady = buildRuntimePluginKernel({
       systemPorts: {
         game: cfg.game,
@@ -770,6 +779,20 @@ export class V2Runtime {
         blockObservation: observationPorts.block,
         inventoryObservation: observationPorts.inventory,
         ownerContextObservation: observationPorts.owner,
+        fastBrainOutcome: {
+          read: (sessionId: string) => this.goalAgent?.snapshot(sessionId) ?? null,
+          verifyRoot: (input: Parameters<GoalAgentProductionVerificationPort['verifyRoot']>[0]) => goalVerificationPort.verifyRoot(input),
+          getWorld: runtimeGetWorld,
+          getActor: () => cfg.game.username,
+        },
+        // A live session is NOT a primitive action grant. GoalPlanAuthority
+        // authorizes registered business behaviors only; no local FastBrain
+        // action/budget binding has been delivered. Never bypass that gate.
+        fastBrainBody: {
+          available: false,
+          reason: 'fastbrain_local_authority_unavailable',
+          execute: async () => ({ kind: 'rejected', reason: 'fastbrain_local_authority_unavailable' }),
+        },
         ...(llmClient ? { llm: llmClient } : {}),
       },
     });
@@ -979,15 +1002,7 @@ export class V2Runtime {
               return projection && ref ? projection.worldFactProviders(ref) : [];
             },
           ),
-          verification: new GoalAgentProductionVerificationPort(
-            () => this.deliveryReceipts,
-            () => this.depositReceipts,
-            () => this.placementReceipts,
-            state => state.snapshotRef ? this.runtimeProjection().predicateEvaluators(state.snapshotRef, state) : [],
-            async (state, world, signal) => state.snapshotRef
-              ? this.runtimeProjection().observeAll(state.snapshotRef, world, signal)
-              : [],
-          ),
+          verification: goalVerificationPort,
           ...(this.memorySystemActive
             ? { memory: new GoalAgentMemoryKnowledgeAdapter(this.memorySystem) }
             : {}),

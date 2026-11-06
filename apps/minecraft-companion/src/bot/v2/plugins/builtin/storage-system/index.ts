@@ -1,3 +1,4 @@
+import { failureFromLegacy } from '../../../task/execution/failureEnvelope.js';
 /**
  * mineclaw.storage-system · first-party system plugin (kernel design §5.4).
  * Container primitives; adapter access injected via systemPorts at startup
@@ -29,7 +30,7 @@ export interface StorageSystemPorts {
 function createExecutor(atomicId: string, ports: StorageSystemPorts): PluginAtomicExecutor {
   return {
     id: `${STORAGE_PLUGIN_ID}.atomic.${atomicId}`,
-    version: '1.0.0',
+    version: '2.0.0',
     execute: async (command, context: AtomicExecutionContext) => {
       if (!ports.game || !ports.actions || !ports.bus || !ports.getWorld) {
         throw new Error('storage_device_unavailable');
@@ -42,11 +43,11 @@ function createExecutor(atomicId: string, ports: StorageSystemPorts): PluginAtom
       const result = atomicId === 'deposit'
         ? await ports.actions.depositToChest(pos, itemName, count)
         : await ports.actions.withdrawFromChest(pos, itemName, count);
-      if (!result.ok) return { ok: false, error: `${atomicId}_failed:${result.reason}` };
+      if (!result.ok) return { status: 'failed', failure: failureFromLegacy(`${atomicId}_failed:${result.reason}`) };
       ports.bus.publish(`atomic.${atomicId}.success`, 'info', {
         source: command.source, item: itemName, moved: result.moved, pos, ...(result.contents ? { contents: result.contents } : {}),
       });
-      return { ok: true, moved: result.moved };
+      return { status: 'succeeded', details: { moved: result.moved } };
     },
   };
 }
@@ -58,14 +59,14 @@ export function createMineclawStorageSystemPlugin(): PluginFactory {
       const ports = (context.systemPorts ?? {}) as StorageSystemPorts;
       const atomicCatalog = ATOMIC_IDS.map(atomicId => ({
         atomicId,
-        version: '1.0.0',
+        version: '2.0.0',
         executor: createExecutor(atomicId, ports),
       }));
       return [
         {
           kind: 'execution',
           id: `${STORAGE_PLUGIN_ID}.execution.container`,
-          version: '1.0.0',
+          version: '2.0.0',
           atomicCatalog,
         },
         {

@@ -9,7 +9,7 @@ import type { OperationIntent } from '../../../../../../apps/minecraft-companion
 export async function withinBody<T>(work:(context:ControlledExecutionContext)=>Promise<T>):Promise<T> {
   const authority=new ExecutionAuthority(); let result:T;
   const runtime=new BodyExecutionRuntime({authority,ledger:new OperationLedger(':memory:'),driver:{resources:()=>['test-body'],bind:()=>({
-    run:async context=>{result=await work(context);return {ok:true};},stop:async()=>{},
+    run:async context=>{result=await work(context);return {status:'succeeded'};},stop:async()=>{},
   })}});
   const contribution = { pluginId: 'mineclaw.legacy-builtin', pluginVersion: '1.0.0', contributionId: 'unit', contributionVersion: '1.0.0' };
   const intent:OperationIntent={operationId:randomUUID(),owner:{kind:'task',taskId:'unit',ownerEpoch:1},

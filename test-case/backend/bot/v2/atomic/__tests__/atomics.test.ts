@@ -589,6 +589,7 @@ describe('executeAtomic', () => {
         nav: makeMockNav() as any,
         bus: bus as any,
       };
+      game.getBlockAt = () => game.calls.dig.length ? { name: 'air', boundingBox: 'empty' } : { name: 'stone', boundingBox: 'block' };
       const pos = { x: 3, y: 60, z: 3 };
       const req = makeReq({ type: 'dig', source: 'mine_skill', target: { position: pos } });
       const result = await executeAtomic(req, ctx);

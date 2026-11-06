@@ -115,7 +115,7 @@ test('I04/I09: BodyRuntime never dispatches an in-doubt operation to a new proce
     const authorityB = new ExecutionAuthority();
     const restarted = new OperationLedger(file);
     const runtime = new BodyExecutionRuntime({ ledger: restarted, authority: authorityB, driver: {
-      resources: () => ['body'], bind: () => { binds++; return { run: async () => ({ ok: true }), stop: async () => undefined }; },
+      resources: () => ['body'], bind: () => { binds++; return { run: async () => ({ status: 'succeeded' }), stop: async () => undefined }; },
     } });
     const result = await runtime.submit({ intent: op, grant: authorityB.issue(op, { isCurrent: () => true, allowsChild: () => false }) }).result;
     assert.equal(result.status, 'in_doubt');

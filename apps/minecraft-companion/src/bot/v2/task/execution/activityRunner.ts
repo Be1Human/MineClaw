@@ -168,13 +168,21 @@ export class ActivityRunner {
             priority: entry.request.priority,
             signal: entry.controller.signal,
           });
-          return { ok: result.ok, ...(result.error ? { error: result.error } : {}) };
+          if (result.kind === 'operation' && result.receipt.status === 'in_doubt') {
+            entry.error = 'operation_reconciliation_required';
+            entry.controller.abort(new Error(entry.error));
+          }
+          return { ok: result.ok, status: result.kind === 'operation' ? result.receipt.status : result.kind,
+            receipt: result.receipt, ...(result.error ? { error: result.error } : {}) };
         },
         wait: ms => abortableWait(ms, entry.controller.signal),
         publish: (type, level, payload) => this.deps.bus.publish(type, level === 'info' ? 'info' : 'recoverable', payload),
       });
       if (entry.state !== 'running') return;
-      if (result.ok) {
+      if (entry.error === 'operation_reconciliation_required') {
+        entry.state = 'failed';
+        this.deps.tasks.fail(entry.taskId, entry.error);
+      } else if (result.ok && !entry.controller.signal.aborted) {
         entry.state = 'completed';
         this.deps.tasks.complete(entry.taskId);
       } else {

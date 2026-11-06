@@ -21,6 +21,10 @@ import type { BoundGameActions, DeviceExecutionScope } from '../adapter/GameActi
 import { MineflayerActionSession } from './MineflayerActionSession.js';
 import { toMinecraftChatLine } from './minecraftChat.js';
 import { BotSubscriptionRegistry } from './botSubscriptionRegistry.js';
+import { MineflayerVisibleTargets } from './MineflayerVisibleTargets.js';
+import { observeGameTicks } from './observeGameTicks.js';
+import { captureConsumption } from './captureConsumption.js';
+import type { GameTickWait } from '../adapter/GameTickObservation.js';
 import type {
   Vec3,
   RawBlock,
@@ -53,8 +57,27 @@ const RESERVED_EMERGENCY_FOOD = new Set<string>(EMERGENCY_FOOD_PRIORITY);
 
 export class MineflayerGameAdapter implements GameAdapter {
   private readonly subscriptions = new BotSubscriptionRegistry<Bot>();
+  private readonly visibleTargets: MineflayerVisibleTargets;
 
-  constructor(private readonly getBot: BotGetter) {}
+  constructor(private readonly getBot: BotGetter) {
+    this.visibleTargets = new MineflayerVisibleTargets(getBot);
+  }
+
+  waitForGameTicks(query: GameTickWait) {
+    const isGenerationCurrent = this.visibleTargets.captureReadGeneration(query.actor, query.dimension);
+    return observeGameTicks(this.getBot, query, isGenerationCurrent);
+  }
+
+  /** Passive proof source; item use still requires a separately bound device session. */
+  captureConsumption(item: string, signal: AbortSignal) {
+    return captureConsumption(this.getBot, item, signal, this.captureBodyReadGeneration());
+  }
+
+  /** Opaque, read-only spawn/device fence; it cannot authorize a physical action. */
+  captureBodyReadGeneration(): () => boolean {
+    const bot = this.getBot();
+    return this.visibleTargets.captureReadGeneration(bot?.username ?? '', bot?.game?.dimension ?? '');
+  }
 
   bind(scope: DeviceExecutionScope): BoundGameActions {
     const bot = this.getBot();
@@ -65,7 +88,11 @@ export class MineflayerGameAdapter implements GameAdapter {
   /** Called by MineflayerConnection whenever the concrete Bot generation changes. */
   rebindSubscriptions(bot: Bot | null): void {
     this.subscriptions.rebind(bot);
+    this.visibleTargets.rebind(bot);
   }
+
+  /** Concrete read-only visibility mapping; not a shared GameView capability. */
+  createVisibleTargetReader() { return this.visibleTargets.open(); }
 
   get username(): string {
     return this.getBot()?.username ?? '';

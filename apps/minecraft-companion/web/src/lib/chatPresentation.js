@@ -6,7 +6,7 @@ export function normalizeChatRole(role) {
 
 export function chatNamesForProfile(profile = {}) {
   return {
-    owner: profile.characterCard?.relationship?.userPersona?.name || profile.ownerUsername || '我',
+    owner: '我',
     bot: profile.characterCard?.character?.identity?.name || profile.name || '伙伴',
   };
 }

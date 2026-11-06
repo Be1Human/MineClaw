@@ -9,7 +9,7 @@
  *   ⑤ 显式事件
  *
  * 输入：ActionRequest + 适配器
- * 输出：Promise<ExecutionResult>（成功/失败）
+ * 输出：Promise<AtomicExecutionResult>（成功/失败）
  */
 
 import type { GameActions } from '../../adapter/GameActions.js';
@@ -18,19 +18,23 @@ import type { ControlledExecutionContext } from '../task/execution/ports/control
 import type { GameView } from '../../adapter/GameAdapter.js';
 import type { Vec3 } from '../../adapter/types.js';
 import type { EventBusV2 } from '../infra/eventBus.js';
-import type { ActionRequest, ExecutionResult, WorldStateView, InventoryView } from '../types.js';
+import type { ActionRequest, WorldStateView, InventoryView } from '../types.js';
 import { findPitExit, isTrappedInPit } from '../navigation/pitGeometry.js';
 import { tuning } from '../infra/tuning.js';
 import { RecipeResolver, pickFuel } from '../knowledge/recipeResolver.js';
 import { ATOM_VERIFIERS, resolvePlacement, type AtomVerifier, type VerifyVerdict } from './verifiers.js';
+import { effectUnknown, type ExecutionSettlement } from '../plugin-sdk/contracts/executionResult.js';
+import { failureFromLegacy } from '../task/execution/failureEnvelope.js';
 import { isHostileEntityName } from '../perception/entityClassification.js';
+
+export type AtomicExecutionResult = ExecutionSettlement & { readonly request: ActionRequest; readonly durationMs: number; readonly error?: string };
 
 export interface AtomicContext {
   game: GameView;
   actions: GameActions;
   nav: NavigationActions;
   bus: EventBusV2;
-  execution: ControlledExecutionContext;
+  execution: Pick<ControlledExecutionContext, 'assertCurrent' | 'wait' | 'operationId' | 'stepId' | 'deadlineAt'>;
   getWorld(): WorldStateView;
 }
 
@@ -41,50 +45,71 @@ export interface AtomicContext {
 export async function executeAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   ctx.execution.assertCurrent('atomic_start');
   const start = Date.now();
   const cfg = tuning().atomic;
-  const verifier = cfg.verifyEnabled ? ATOM_VERIFIERS[req.type] : undefined;
-  const mode = verifier ? (cfg.verifyMode[req.type] ?? 'off') : 'off';
-  // ① 动作前快照（只在要验真时拍）
+  const registered = ATOM_VERIFIERS[req.type];
+  const verifier = registered?.policy === 'required' || cfg.verifyEnabled ? registered : undefined;
+  const required = verifier?.policy === 'required';
+  const mode = required ? 'enforce' : verifier ? (cfg.verifyMode[req.type] ?? 'off') : 'off';
   const before = mode !== 'off' ? verifier!.snapshot?.(req, ctx.game) : undefined;
-  // ② 派发执行
-  const result = await dispatch(req, ctx, start);
-  ctx.execution.assertCurrent('atomic_result');
-  // ③ 动作后验真（仅对成功的动作 · fail 的本就失败无需验）
-  if (result.ok && mode !== 'off' && verifier) {
-    const v = await runVerify(verifier, req, ctx, before);
-    if (v.status === 'fail') {
-      ctx.bus.publish('atomic.unverified', mode === 'enforce' ? 'recoverable' : 'info', {
-        type: req.type, mode, reason: v.reason, source: req.source,
-      });
-      if (mode === 'enforce') {
-        return fail(req, start, `${req.type}_unverified: ${v.reason ?? 'effect not observed'}`);
-      }
-      // observe：只告警，保留原 success
-    }
+  if (verifier?.policy === 'required') {
+    const preflight = verifier.precondition(before);
+    if (preflight.status !== 'pass') return {
+      status: 'failed', request: req, durationMs: Date.now() - start, error: preflight.reason ?? 'atomic_precondition_unknown',
+      failure: { code: 'precondition.unsatisfied', origin: 'perception', stage: 'preparing', category: 'precondition',
+        retryable: false, ownerActionable: true, evidenceRefs: [], detail: preflight.reason ?? 'target not observed' },
+      ...(preflight.details ? { details: preflight.details } : {}),
+    };
   }
-  return result;
+  const dispatchedAt = Date.now();
+  let deviceCallReturnedAt: number | null = null;
+  let details: Readonly<Record<string, unknown>> = { before: before ?? null };
+  const uncertain = (reason: string): AtomicExecutionResult => {
+    ctx.bus.publish('atomic.unverified', 'recoverable', { type: req.type, mode, reason, source: req.source });
+    return { status: 'in_doubt', request: req, durationMs: Date.now() - start, failure: effectUnknown(reason), error: reason,
+      details: { ...details, operationId: ctx.execution.operationId, stepId: ctx.execution.stepId,
+        deviceCallStartedAt: dispatchedAt, deviceCallReturnedAt, observedAt: Date.now(), causality: 'unproven', collection: 'unknown' } };
+  };
+  try {
+    const result = await dispatch(req, ctx, start);
+    deviceCallReturnedAt = Date.now();
+    if (required && result.status !== 'succeeded') return uncertain(result.error ?? 'device_call_failed_after_attempt');
+    ctx.execution.assertCurrent('atomic_result');
+    if (result.status === 'succeeded' && mode !== 'off' && verifier) {
+      const verdict = await runVerify(verifier, req, ctx, before);
+      details = verdict.details ?? details;
+      if (required) {
+        if (verdict.status !== 'pass') return uncertain(verdict.reason ?? 'effect not observed');
+        ctx.bus.publish(`atomic.${req.type}.success`, 'info', { source: req.source, details });
+        return { ...result, details: { ...details, operationId: ctx.execution.operationId, stepId: ctx.execution.stepId,
+          deviceCallStartedAt: dispatchedAt, deviceCallReturnedAt } };
+      }
+      if (verdict.status === 'fail') {
+        ctx.bus.publish('atomic.unverified', mode === 'enforce' ? 'recoverable' : 'info', {
+          type: req.type, mode, reason: verdict.reason, source: req.source,
+        });
+        if (mode === 'enforce') return fail(req, start, `${req.type}_unverified: ${verdict.reason ?? 'effect not observed'}`);
+      }
+    }
+    return result;
+  } catch (error) {
+    if (required) return uncertain(String(error));
+    throw error;
+  }
 }
 
-/** fail 时短轮询兜底（给服务器同步留时间）；pass/unknown 立即返回（unknown 不阻断） */
-async function runVerify(
-  verifier: AtomVerifier,
-  req: ActionRequest,
-  ctx: AtomicContext,
-  before: unknown,
-): Promise<VerifyVerdict> {
+/** Poll only observations; required uncertainty never dispatches the action again. */
+async function runVerify(verifier: AtomVerifier, req: ActionRequest, ctx: AtomicContext, before: unknown): Promise<VerifyVerdict> {
   const cfg = tuning().atomic;
-  let v = verifier.verify(req, ctx.game, before);
-  if (v.status !== 'fail') return v;
-  const deadline = Date.now() + cfg.verifyTimeoutMs;
-  while (Date.now() < deadline) {
-    await ctx.execution.wait(cfg.verifyPollMs);
-    v = verifier.verify(req, ctx.game, before);
-    if (v.status !== 'fail') return v;
+  const deadline = Math.min(ctx.execution.deadlineAt, Date.now() + cfg.verifyTimeoutMs);
+  let verdict = verifier.verify(req, ctx.game, before);
+  while (verdict.status !== 'pass' && (verdict.status === 'fail' || verifier.policy === 'required') && Date.now() < deadline) {
+    await ctx.execution.wait(Math.min(cfg.verifyPollMs, Math.max(0, deadline - Date.now())));
+    verdict = verifier.verify(req, ctx.game, before);
   }
-  return v;
+  return verdict;
 }
 
 /** 派发：根据 ActionRequest.type 调具体 atomic（原 executeAtomic 主体） */
@@ -92,7 +117,7 @@ async function dispatch(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   try {
     switch (req.type) {
       case 'move_to':
@@ -178,7 +203,7 @@ async function moveTo(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // entityId 模式：朝移动中的实体接近（combat 接敌 / 拾取掉落物等）。
   // 实体会动，用 nav 的 entity 目标（GoalNear 实体当前位置，range=2 适合近战）。
   if (!req.target?.position && req.target?.entityId != null) {
@@ -187,7 +212,7 @@ async function moveTo(
     ctx.bus.publish('atomic.move_to.start', 'info', { entityId: eid });
     const rr = await ctx.nav.goto({ type: 'entity', entityId: eid, range: 2 }, { thinkTimeout: 3000, totalTimeout: budgetE });
     ctx.bus.publish('atomic.move_to.end', 'info', { ok: rr.ok, reason: rr.reason, entityId: eid });
-    return { ok: rr.ok, request: req, durationMs: Date.now() - start, error: rr.ok ? undefined : (rr.reason || 'nav_failed') };
+    return rr.ok ? { status: 'succeeded', request: req, durationMs: Date.now() - start } : fail(req, start, rr.reason || 'nav_failed');
   }
   if (!req.target?.position) return fail(req, start, 'move_to requires target.position or entityId');
   const originalTarget = req.target.position;
@@ -246,7 +271,7 @@ async function moveTo(
       type: 'pillar_up',
       target: { count: climb },
     }, ctx, start);
-    if (vertical.ok) {
+    if (vertical.status === 'succeeded') {
       const retryTarget = resolveNavigationTarget(originalTarget, ctx.game, req.source === 'gather_block');
       result = await ctx.nav.goto({ type: 'block', position: retryTarget, range }, { thinkTimeout: 5000, totalTimeout: budget });
       reached = result.ok && reachedPosition(ctx.game.getPosition(), originalTarget, range);
@@ -255,8 +280,9 @@ async function moveTo(
   const error = result.ok && !reached ? 'target_not_reached' : result.reason || 'nav_failed';
 
   ctx.bus.publish('atomic.move_to.end', 'info', { ok: result.ok && reached, reason: error, navigationGoal, navigationProfile });
+  if (!result.ok || !reached) return fail(req, start, error ?? 'target_not_reached');
   return {
-    ok: result.ok && reached,
+    status: 'succeeded',
     request: req,
     durationMs: Date.now() - start,
     error: result.ok && reached ? undefined : error,
@@ -322,7 +348,7 @@ async function followEntity(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'follow_entity requires target.entityId');
   const configured = tuning().follow;
@@ -333,7 +359,7 @@ async function followEntity(
   ctx.bus.publish('atomic.follow.start', 'info', { entityId: id, range, durationMs });
   const result = await ctx.nav.follow(id, range, { totalTimeout: durationMs });
   ctx.bus.publish('atomic.follow.end', result.ok ? 'info' : 'recoverable', { entityId: id, range, durationMs, ok: result.ok, reason: result.reason });
-  return { ok: result.ok, request: req, durationMs: Date.now() - start, error: result.reason };
+  return result.ok ? { status: 'succeeded', request: req, durationMs: Date.now() - start } : fail(req, start, result.reason || 'nav_failed');
 }
 
 // ───────────────────────── attack ─────────────────────────
@@ -342,7 +368,7 @@ async function attackOnce(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'attack requires target.entityId');
   const ent = ctx.game.getEntityById(id);
@@ -352,12 +378,12 @@ async function attackOnce(
   await ctx.actions.lookAt(ent.position, true);
   await ctx.actions.attack(id);
   ctx.bus.publish('atomic.attack', 'info', { entityId: id, target: ent.name });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── say ─────────────────────────
 
-function say(req: ActionRequest, ctx: AtomicContext, start: number): ExecutionResult {
+function say(req: ActionRequest, ctx: AtomicContext, start: number): AtomicExecutionResult {
   const raw = req.target?.text;
   if (!raw) return fail(req, start, 'say requires target.text');
   const text = String(raw).trim();
@@ -371,12 +397,12 @@ function say(req: ActionRequest, ctx: AtomicContext, start: number): ExecutionRe
     wake: req.priority >= 60,
     dedupeKey: `atomic_say:${req.source}:${text}`,
   });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── eat / sleep / wake（FEAT-L3-02） ─────────────────────────
 
-async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
+async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promise<AtomicExecutionResult> {
   // Food selection is only a choice of consumable.  A successful consume does
   // not prove that health has recovered; regeneration remains an observation.
   const emergency = isEmergencyEat(req);
@@ -394,7 +420,7 @@ async function eat(req: ActionRequest, ctx: AtomicContext, start: number): Promi
     return fail(req, start, `eat_failed:${(e as Error).message}`);
   }
   ctx.bus.publish('atomic.eat.success', 'info', { source: req.source, item: itemName, emergency, food: ctx.game.getFood() });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 function isEmergencyEat(req: ActionRequest): boolean {
@@ -415,7 +441,7 @@ function isEmergencyEat(req: ActionRequest): boolean {
  * 顺便：mineflayer 的 bot.sleep 在 wakeup 成功时**会自动 setSpawnPoint**
  * （走的是 vanilla 服务端逻辑），所以重生点不需要我们手动设。
  */
-async function sleepAtomic(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
+async function sleepAtomic(req: ActionRequest, ctx: AtomicContext, start: number): Promise<AtomicExecutionResult> {
   // 床位置：优先用给定的，否则就近找床（覆盖所有 *_bed）
   const pos = req.target?.position ?? ctx.game.findNearbyBed(16) ?? undefined;
   if (!pos) {
@@ -456,7 +482,7 @@ async function sleepAtomic(req: ActionRequest, ctx: AtomicContext, start: number
     return fail(req, start, `sleep_failed:${reason}`);
   }
   ctx.bus.publish('atomic.sleep.success', 'info', { source: req.source, pos });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 function isHostile(name: string): boolean {
@@ -531,7 +557,7 @@ async function equipBestArmor(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   ctx.bus.publish('atomic.equip_best_armor.start', 'info', { source: req.source });
   const inv = ctx.game.getInventoryItems();
   // 已穿盔甲 = "slot in 5-8" 的物品（mineflayer：头5/胸6/腿7/脚8）
@@ -584,7 +610,7 @@ async function equipBestArmor(
     equipped,
     details,
   });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /** equip_best_armor 内部用的简化 RawItem 视图 */
@@ -600,16 +626,16 @@ function mapSleepError(err: string): string {
   return err; // 透传原始错
 }
 
-async function wakeAtomic(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
+async function wakeAtomic(req: ActionRequest, ctx: AtomicContext, start: number): Promise<AtomicExecutionResult> {
   await ctx.actions.wake();
   ctx.bus.publish('atomic.wake', 'info', { source: req.source });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── deposit / withdraw（FEAT-L3-03） ─────────────────────────
 // 注意：箱子交互要求 bot 已在交互距离内（≤约4格）· 上层 Skill 应先 move_to 箱子再调用本 atomic
 
-async function deposit(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
+async function deposit(req: ActionRequest, ctx: AtomicContext, start: number): Promise<AtomicExecutionResult> {
   const pos = req.target?.position;
   const itemName = req.target?.itemName;
   if (!pos) return fail(req, start, 'deposit requires target.position (chest pos)');
@@ -625,10 +651,10 @@ async function deposit(req: ActionRequest, ctx: AtomicContext, start: number): P
   ctx.bus.publish('atomic.deposit.success', 'info', {
     source: req.source, item: itemName, moved: r.moved, pos, contents: r.contents,
   });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
-async function withdraw(req: ActionRequest, ctx: AtomicContext, start: number): Promise<ExecutionResult> {
+async function withdraw(req: ActionRequest, ctx: AtomicContext, start: number): Promise<AtomicExecutionResult> {
   const pos = req.target?.position;
   const itemName = req.target?.itemName;
   if (!pos) return fail(req, start, 'withdraw requires target.position (chest pos)');
@@ -644,7 +670,7 @@ async function withdraw(req: ActionRequest, ctx: AtomicContext, start: number): 
   ctx.bus.publish('atomic.withdraw.success', 'info', {
     source: req.source, item: itemName, moved: r.moved, pos, contents: r.contents,
   });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── use_tool / equip ─────────────────────────
@@ -653,7 +679,7 @@ async function useTool(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'use_tool requires target.itemName');
   // 1. 装备到手
@@ -679,20 +705,20 @@ async function useTool(
     source: req.source,
     item: itemName,
   });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 async function equipItem(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'equip requires target.itemName');
   try {
     await ensureWeaponReady(ctx, itemName);
     ctx.bus.publish('atomic.equip', 'info', { item: itemName });
-    return { ok: true, request: req, durationMs: Date.now() - start };
+    return { status: 'succeeded', request: req, durationMs: Date.now() - start };
   } catch (e) {
     return fail(req, start, (e as Error).message);
   }
@@ -716,7 +742,7 @@ async function placeBlock(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // ① validate type
   // ② check required fields
   const itemName = req.target?.itemName;
@@ -797,7 +823,7 @@ async function placeBlock(
     source: req.source,
     item: itemName,
   });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 async function waitForPlacedBlock(
@@ -826,7 +852,7 @@ async function digBlock(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // ① validate type
   // ② check required fields
   const pos = req.target?.position;
@@ -839,12 +865,12 @@ async function digBlock(
   } catch (e) {
     const err = (e as Error).message;
     // ④ emit fail event
-    ctx.bus.publish('atomic.dig.fail', 'recoverable', { source: req.source, pos, error: err });
+    ctx.bus.publish('atomic.dig.dispatch_error', 'recoverable', { source: req.source, pos, error: err });
     return fail(req, start, `dig_failed: ${err}`);
   }
   // ⑤ emit success event
-  ctx.bus.publish('atomic.dig.success', 'info', { source: req.source, pos });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  ctx.bus.publish('atomic.dig.dispatched', 'info', { source: req.source, pos });
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -981,7 +1007,7 @@ async function craftItem(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // ① validate
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'craft requires target.itemName');
@@ -1016,7 +1042,7 @@ async function craftItem(
 
     if (step.kind === 'done') {
       ctx.bus.publish('atomic.craft.success', 'info', { source: req.source, item: itemName, count });
-      return { ok: true, request: req, durationMs: Date.now() - start };
+      return { status: 'succeeded', request: req, durationMs: Date.now() - start };
     }
     if (step.kind === 'gather') {
       // 就地采集到「现有 + 本步所需」的目标量（resolver 下一轮会重算继续推进）
@@ -1113,7 +1139,7 @@ async function smeltItem(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // ① 校验 + 自洽推导（BUG-CROSS-02）
   //    只有 itemName 是真正不可推导的意图；燃料与熔炉都是"背包与世界的事实"，由原子自己解决。
   //    显式传入优先 —— ProvisionStrategy 走 override 路径，行为完全不变。
@@ -1180,7 +1206,7 @@ async function smeltItem(
 
   // ⑤ success（带 produced · 上层靠它推进）
   ctx.bus.publish('atomic.smelt.success', 'info', { source: req.source, input, fuel, produced: result.produced });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -1192,7 +1218,7 @@ async function walkToward(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const pos = req.target?.position;
   if (!pos) return fail(req, start, 'walk requires target.position');
   const ms = Math.min(Math.max(req.target?.durationMs ?? 2500, 500), 6000);
@@ -1216,7 +1242,7 @@ async function walkToward(
     // pathfinder 已带着真实位移 → 探索成功，不必再手动走
     const moved0 = Math.hypot(afterNav.x - before.x, afterNav.z - before.z);
     ctx.bus.publish('atomic.walk.end', 'info', { moved: Math.round(moved0 * 10) / 10, via: 'pathfinder_xz' });
-    return { ok: true, request: req, durationMs: Date.now() - start };
+    return { status: 'succeeded', request: req, durationMs: Date.now() - start };
   }
 
   // ② pathfinder 没挪动（卡崖/超时）→ 手动走 + 挖穿兜底
@@ -1263,7 +1289,7 @@ async function walkToward(
   const after = ctx.game.getPosition();
   const moved = Math.hypot(after.x - before.x, after.z - before.z);
   ctx.bus.publish('atomic.walk.end', 'info', { moved: Math.round(moved * 10) / 10 });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /** 可安全挖穿的地形块（卡住时清挡路用）· 只挖普通地形，绝不碰门/箱/矿/贵重/岩浆水 */
@@ -1337,7 +1363,7 @@ async function escapePit(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const startPos = ctx.game.getPosition();
   ctx.bus.publish('atomic.escape_pit.start', 'info', { from: roundPos(startPos) });
 
@@ -1434,7 +1460,7 @@ async function escapePit(
     escaped, climbed, dug, dy, targetSurfaceY, reachedObservedSurface, to: roundPos(end),
   });
   return escaped
-    ? { ok: true, request: req, durationMs: Date.now() - start }
+    ? { status: 'succeeded', request: req, durationMs: Date.now() - start }
     : fail(req, start, 'escape_pit_failed:still_trapped');
 }
 
@@ -1481,7 +1507,7 @@ async function mineTo(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const target = req.target?.position;
   if (!target) return fail(req, start, 'mine_to requires target.position');
   const toolName = req.target?.itemName;
@@ -1577,14 +1603,14 @@ async function mineTo(
   }
 
   ctx.bus.publish('atomic.mine_to.end', 'info', { source: req.source, removed: true, pickupOk });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 async function lookAt(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // ① validate type
   // ② check required fields · 支持 position 或 entityId（combat 等用 entityId 看向目标）
   let pos = req.target?.position;
@@ -1606,7 +1632,7 @@ async function lookAt(
   }
   // ⑤ emit success event
   ctx.bus.publish('atomic.look_at.success', 'info', { pos });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── toss_item（FEAT-L3-13 给玩家递物品）─────────────────────────
@@ -1615,7 +1641,7 @@ async function tossItem(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'toss_item requires target.itemName');
   const count = req.target?.count;
@@ -1674,7 +1700,7 @@ async function tossItem(
     }
   }
   ctx.bus.publish('atomic.toss_item.success', 'info', { item: itemName, tossed });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 function distance(left: Vec3, right: Vec3): number {
@@ -1709,7 +1735,7 @@ async function fishAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   // ① 校验 · 背包必须有钓竿
   const inv = ctx.game.getInventoryItems();
   const hasRod = inv.some(it => it.name === 'fishing_rod' && it.count > 0);
@@ -1748,7 +1774,7 @@ async function fishAtomic(
   try { await ctx.actions.deactivateItem(); } catch { /* ignore */ }
 
   ctx.bus.publish('atomic.fish.success', 'info', { source: req.source, durationMs });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── 垂直移动 · FEAT-L3-08 ─────────────────────────
@@ -1768,7 +1794,7 @@ async function climbUpAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const targetY = req.target?.position?.y;
   if (targetY == null) return fail(req, start, 'climb_up requires target.position.y');
 
@@ -1793,7 +1819,7 @@ async function climbUpAtomic(
       const cur = ctx.game.getPosition();
       if (cur.y >= targetY) {
         ctx.bus.publish('atomic.climb_up.success', 'info', { source: req.source, dy: cur.y - before.y });
-        return { ok: true, request: req, durationMs: Date.now() - start };
+        return { status: 'succeeded', request: req, durationMs: Date.now() - start };
       }
       if (cur.y - lastY >= 0.4) { lastY = cur.y; lastProgress = Date.now(); }
       if (Date.now() - lastProgress > 5000) {
@@ -1816,7 +1842,7 @@ async function pillarUpAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const count = req.target?.count;
   if (count == null || count <= 0) return fail(req, start, 'pillar_up requires target.count > 0');
   const clampedCount = Math.min(count, 32);
@@ -1838,7 +1864,7 @@ async function pillarUpAtomic(
       if (!blk) {
         if (climbed > 0) {
           ctx.bus.publish('atomic.pillar_up.success', 'info', { source: req.source, climbed, partial: true });
-          return { ok: true, request: req, durationMs: Date.now() - start };
+          return { status: 'succeeded', request: req, durationMs: Date.now() - start };
         }
         ctx.bus.publish('atomic.pillar_up.fail', 'recoverable', { source: req.source, reason: 'no_pillar_block' });
         return fail(req, start, 'pillar_up_failed:no_pillar_block');
@@ -1869,7 +1895,7 @@ async function pillarUpAtomic(
   }
   const dy = Math.round((ctx.game.getPosition().y - startY) * 10) / 10;
   ctx.bus.publish('atomic.pillar_up.success', 'info', { source: req.source, climbed, dy });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -1880,7 +1906,7 @@ async function digDownAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const count = req.target?.count;
   if (count == null || count <= 0) return fail(req, start, 'dig_down requires target.count > 0');
   const clampedCount = Math.min(count, 64);
@@ -1905,7 +1931,7 @@ async function digDownAtomic(
       const after = ctx.game.getPosition();
       if (after.y < pos.y - 0.5) continue; // 下落了一格
       ctx.bus.publish('atomic.dig_down.success', 'info', { source: req.source, dug, reason: 'air_below' });
-      return { ok: true, request: req, durationMs: Date.now() - start };
+      return { status: 'succeeded', request: req, durationMs: Date.now() - start };
     }
     await ctx.actions.lookAt({ x: below.x + 0.5, y: below.y + 0.5, z: below.z + 0.5 }, true);
     try {
@@ -1919,7 +1945,7 @@ async function digDownAtomic(
     await ctx.execution.wait(650);
   }
   ctx.bus.publish('atomic.dig_down.success', 'info', { source: req.source, dug });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -1930,7 +1956,7 @@ async function placeScaffoldAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const itemName = req.target?.itemName;
   if (!itemName) return fail(req, start, 'place_scaffold requires target.itemName');
   const faceVector = req.target?.faceVector ?? { x: 0, y: 1, z: 0 };
@@ -1955,7 +1981,7 @@ async function placeScaffoldAtomic(
     return fail(req, start, `place_scaffold_failed:${(e as Error).message}`);
   }
   ctx.bus.publish('atomic.place_scaffold.success', 'info', { source: req.source, item: itemName });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── 载具 · FEAT-L3-09（骨架） ─────────────────────────
@@ -1964,7 +1990,7 @@ async function mountAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const eid = req.target?.entityId;
   if (eid == null) return fail(req, start, 'mount requires target.entityId');
   try {
@@ -1974,14 +2000,14 @@ async function mountAtomic(
     return fail(req, start, `mount_failed:${(e as Error).message}`);
   }
   ctx.bus.publish('atomic.mount.success', 'info', { source: req.source, entityId: eid });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 async function dismountAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   try {
     await ctx.actions.dismount();
   } catch (e) {
@@ -1989,7 +2015,7 @@ async function dismountAtomic(
     return fail(req, start, `dismount_failed:${(e as Error).message}`);
   }
   ctx.bus.publish('atomic.dismount.success', 'info', { source: req.source });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── 受控近战回合 ─────────────────────────
@@ -2022,7 +2048,7 @@ async function combatRoundAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'combat_round requires target.entityId');
   if (!ctx.game.getEntityById(id)) return fail(req, start, 'combat_round_failed:target_not_found');
@@ -2059,7 +2085,7 @@ async function combatRoundAtomic(
     await ctx.actions.setControlState('back', false);
   }
   ctx.bus.publish('atomic.combat_round.success', 'info', { source: req.source, entityId: id, weapon: weapon.name, swings, targetPresent: ctx.game.getEntityById(id) !== null });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -2069,7 +2095,7 @@ async function blockWithShieldAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const inv = ctx.game.getInventoryItems();
   if (!inv.some(it => it.name === 'shield' && it.count > 0)) {
     ctx.bus.publish('atomic.block_with_shield.fail', 'recoverable', { source: req.source, reason: 'no_shield' });
@@ -2090,7 +2116,7 @@ async function blockWithShieldAtomic(
     await ctx.actions.deactivateItem();
   }
   ctx.bus.publish('atomic.block_with_shield.success', 'info', { source: req.source });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -2100,7 +2126,7 @@ async function bowShootAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'bow_shoot requires target.entityId');
   const ent = ctx.game.getEntityById(id);
@@ -2130,7 +2156,7 @@ async function bowShootAtomic(
     await ctx.actions.deactivateItem(); // 放箭
   }
   ctx.bus.publish('atomic.bow_shoot.success', 'info', { source: req.source, entityId: id });
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 /**
@@ -2141,7 +2167,7 @@ async function critJumpAttackAtomic(
   req: ActionRequest,
   ctx: AtomicContext,
   start: number,
-): Promise<ExecutionResult> {
+): Promise<AtomicExecutionResult> {
   const id = req.target?.entityId;
   if (id == null) return fail(req, start, 'crit_jump_attack requires target.entityId');
   const ent = ctx.game.getEntityById(id);
@@ -2156,11 +2182,11 @@ async function critJumpAttackAtomic(
   } finally {
     await ctx.actions.setControlState('jump', false);
   }
-  return { ok: true, request: req, durationMs: Date.now() - start };
+  return { status: 'succeeded', request: req, durationMs: Date.now() - start };
 }
 
 // ───────────────────────── helpers ─────────────────────────
 
-function fail(req: ActionRequest, start: number, error: string): ExecutionResult {
-  return { ok: false, request: req, durationMs: Date.now() - start, error };
+function fail(req: ActionRequest, start: number, error: string): AtomicExecutionResult {
+  return { status: 'failed', request: req, durationMs: Date.now() - start, error, failure: failureFromLegacy(error) };
 }

@@ -74,6 +74,12 @@ export class BodyExecutionRuntime implements BodyExecutionPort {
       }
       throw new BodyAdmissionError('body_resources_busy', conflicts);
     }
+    // An ID or epoch change is not proof that the earlier effect did not happen.
+    if (!this.options.ledger.get(intent.operationId)?.receipt) {
+      const unresolved = this.options.ledger.listInDoubt().filter(record => record.operationId !== intent.operationId
+        && record.intent && logicalOwnerKey(record.intent.owner) === logicalOwnerKey(intent.owner));
+      if (unresolved.length) throw new BodyAdmissionError('operation_reconciliation_required', unresolved.map(record => record.operationId));
+    }
     const operationEpoch = ++this.operationEpoch;
     const identity: OperationIdentity = jsonSnapshot({ operationId: intent.operationId, owner: intent.owner, operationEpoch,
       leaseRef: `${this.instanceId}:${operationEpoch}`, deadlineAt: Math.min(intent.deadlineAt, this.clock.now() + maximum) });
@@ -95,7 +101,7 @@ export class BodyExecutionRuntime implements BodyExecutionPort {
       onEffect: (effect, at) => this.options.ledger.recordEffect(intent.operationId, effect, at),
       onStop: stop => this.options.ledger.acknowledgeStop(intent.operationId, stop),
       onTerminal: receipt => this.options.ledger.complete(receipt),
-      onInDoubt: (reason, at) => this.options.ledger.markInDoubt(intent.operationId, reason, at),
+      onInDoubt: (reason, at, receipt) => this.options.ledger.markInDoubt(intent.operationId, reason, at, receipt),
     });
     for (const resource of claims) this.resources.set(resource, identity);
     this.entries.set(intent.operationId, { intentJson, intent, lifetime });
@@ -148,7 +154,7 @@ function inDoubtHandle(record: OperationLedgerRecord, completedAt: number): Oper
   const evidenceRefs = [...new Set(record.effects.flatMap(effect => effect.evidenceRefs))];
   const intent = record.intent;
   if (!intent || !record.argsHash || !record.grantHash) throw new BodyAdmissionError('needs_rebind:operation_source_unproven');
-  const receipt: OperationReceipt = jsonSnapshot({
+  const receipt: OperationReceipt = record.inDoubtReceipt ?? jsonSnapshot({
     ...identity, schema: 'mineclaw.operation-receipt/v2', source:{commandId:intent.command.ref.id,
       contribution:intent.command.ref.contribution,snapshot:intent.command.snapshot,argsHash:record.argsHash,grantHash:record.grantHash},
     status: 'in_doubt', stop: record.stop,
@@ -164,6 +170,10 @@ function inDoubtHandle(record: OperationLedgerRecord, completedAt: number): Oper
     operationId: record.operationId, result: Promise.resolve(receipt), cancel: () => undefined,
     quiesced: () => record.stop ? Promise.resolve(jsonSnapshot(record.stop)) : Promise.reject(new Error('operation_in_doubt')),
   });
+}
+
+function logicalOwnerKey(owner: ExecutionOwner): string {
+  return JSON.stringify([owner.kind, owner.kind === 'goal' ? owner.sessionId : owner.taskId]);
 }
 
 function ownerKey(owner: ExecutionOwner): string { return JSON.stringify(jsonSnapshot(owner)); }

@@ -1,0 +1,16 @@
+schema: mineclaw.plugin/v1
+id: mineclaw.fastbrain
+version: 1.0.0
+apiVersion: ^2.0.0
+kind: domain
+entry: index
+dependencies: {}
+permissions: []
+contributions:
+  - kind: knowledge
+    id: mineclaw.fastbrain.knowledge.decision-protocol
+    version: 1.0.0
+    contentRef: src/bot/v2/plugins/builtin/fastbrain/protocol.md
+    contentSchema:
+      format: mineclaw.domain-knowledge/v1
+      mediaType: text/markdown

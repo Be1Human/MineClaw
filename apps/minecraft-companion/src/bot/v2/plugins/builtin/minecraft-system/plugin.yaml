@@ -407,7 +407,7 @@ contributions:
           item: catalog-36
   - kind: execution
     id: mineclaw.minecraft-system.execution.atomics
-    version: 1.0.0
+    version: 2.0.0
     atomicIds:
       - say
       - move_to
@@ -423,6 +423,13 @@ contributions:
       - pickup
       - use_item
       - sleep
+  - kind: execution
+    id: mineclaw.minecraft-system.execution.fastbrain
+    version: 1.0.0
+    atomicIds:
+      - fastbrain_equip
+      - fastbrain_consume
+      - fastbrain_mine
   - kind: integration
     id: mineclaw.minecraft-system.integration.game
     version: 1.0.0

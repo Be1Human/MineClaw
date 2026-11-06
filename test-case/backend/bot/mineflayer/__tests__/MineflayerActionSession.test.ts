@@ -40,7 +40,7 @@ function fixture(game: GameAdapter, run: (actions: GameActions) => Promise<void>
     bind: () => {
       let bound: BoundGameActions | null = null;
       return {
-        async run(ctx) { bound = session = game.bind(ctx); await run(bound.actions); return { ok: true }; },
+        async run(ctx) { bound = session = game.bind(ctx); await run(bound.actions); return { status: 'succeeded' }; },
         async stop(reason) { if (bound) await bound.stop(reason); },
       };
     },

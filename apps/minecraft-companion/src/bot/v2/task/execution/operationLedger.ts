@@ -29,6 +29,7 @@ export interface OperationLedgerRecord {
   readonly effects: readonly OperationEffect[];
   readonly stop: StopAcknowledgement | null;
   readonly receipt: OperationReceipt | null;
+  readonly inDoubtReceipt: OperationReceipt | null;
   readonly startedAt: number;
   readonly cancelRequestedAt: number | null;
   readonly cancelReason: string | null;
@@ -66,7 +67,7 @@ export interface OperationLedgerPort {
   recordEffect(operationId: string, effect: OperationEffect, at: number): void;
   requestCancel(operationId: string, reason: string, at: number): void;
   acknowledgeStop(operationId: string, stop: StopAcknowledgement): void;
-  markInDoubt(operationId: string, reason: string, at: number): void;
+  markInDoubt(operationId: string, reason: string, at: number, receipt: OperationReceipt | null): void;
   complete(receipt: OperationReceipt): void;
   reconcile(operationId: string, verdict: OperationReadbackVerdict): OperationLedgerRecord;
   get(operationId: string): OperationLedgerRecord | null;
@@ -85,6 +86,7 @@ interface OperationRow {
   effects_json: string;
   stop_json: string | null;
   receipt_json: string | null;
+  in_doubt_receipt_json: string | null;
   started_at: number;
   cancel_requested_at: number | null;
   cancel_reason: string | null;
@@ -202,10 +204,17 @@ export class OperationLedger implements OperationLedgerPort {
     }), copy.at);
   }
 
-  markInDoubt(operationId: string, reason: string, at: number): void {
-    this.transitionNonTerminal(operationId, () => ({
-      status: 'in_doubt', recoveryReason: requiredText(reason, 'operation_recovery_reason_required'),
-    }), at);
+  markInDoubt(operationId: string, reason: string, at: number, receipt: OperationReceipt | null): void {
+    const copy = receipt ? jsonSnapshot(receipt) : null;
+    this.transitionNonTerminal(operationId, row => {
+      if (copy) {
+        if (copy.status !== 'in_doubt' || copy.operationId !== operationId) throw new Error('operation_unknown_receipt_required');
+        validateReceiptSource(row, copy);
+        if (row.in_doubt_receipt_json && row.in_doubt_receipt_json !== canonicalJson(copy)) throw new Error('operation_unknown_receipt_conflict');
+      }
+      return { status: 'in_doubt', recoveryReason: requiredText(reason, 'operation_recovery_reason_required'),
+        inDoubtReceipt: copy ? canonicalJson(copy) : row.in_doubt_receipt_json };
+    }, at);
   }
 
   complete(receipt: OperationReceipt): void {
@@ -213,16 +222,7 @@ export class OperationLedger implements OperationLedgerPort {
     if (!TERMINAL.has(copy.status)) throw new Error('operation_terminal_receipt_required');
     this.db.transaction(() => {
       const row = this.rowRequired(copy.operationId);
-      if (!row.identity_json) throw new Error(`operation_source_unproven:${copy.operationId}`);
-      const identity = parseJson<OperationIdentity>(row.identity_json, 'operation_identity_corrupt');
-      if (canonicalJson(identity) !== canonicalJson(operationIdentityOf(copy))) throw new Error('operation_receipt_identity_mismatch');
-      if (!row.args_hash || !row.grant_hash || !copy.source
-        || copy.source.commandId !== parseJson<OperationIntent>(row.intent_json, 'operation_intent_corrupt').command.ref.id
-        || copy.source.argsHash !== row.args_hash || copy.source.grantHash !== row.grant_hash
-        || copy.source.contribution.pluginId !== row.plugin_id || copy.source.contribution.pluginVersion !== row.plugin_version
-        || copy.source.contribution.contributionId !== row.contribution_id || copy.source.contribution.contributionVersion !== row.contribution_version
-        || copy.source.snapshot.generationId !== row.generation_id || copy.source.snapshot.buildId !== row.build_id
-        || copy.source.snapshot.graphHash !== row.graph_hash) throw new Error('operation_receipt_source_mismatch');
+      validateReceiptSource(row, copy);
       if (row.receipt_json) {
         if (row.receipt_json !== canonicalJson(copy)) throw new Error(`operation_terminal_conflict:${copy.operationId}`);
         return;
@@ -242,7 +242,7 @@ export class OperationLedger implements OperationLedgerPort {
     if (existing.receipt) return existing;
     if (!existing.identity || !existing.intent || !existing.grantHash) throw new Error(`needs_rebind:operation_source_unproven:${operationId}`);
     if (verdict.status === 'unknown') {
-      this.markInDoubt(operationId, `readback_unknown:${verdict.reason}`, verdict.at);
+      this.markInDoubt(operationId, `readback_unknown:${verdict.reason}`, verdict.at, null);
       return this.getRequired(operationId);
     }
     if (verdict.status === 'not_started') {
@@ -284,6 +284,7 @@ export class OperationLedger implements OperationLedgerPort {
       cancelReason?: string | null;
       stop?: string | null;
       recoveryReason?: string | null;
+      inDoubtReceipt?: string | null;
     },
     at: number,
   ): void {
@@ -292,9 +293,9 @@ export class OperationLedger implements OperationLedgerPort {
       if (TERMINAL.has(row.status)) return;
       const next = transition(row);
       this.db.prepare(`
-        UPDATE operation_ledger SET status=?,cancel_requested_at=?,cancel_reason=?,stop_json=?,recovery_reason=?,updated_at=? WHERE operation_id=?
+        UPDATE operation_ledger SET status=?,cancel_requested_at=?,cancel_reason=?,stop_json=?,recovery_reason=?,in_doubt_receipt_json=?,updated_at=? WHERE operation_id=?
       `).run(next.status, next.cancelRequestedAt ?? row.cancel_requested_at, next.cancelReason ?? row.cancel_reason, next.stop ?? row.stop_json,
-        next.recoveryReason ?? row.recovery_reason, at, operationId);
+        next.recoveryReason ?? row.recovery_reason, next.inDoubtReceipt ?? row.in_doubt_receipt_json, at, operationId);
     })();
   }
 
@@ -342,6 +343,8 @@ export class OperationLedger implements OperationLedgerPort {
         CREATE INDEX IF NOT EXISTS idx_operation_ledger_owner ON operation_ledger(started_at,operation_id);
         CREATE INDEX IF NOT EXISTS idx_operation_ledger_recovery ON operation_ledger(status,started_at);
       `);
+      const columns = this.db.prepare('PRAGMA table_info(operation_ledger)').all() as Array<{ name: string }>;
+      if (!columns.some(column => column.name === 'in_doubt_receipt_json')) this.db.exec('ALTER TABLE operation_ledger ADD COLUMN in_doubt_receipt_json TEXT');
       if (this.tableExists('goal_agent_actions')) {
         const legacy = this.db.prepare(`SELECT * FROM goal_agent_actions ORDER BY started_at,idempotency_key`).all() as Array<{
           idempotency_key: string; session_id: string; epoch: number; status: string; proposal_json: string;
@@ -390,6 +393,7 @@ function fromRow(row: OperationRow): OperationLedgerRecord {
     effects: parseJson<OperationEffect[]>(row.effects_json, 'operation_effects_corrupt'),
     stop: row.stop_json ? parseJson<StopAcknowledgement>(row.stop_json, 'operation_stop_corrupt') : null,
     receipt: row.receipt_json ? parseJson<OperationReceipt>(row.receipt_json, 'operation_receipt_corrupt') : null,
+    inDoubtReceipt: row.in_doubt_receipt_json ? parseJson<OperationReceipt>(row.in_doubt_receipt_json, 'operation_unknown_receipt_corrupt') : null,
     startedAt: row.started_at, cancelRequestedAt: row.cancel_requested_at, cancelReason:row.cancel_reason, completedAt: row.completed_at,
     recoveryReason: row.recovery_reason,
     source: {
@@ -432,4 +436,17 @@ function timestamp(value: string | null): number {
 
 export function operationArgsHash(args: Readonly<Record<string, unknown>>): string {
   return digest(canonicalJson(jsonSnapshot(args)));
+}
+
+function validateReceiptSource(row: OperationRow, copy: OperationReceipt): void {
+      if (!row.identity_json) throw new Error(`operation_source_unproven:${copy.operationId}`);
+      const identity = parseJson<OperationIdentity>(row.identity_json, 'operation_identity_corrupt');
+      if (canonicalJson(identity) !== canonicalJson(operationIdentityOf(copy))) throw new Error('operation_receipt_identity_mismatch');
+      if (!row.args_hash || !row.grant_hash || !copy.source
+        || copy.source.commandId !== parseJson<OperationIntent>(row.intent_json, 'operation_intent_corrupt').command.ref.id
+        || copy.source.argsHash !== row.args_hash || copy.source.grantHash !== row.grant_hash
+        || copy.source.contribution.pluginId !== row.plugin_id || copy.source.contribution.pluginVersion !== row.plugin_version
+        || copy.source.contribution.contributionId !== row.contribution_id || copy.source.contribution.contributionVersion !== row.contribution_version
+        || copy.source.snapshot.generationId !== row.generation_id || copy.source.snapshot.buildId !== row.build_id
+        || copy.source.snapshot.graphHash !== row.graph_hash) throw new Error('operation_receipt_source_mismatch');
 }

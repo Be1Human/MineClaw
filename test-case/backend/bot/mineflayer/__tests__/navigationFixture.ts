@@ -1,3 +1,4 @@
+import { failureFromLegacy } from '../../../../../apps/minecraft-companion/src/bot/v2/task/execution/failureEnvelope.js';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import type { Bot } from 'mineflayer';
@@ -85,7 +86,7 @@ export function navigationFixture(device = navigationBot()) {
     let boundGame:BoundGameActions|null=null,boundNav:BoundNavigation|null=null;
     return {
       run:async ctx=>{boundGame=game.bind(ctx);boundNav=nav.bind({scope:ctx,game:boundGame,maintain});
-        const result:any=await work(boundNav.actions);return {ok:result?.ok??true};},
+        const result:any=await work(boundNav.actions);return result?.ok === false ? { status: 'failed', failure: failureFromLegacy(result.reason) } : { status: 'succeeded' };},
       stop:async reason=>{await Promise.all([boundGame?.stop(reason),boundNav?.stop(reason)]);},
     };
   }}});

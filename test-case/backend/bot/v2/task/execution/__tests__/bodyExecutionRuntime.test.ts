@@ -40,7 +40,7 @@ const intent = (id = 'op', patch: Partial<OperationIntent> = {}): OperationInten
 });
 const resources: Record<string, string[]> = { move: ['movement'], equip: ['inventory'], compose: ['movement', 'inventory'], observe: [] };
 
-function fixture(bind: BodyOperationDriver['bind'] = () => ({ async run(context) { await context.effect(() => undefined); return { ok: true }; }, async stop() {} })) {
+function fixture(bind: BodyOperationDriver['bind'] = () => ({ async run(context) { await context.effect(() => undefined); return { status: 'succeeded' }; }, async stop() {} })) {
   const clock = new Clock(), authority = new ExecutionAuthority();
   let current = true, childAllowed = true, binds = 0;
   const driver: BodyOperationDriver = { resources: cmd => resources[cmd.ref.id], bind: (identity, cmd) => { binds++; return bind(identity, cmd); } };
@@ -51,7 +51,7 @@ function fixture(bind: BodyOperationDriver['bind'] = () => ({ async run(context)
 
 for (const owner of owners) test(`S07: ${owner.kind} owner receives immutable runtime identity and a real stop acknowledgement`, async () => {
   let seen!: ControlledExecutionContext;
-  const f = fixture(() => ({ async run(ctx) { seen = ctx; await ctx.effect(() => undefined); return { ok: true }; }, async stop() {} }));
+  const f = fixture(() => ({ async run(ctx) { seen = ctx; await ctx.effect(() => undefined); return { status: 'succeeded' }; }, async stop() {} }));
   const handle = f.runtime.submit(f.authorize(intent('op', { owner })));
   const result = await handle.result;
   assert.equal(result.status, 'succeeded'); assert.equal(result.schema, 'mineclaw.operation-receipt/v2');
@@ -95,7 +95,7 @@ test('S07: cancellation before run starts fences the driver without leaking a le
 
 test('S07: normal result waits for cleanup; cleanup timeout quarantines resources and never resolves quiesced early', async () => {
   const cleanup = deferred<void>();
-  const f = fixture(() => ({ async run(ctx) { await ctx.effect(() => undefined); return { ok: true }; }, stop: () => cleanup.promise }));
+  const f = fixture(() => ({ async run(ctx) { await ctx.effect(() => undefined); return { status: 'succeeded' }; }, stop: () => cleanup.promise }));
   const handle = f.runtime.submit(f.authorize(intent()));
   let stopped = false, resulted = false;
   void handle.result.then(() => { resulted = true; }); void handle.quiesced().then(() => { stopped = true; });
@@ -114,7 +114,7 @@ for (const interruptible of [true, false]) test(`S07 shared driver contract: ${i
     async run(ctx) {
       if (ctx.operationId === 'op') { old = ctx; await ctx.effect(() => native.promise); }
       else await ctx.effect(() => { effects++; });
-      return { ok: true };
+      return { status: 'succeeded' };
     },
     async stop() { stops++; if (interruptible) native.resolve(); await cleanup.promise; },
   }));
@@ -132,20 +132,23 @@ for (const interruptible of [true, false]) test(`S07 shared driver contract: ${i
     native.resolve();
   }
   await one.quiesced();
-  const two = f.runtime.submit(next); assert.equal((await two.result).status, 'succeeded'); assert.equal(effects, 1);
+  if (!interruptible) assert.throws(() => f.runtime.submit(next), /operation_reconciliation_required/);
+  const replacement = interruptible ? next : f.authorize({ ...next.intent,
+    owner: { kind: 'task', taskId: 'different-logical-owner', ownerEpoch: 1 } });
+  const two = f.runtime.submit(replacement); assert.equal((await two.result).status, 'succeeded'); assert.equal(effects, 1);
   assert.throws(() => old.effect(() => { effects = 99; }), /preempted_by/); assert.equal(effects, 1);
 });
 
 test('S07: independent resources may run concurrently; equal-priority requests cannot interrupt', async () => {
   const pending = deferred<OperationOutcome>(); let cancels = 0;
-  const f = fixture((_identity, cmd) => ({ run: () => cmd.ref.id === 'move' ? pending.promise : Promise.resolve({ ok: true }), async stop() { cancels++; } }));
+  const f = fixture((_identity, cmd) => ({ run: () => cmd.ref.id === 'move' ? pending.promise : Promise.resolve({ status: 'succeeded' }), async stop() { cancels++; } }));
   const one = f.runtime.submit(f.authorize(intent())); await flush();
   assert.throws(() => f.runtime.submit(f.authorize(intent('blocked', { preemption: 'request' }))), /body_resources_busy/);
   assert.equal(cancels, 0);
   const equipment = f.runtime.submit(f.authorize(intent('equip', { command: command('equip') })));
   assert.equal((await equipment.result).status, 'succeeded');
   assert.equal(f.runtime.inspect('op')?.state, 'running');
-  pending.resolve({ ok: true }); await one.quiesced();
+  pending.resolve({ status: 'succeeded' }); await one.quiesced();
 });
 
 test('S07: child steps share identity, scope and budget; cleanup finishes before the next child starts', async () => {
@@ -156,7 +159,7 @@ test('S07: child steps share identity, scope and budget; cleanup finishes before
       contexts.push(ctx); order.push('run:' + cmd.ref.id);
       if (cmd.ref.id === 'compose') { await ctx.execute(command('move')); await ctx.execute(command('equip')); }
       else await ctx.effect(() => undefined);
-      return { ok: true };
+      return { status: 'succeeded' };
     },
     async stop() { if (cmd.ref.id === 'move') await cleanup.promise; order.push('stop:' + cmd.ref.id); },
   }));
@@ -188,7 +191,7 @@ test('S07: hot budget applies cumulatively to children, rather than resetting pe
       __setTuningOverride({ controlledExecution: { maxSubActions: 2 } });
       await ctx.execute(command('equip'));
     }
-    return { ok: true };
+    return { status: 'succeeded' };
   }, async stop() {} }));
   const handle = f.runtime.submit(f.authorize(intent('op', { command: command('compose') })));
   const result = await handle.result;
@@ -198,7 +201,7 @@ test('S07: hot budget applies cumulatively to children, rather than resetting pe
 
 test('S07: deadline interrupts waiting and never allows the next effect; timers are removed', async () => {
   let effects = 0;
-  const f = fixture(() => ({ async run(ctx) { await ctx.wait(5000); await ctx.effect(() => { effects++; }); return { ok: true }; }, async stop() {} }));
+  const f = fixture(() => ({ async run(ctx) { await ctx.wait(5000); await ctx.effect(() => { effects++; }); return { status: 'succeeded' }; }, async stop() {} }));
   const handle = f.runtime.submit(f.authorize(intent('op', { deadlineAt: 1100 })));
   await flush(); f.clock.advance(100);
   const result = await handle.result;
@@ -210,7 +213,7 @@ test('S07: run failures can quiesce, but stop failures keep the body quarantined
   const failed = fixture(() => ({ async run() { throw new Error('run_failure'); }, async stop() {} }));
   const one = failed.runtime.submit(failed.authorize(intent()));
   assert.equal((await one.result).status, 'failed'); await one.quiesced();
-  const unsafe = fixture(() => ({ async run() { return { ok: true }; }, async stop() { throw new Error('cleanup_failure'); } }));
+  const unsafe = fixture(() => ({ async run() { return { status: 'succeeded' }; }, async stop() { throw new Error('cleanup_failure'); } }));
   const two = unsafe.runtime.submit(unsafe.authorize(intent()));
   assert.equal((await two.result).status, 'in_doubt');
   assert.equal(unsafe.runtime.inspect('op')?.state, 'quarantined');
@@ -226,9 +229,11 @@ test('S07: cancelOwner closes only that incarnation and returns in_doubt without
   assert.throws(() => f.runtime.submit(f.authorize(intent('old', { owner }))), /operation_not_authorized/);
   f.clock.advance(2000); const report = await closing;
   assert.equal(report.status, 'in_doubt'); assert.equal(report.operations[0].stop, null);
-  pending.resolve({ ok: true }); await handle.quiesced();
+  pending.resolve({ status: 'succeeded' }); await handle.quiesced();
   const nextOwner: ExecutionOwner = { kind: 'task', taskId: 'task', ownerEpoch: 2 };
-  assert.equal((await f.runtime.submit(f.authorize(intent('new', { owner: nextOwner }))).result).status, 'succeeded');
+  assert.throws(() => f.runtime.submit(f.authorize(intent('new', { owner: nextOwner }))), /operation_reconciliation_required/);
+  const differentOwner: ExecutionOwner = { kind: 'task', taskId: 'different-task', ownerEpoch: 1 };
+  assert.equal((await f.runtime.submit(f.authorize(intent('new-owner', { owner: differentOwner }))).result).status, 'succeeded');
 });
 
 test('S07: cancellation preserves observed effects and does not turn an empty result into world success', async () => {
@@ -236,13 +241,13 @@ test('S07: cancellation preserves observed effects and does not turn an empty re
   const f = fixture(() => ({ async run(ctx) {
     await ctx.effect(() => undefined);
     ctx.recordEffect({ predicate: { id: 'test.crop', version: '1', args: { x: 1 } }, evidenceRefs: ['world:crop:one'] });
-    await gate.promise; return { ok: true };
+    await gate.promise; return { status: 'succeeded' };
   }, async stop() {} }));
   const handle = f.runtime.submit(f.authorize(intent())); await flush(); handle.cancel('stop'); gate.resolve();
   const result = await handle.result;
   assert.equal(result.status, 'cancelled'); assert.equal(result.effects.length, 1); assert.equal(result.noOp, false);
   assert.deepEqual(result.evidenceRefs, ['world:crop:one']); assert.ok(Object.isFrozen(result.effects[0].predicate.args));
-  const empty = fixture(() => ({ async run() { return { ok: true }; }, async stop() {} }));
+  const empty = fixture(() => ({ async run() { return { status: 'succeeded' }; }, async stop() {} }));
   const noop = await empty.runtime.submit(empty.authorize(intent())).result;
   assert.equal(noop.noOp, true); assert.deepEqual(noop.effects, []);
 });
@@ -250,8 +255,8 @@ test('S07: cancellation preserves observed effects and does not turn an empty re
 test('S07: returning before a launched child finishes is a contract failure, not success', async () => {
   const pending = deferred<void>();
   const f = fixture((_identity, cmd) => ({ async run(ctx) {
-    if (cmd.ref.id === 'compose') { void ctx.execute(command('move')); return { ok: true }; }
-    await pending.promise; return { ok: true };
+    if (cmd.ref.id === 'compose') { void ctx.execute(command('move')); return { status: 'succeeded' }; }
+    await pending.promise; return { status: 'succeeded' };
   }, async stop() {} }));
   const handle = f.runtime.submit(f.authorize(intent('op', { command: command('compose') })));
   await flush(); pending.resolve(); const result = await handle.result;
@@ -262,7 +267,7 @@ test('S07: a child cleanup error stops every bound executor even if the parent i
   const parent = deferred<void>(); let parentStops = 0;
   const f = fixture((_identity, cmd) => ({ async run(ctx) {
     if (cmd.ref.id === 'compose') { void ctx.execute(command('move')); await parent.promise; }
-    return { ok: true };
+    return { status: 'succeeded' };
   }, async stop() {
     if (cmd.ref.id === 'move') throw new Error('broken_child_cleanup');
     parentStops++; parent.resolve();
@@ -274,7 +279,7 @@ test('S07: a child cleanup error stops every bound executor even if the parent i
 
 test('S07: forgotten native effect remains owned after stop returns, and its late completion cannot report success', async () => {
   const native = deferred<void>(); let effects = 0;
-  const f = fixture(() => ({ async run(ctx) { void ctx.effect(async () => { effects++; await native.promise; }); return { ok: true }; }, async stop() {} }));
+  const f = fixture(() => ({ async run(ctx) { void ctx.effect(async () => { effects++; await native.promise; }); return { status: 'succeeded' }; }, async stop() {} }));
   const handle = f.runtime.submit(f.authorize(intent())); await flush();
   assert.equal(effects, 1); assert.equal(f.runtime.inspect('op')?.state, 'cancelling');
   assert.throws(() => f.runtime.submit(f.authorize(intent('next'))), /body_resources_busy/);

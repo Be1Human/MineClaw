@@ -1,3 +1,4 @@
+import { effectUnknown, isExecutionSettlement } from '../../plugin-sdk/contracts/executionResult.js';
 import { jsonSnapshot } from '../../infra/jsonSnapshot.js';
 import { tuning } from '../../infra/tuning.js';
 import type { OperationCommand, OperationIdentity, OperationSnapshot, StopAcknowledgement } from '../contracts/bodyOperation.js';
@@ -56,7 +57,9 @@ export class OperationLifetime {
   private published = false;
   private cancelReason: string | null = null;
   private stop: StopAcknowledgement | null = null;
-  private outcome: OperationOutcome = { ok: false };
+  private outcome: OperationOutcome = { status: 'failed', failure: failure('operation_failed') };
+  private lastDetails: Readonly<Record<string, unknown>> | null = null;
+  private uncertainty: Extract<OperationOutcome, { status: 'failed' | 'in_doubt' }> | null = null;
   private deadlineTimer: unknown;
   private stopTimer: unknown;
 
@@ -73,7 +76,7 @@ export class OperationLifetime {
     onEffect(effect: OperationEffect, at: number): void;
     onStop(stop: StopAcknowledgement): void;
     onTerminal(receipt: OperationReceipt): void;
-    onInDoubt(reason: string, at: number): void;
+    onInDoubt(reason: string, at: number, receipt: OperationReceipt | null): void;
   }) {
     this.startedAt = options.clock.now();
     this.handle = Object.freeze({ operationId: options.identity.operationId, result: this.result.promise,
@@ -86,7 +89,7 @@ export class OperationLifetime {
     // Defer run, so the runtime installs ownership before any effect is possible.
     void Promise.resolve().then(() => this.executeStep(operation.intent.command, 'root')).then(
       outcome => { this.outcome = outcome; },
-      error => { this.outcome = { ok: false, failure: failure(error instanceof ExecutionStoppedError ? error.code : 'operation_failed', String(error)) }; },
+      error => { this.outcome = { status: 'failed', failure: failure(error instanceof ExecutionStoppedError ? error.code : 'operation_failed', String(error)) }; },
     ).then(() => {
       this.rootFinished = true;
       this.closeGate();
@@ -173,10 +176,21 @@ export class OperationLifetime {
     return this.track(async () => {
       try {
         this.assertCurrent(command, 'before_run', step);
-        const outcome = jsonSnapshot(await step.executor.run(context));
-        if (!outcome || typeof outcome.ok !== 'boolean') throw new Error('invalid_operation_outcome');
+        const raw = await step.executor.run(context);
+        let outcome: OperationOutcome;
+        try {
+          if (!isExecutionSettlement(raw)) throw new Error('invalid_operation_outcome');
+          outcome = jsonSnapshot(raw);
+        } catch {
+          outcome = { status: 'in_doubt', failure: effectUnknown('invalid_operation_outcome') };
+        }
+        if (outcome.details) this.lastDetails = outcome.details;
+        if (outcome.status === 'in_doubt') {
+          this.uncertainty ??= outcome;
+          this.closeGate();
+        }
         if (step.childPending || step.pendingEffects > 0) this.cancel('unjoined_work');
-        this.assertCurrent(command, 'after_run', step);
+        if (outcome.status !== 'in_doubt') this.assertCurrent(command, 'after_run', step);
         return outcome;
       } finally {
         step.open = false;
@@ -282,13 +296,13 @@ export class OperationLifetime {
     this.state = 'settled';
     this.options.onQuiesced();
     this.drained.resolve(stop);
-    this.publish(this.cancelReason ? 'cancelled' : this.outcome.ok ? 'succeeded' : 'failed');
+    this.publish(this.uncertainty ? 'in_doubt' : this.cancelReason ? 'cancelled' : this.outcome.status);
   }
 
   private quarantine(): void {
     if (this.stop) return;
     this.state = 'quarantined';
-    try { this.options.onInDoubt(this.stopErrors.join('; ') || this.cancelReason || 'stop_unconfirmed', this.options.clock.now()); }
+    try { this.options.onInDoubt(this.stopErrors.join('; ') || this.cancelReason || 'stop_unconfirmed', this.options.clock.now(), null); }
     catch { /* The result remains in_doubt even when persistence itself failed. */ }
     this.publish('in_doubt');
   }
@@ -296,21 +310,22 @@ export class OperationLifetime {
   private publish(status: OperationReceipt['status']): void {
     if (this.published) return;
     this.published = true;
-    const observedFailure = this.cancelReason ? failure(this.cancelReason) : this.outcome.failure
+    const observedFailure = (status === 'in_doubt' && this.uncertainty ? this.uncertainty.failure
+      : this.cancelReason ? failure(this.cancelReason) : this.outcome.status !== 'succeeded' ? this.outcome.failure : undefined)
       ?? (status === 'in_doubt' ? failure('stop_unconfirmed', this.stopErrors.join('; ')) : undefined);
     const receipt: OperationReceipt = jsonSnapshot({ ...this.options.identity, schema: 'mineclaw.operation-receipt/v2' as const,
       source:this.options.source,status,
       stop: this.stop, noOp: this.effectsStarted === 0 && this.effects.length === 0,
       effects: this.effects, evidenceRefs: [...new Set(this.effects.flatMap(effect => effect.evidenceRefs))],
-      ...(observedFailure ? { failure: observedFailure } : {}), ...(this.outcome.details ? { details: this.outcome.details } : {}),
+      ...(observedFailure ? { failure: observedFailure } : {}), ...((this.uncertainty?.details ?? this.outcome.details ?? this.lastDetails) ? { details: { ...(this.uncertainty?.details ?? this.outcome.details ?? this.lastDetails), ...(this.cancelReason ? { cancelReason: this.cancelReason } : {}) } } : {}),
       startedAt: this.startedAt, completedAt: this.options.clock.now() });
     try {
-      if (status === 'in_doubt') this.options.onInDoubt(observedFailure?.detail ?? observedFailure?.code ?? 'operation_in_doubt', receipt.completedAt);
+      if (status === 'in_doubt') this.options.onInDoubt(observedFailure?.detail ?? observedFailure?.code ?? 'operation_in_doubt', receipt.completedAt, receipt);
       else this.options.onTerminal(receipt);
       this.result.resolve(receipt);
     } catch (error) {
       const persistenceFailure = failure('stop_unconfirmed', `operation ledger terminal write failed: ${String(error)}`);
-      try { this.options.onInDoubt(persistenceFailure.detail ?? persistenceFailure.code, receipt.completedAt); } catch { /* already fail-closed */ }
+      try { this.options.onInDoubt(persistenceFailure.detail ?? persistenceFailure.code, receipt.completedAt, null); } catch { /* already fail-closed */ }
       this.result.resolve(jsonSnapshot({ ...receipt, status: 'in_doubt', failure: persistenceFailure }));
     }
   }

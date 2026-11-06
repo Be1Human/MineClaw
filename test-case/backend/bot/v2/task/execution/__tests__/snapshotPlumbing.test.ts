@@ -45,7 +45,7 @@ function fixtureAtomicResolver(): GenerationAtomicEntryPort {
   const executor: PluginAtomicExecutor = {
     id: 'mineclaw.minecraft-system.atomic.move_to',
     version: '1.0.0',
-    execute: async () => ({ ok: true }),
+    execute: async () => ({ status: 'succeeded' }),
   };
   return {
     resolve: (_snapshot, atomicId) => atomicId === 'move_to' || atomicId === 'look_at' || atomicId === 'equip'

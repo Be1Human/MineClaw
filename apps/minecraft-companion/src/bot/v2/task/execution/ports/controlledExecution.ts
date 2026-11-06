@@ -1,12 +1,8 @@
 import type { OperationCommand, OperationIdentity, OperationIntent } from '../../contracts/bodyOperation.js';
 import type { OperationEffect } from '../../contracts/operationReceipt.js';
-import type { FailureEnvelope } from '../../contracts/failureEnvelope.js';
+import type { ExecutionSettlement } from '../../../plugin-sdk/contracts/executionResult.js';
 
-export interface OperationOutcome {
-  readonly ok: boolean;
-  readonly failure?: FailureEnvelope;
-  readonly details?: Readonly<Record<string, unknown>>;
-}
+export type OperationOutcome = ExecutionSettlement;
 
 /** Required by every executor; only the owning runtime creates one. */
 export interface ControlledExecutionContext extends OperationIdentity {

@@ -36,7 +36,7 @@ export class OperationRecoveryCoordinator {
       } catch (error) {
         if (signal.aborted) break;
         const reason = error instanceof Error ? error.message : String(error);
-        try { this.ledger.markInDoubt(record.operationId, `readback_failed:${reason}`, Date.now()); } catch { /* original row remains in_doubt */ }
+        try { this.ledger.markInDoubt(record.operationId, `readback_failed:${reason}`, Date.now(), null); } catch { /* original row remains in_doubt */ }
         results.push({ operationId: record.operationId, status: 'in_doubt', reason });
       }
     }

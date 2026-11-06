@@ -1,7 +1,7 @@
 /**
  * FEAT-CROSS-26-001-004-004 · I07 production gate (P3-1).
  * The committed generated index drives PluginHost: the full first-party set
- * (18 plugins) must boot with zero failures through the production assembly
+ * (19 plugins including the FastBrain protocol) must boot with zero failures through the production assembly
  * path — no source scanning, no V2Runtime edits.
  */
 import assert from 'node:assert/strict';
@@ -9,12 +9,13 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { PluginHost } from '../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/index.js';
 import { loadProductionBuiltinIndex } from '../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/productionIndex.js';
+import type { DecisionPort } from '../../../../../../apps/minecraft-companion/src/bot/v2/plugins/builtin/fastbrain/adapter.js';
 
 const KERNEL = fileURLToPath(new URL('../../../../../../apps/minecraft-companion/src/bot/v2/plugin-kernel/', import.meta.url));
 
-test('I07 生成索引生产装配：18 首方插件零失败 boot（含依赖解析/权限/事务）', async () => {
+test('I07 生成索引生产装配：19 首方插件零失败 boot（含依赖解析/权限/事务）', async () => {
   const index = loadProductionBuiltinIndex({ manifestPath: `${KERNEL}/builtin-manifest.generated.json` });
-  assert.equal(index.byEntryKey.size, 18, `expected 18 builtin plugins, got ${index.byEntryKey.size}`);
+  assert.equal(index.byEntryKey.size, 19);
   const host = new PluginHost({
     hostApiVersion: '2.0.0',
     buildId: 'build-1',
@@ -24,7 +25,12 @@ test('I07 生成索引生产装配：18 首方插件零失败 boot（含依赖�
   });
   const result = await host.boot();
   assert.deepEqual(result.failures, [], JSON.stringify(result.failures));
-  assert.equal(result.installed.length, 18, JSON.stringify(result.installed));
+  assert.equal(result.installed.length, 19, JSON.stringify(result.installed));
+  assert.ok(result.installed.includes('mineclaw.fastbrain'));
+  assert.ok(result.services['fastbrain.decisions']);
+  const decisions = result.services['fastbrain.decisions'] as DecisionPort;
+  assert.equal(decisions.catalog().length, 18, 'decision names are not plugin-package count');
+  assert.equal(new Set(decisions.catalog().map(entry => entry.name)).size, 18);
   const active = result.slot.read().active;
   assert.ok(active.registry.byId.size >= 40, `registry should hold the aggregated contributions, got ${active.registry.byId.size}`);
   assert.ok(result.services['bounded.block.observation']);

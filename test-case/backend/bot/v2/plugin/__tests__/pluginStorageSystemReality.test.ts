@@ -49,7 +49,7 @@ test('storage-system：deposit/withdraw 经 GameActions 真执行，无 delegate
     { request: { target: { position: { x: 1, y: 64, z: 1 }, itemName: 'wheat', count: 12 } }, source: 'test' },
     { assertCurrent: () => undefined, wait: async () => undefined, deadlineAt: Date.now() + 5000 },
   );
-  assert.equal(out.ok, true);
+  assert.equal(out.status, 'succeeded');
   assert.deepEqual(ops, ['deposit:wheat:12']);
 
   // manifest atomicIds 与实现目录一致

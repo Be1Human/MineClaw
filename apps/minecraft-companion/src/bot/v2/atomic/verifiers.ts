@@ -8,7 +8,7 @@
  *   - 原子层只验【物理效果·意图无关】：place→那格变了、dig→方块没了、craft→背包+N、equip→手持变。
  *   - 【意图达成】(挖矿是否真收到圆石 / 打安妮是否服了) 归 task critic(L6-03)，不在此。
  *
- * 三态：pass / fail / unknown。"验不了"≠"失败"——打玩家拿不到血量 → unknown 不阻断。
+ * 三态：pass / fail / unknown。required 验真未知必须保持 in_doubt；advisory 保留原观察策略。
  * 时机：默认单次读（mineflayer 动作 Promise 多已等服务器 ack），fail 时短轮询兜底（见 atomics.runVerify）。
  * 失败：原子单发不自重试，enforce 档判 fail 交 GoalAgent Recovery 节点；observe 档只告警不阻断。
  */
@@ -21,20 +21,40 @@ export type VerifyStatus = 'pass' | 'fail' | 'unknown';
 export interface VerifyVerdict {
   status: VerifyStatus;
   reason?: string;
+  details?: Readonly<Record<string, unknown>>;
 }
 
-export interface AtomVerifier {
+interface VerifierMethods {
   /** 动作前拍快照（只拍本原子要对比的状态：背包数/饱食/血量…）· 可选 */
   snapshot?(req: ActionRequest, game: GameView): unknown;
   /** 动作后回查世界 → 三态。同步纯读，短轮询由 atomics.runVerify 控制。 */
   verify(req: ActionRequest, game: GameView, before: unknown): VerifyVerdict;
 }
 
+export type AtomVerifier = VerifierMethods & (
+  | { readonly policy: 'advisory' }
+  | { readonly policy: 'required'; snapshot(req: ActionRequest, game: GameView): unknown;
+      precondition(before: unknown): VerifyVerdict }
+);
+
+interface BlockSnapshot {
+  readonly observedAt: number;
+  readonly dimension: string;
+  readonly position: Vec3 | null;
+  readonly block: { readonly name: string; readonly boundingBox?: string } | null;
+}
+function blockSnapshot(req: ActionRequest, game: GameView): BlockSnapshot {
+  const position = req.target?.position ?? null;
+  const block = position ? game.getBlockAt(position) : null;
+  return { observedAt: Date.now(), dimension: game.getDimension(), position,
+    block: block ? { name: block.name, ...(block.boundingBox ? { boundingBox: block.boundingBox } : {}) } : null };
+}
+
 // ── 小工具 ────────────────────────────────────────────
 const isSolid = (b: { boundingBox?: string; name: string } | null): boolean =>
   !!b && b.boundingBox === 'block';
-const isEmpty = (b: { boundingBox?: string } | null): boolean =>
-  !b || b.boundingBox === 'empty';
+const isEmpty = (b: { name: string } | null): boolean =>
+  b !== null && ['air', 'cave_air', 'void_air'].includes(b.name);
 function invCount(game: GameView, name: string): number {
   return game.getInventoryItems().filter(i => i.name === name).reduce((s, i) => s + i.count, 0);
 }
@@ -53,6 +73,7 @@ function inventoryConsumed(before: Readonly<Record<string, number>>, game: GameV
 
 /** 攻击类共用验真器：能读到目标血量就验掉血/消失，读不到(玩家)→unknown */
 const attackVerifier: AtomVerifier = {
+  policy: 'advisory',
   snapshot(req, game) {
     const id = req.target?.entityId;
     return id != null ? game.getEntityById(id)?.health : undefined;
@@ -77,6 +98,7 @@ const attackVerifier: AtomVerifier = {
 export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
   // ── 放置类（石斧①号断点的根治区）──
   place_block: {
+    policy: 'advisory',
     verify(req, game) {
       const item = req.target?.itemName;
       const pos = req.target?.position ?? req.target?.referencePosition;
@@ -89,6 +111,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
     },
   },
   place_scaffold: {
+    policy: 'advisory',
     verify(req, game) {
       const pos = req.target?.position ?? req.target?.referencePosition;
       if (!pos) return { status: 'unknown' };
@@ -99,16 +122,28 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
   },
   // ── 挖/合成/装备/吃（物理事实清晰，默认 enforce）──
   dig: {
-    verify(req, game) {
-      const pos = req.target?.position;
-      if (!pos) return { status: 'unknown' };
-      const b = game.getBlockAt(pos);
-      return isEmpty(b)
+    policy: 'required',
+    snapshot: blockSnapshot,
+    precondition(before) {
+      const snapshot = before as BlockSnapshot;
+      return snapshot.position && snapshot.block?.name.trim() && !isEmpty(snapshot.block)
         ? { status: 'pass' }
-        : { status: 'fail', reason: `方块未消失，仍为 ${b?.name}` };
+        : { status: 'unknown', reason: snapshot.position ? 'dig_target_not_observed' : 'dig requires target.position', details: { before: snapshot } };
+    },
+    verify(req, game, before) {
+      const initial = before as BlockSnapshot;
+      const after = blockSnapshot(req, game);
+      const details = { kind: 'local_readback', before: initial, after, causality: 'unproven', collection: 'unknown' };
+      if (!initial.block || isEmpty(initial.block) || !after.block || after.dimension !== initial.dimension) {
+        return { status: 'unknown', reason: 'dig_block_observation_unknown', details };
+      }
+      return isEmpty(after.block)
+        ? { status: 'pass', details }
+        : { status: 'fail', reason: `方块未消失，仍为 ${after.block.name}`, details };
     },
   },
   craft: {
+    policy: 'advisory',
     snapshot(req, game) { return invCount(game, String(req.target?.itemName ?? '')); },
     verify(req, game, before) {
       const item = String(req.target?.itemName ?? '');
@@ -123,6 +158,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
     },
   },
   equip: {
+    policy: 'advisory',
     verify(req, game) {
       const item = req.target?.itemName;
       if (!item) return { status: 'unknown' };
@@ -134,6 +170,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
   },
   // FEAT-L3-13 · 扔出物品 = 背包该物品数必须下降（防"调用没报错就算给了"假成功）
   toss_item: {
+    policy: 'advisory',
     snapshot(req, game) { return invCount(game, String(req.target?.itemName ?? '')); },
     verify(req, game, before) {
       const item = String(req.target?.itemName ?? '');
@@ -145,6 +182,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
     },
   },
   eat: {
+    policy: 'advisory',
     snapshot(_req, game) {
       return Object.freeze({ food: game.getFood(), health: game.getHealth(), inventory: inventoryCounts(game) });
     },
@@ -167,6 +205,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
   crit_jump_attack: attackVerifier,
   bow_shoot: attackVerifier,
   fish: {
+    policy: 'advisory',
     snapshot(_req, game) { return invTotal(game); },
     verify(_req, game, before) {
       return invTotal(game) > (before as number)
@@ -175,6 +214,7 @@ export const ATOM_VERIFIERS: Partial<Record<ActionType, AtomVerifier>> = {
     },
   },
   equip_best_armor: {
+    policy: 'advisory',
     snapshot(_req, game) {
       const a = game.getArmorItems();
       return [a.head, a.torso, a.legs, a.feet].filter(Boolean).length;

@@ -149,7 +149,7 @@ test('P2-2 端口注入：executor 经注入的 game/nav 端口执行原语', as
     new AbortController().signal,
   );
   assert.ok(calls.length >= 1, JSON.stringify(calls));
-  assert.equal(outcome.ok, true);
+  assert.equal(outcome.status, 'succeeded');
 });
 
 test('P3-4 切换前置：原子目录 = dispatch 全集，每条目带 contract，无委托桩', async () => {

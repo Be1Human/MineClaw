@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-06T16:15:58.996Z",
+  "generatedAt": "2026-11-06T09:13:01.880Z",
   "schema": "mineclaw.builtin-index/v1",
   "plugins": [
     {
@@ -957,6 +957,37 @@
       ]
     },
     {
+      "pluginId": "mineclaw.fastbrain",
+      "kind": "domain",
+      "entryKey": "plugins/builtin/mineclaw.fastbrain",
+      "manifestHash": "ed453d515563410755bd88269075119a8ca2c79bdba55ebf3781bfa03de33ba0",
+      "manifest": {
+        "schema": "mineclaw.plugin/v1",
+        "id": "mineclaw.fastbrain",
+        "version": "1.0.0",
+        "apiVersion": "^2.0.0",
+        "kind": "domain",
+        "entry": "index",
+        "dependencies": {},
+        "permissions": [],
+        "contributions": [
+          {
+            "kind": "knowledge",
+            "id": "mineclaw.fastbrain.knowledge.decision-protocol",
+            "version": "1.0.0",
+            "contentRef": "src/bot/v2/plugins/builtin/fastbrain/protocol.md",
+            "contentSchema": {
+              "format": "mineclaw.domain-knowledge/v1",
+              "mediaType": "text/markdown"
+            }
+          }
+        ]
+      },
+      "imports": [
+        "plugin-kernel/discovery.ts"
+      ]
+    },
+    {
       "pluginId": "mineclaw.flee",
       "kind": "domain",
       "entryKey": "plugins/builtin/mineclaw.flee",
@@ -1465,7 +1496,7 @@
       "pluginId": "mineclaw.minecraft-system",
       "kind": "system",
       "entryKey": "plugins/builtin/mineclaw.minecraft-system",
-      "manifestHash": "b39336bac6ef724400ce8ee1bae333466aeaa45f60f1583e9208756ad120d4be",
+      "manifestHash": "962da0f41267dfe9e98ddadaad0a6773c7757af04c6a86b0fb57fd26ca4e7c00",
       "manifest": {
         "schema": "mineclaw.plugin/v1",
         "id": "mineclaw.minecraft-system",
@@ -2130,7 +2161,7 @@
           {
             "kind": "execution",
             "id": "mineclaw.minecraft-system.execution.atomics",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "atomicIds": [
               "say",
               "move_to",
@@ -2146,6 +2177,16 @@
               "pickup",
               "use_item",
               "sleep"
+            ]
+          },
+          {
+            "kind": "execution",
+            "id": "mineclaw.minecraft-system.execution.fastbrain",
+            "version": "1.0.0",
+            "atomicIds": [
+              "fastbrain_equip",
+              "fastbrain_consume",
+              "fastbrain_mine"
             ]
           },
           {
@@ -2169,7 +2210,14 @@
         "pter/NavigationAdapter.ts",
         "infra/eventBus.ts",
         "strategy/doorMonitor.ts",
-        "strategy/stuckMonitor.ts"
+        "strategy/stuckMonitor.ts",
+        "plugins/builtin/fastbrain/adapter.ts",
+        "plugins/builtin/fastbrain/body.ts",
+        "plugins/builtin/fastbrain/visibleTargets.ts",
+        "plugins/builtin/fastbrain/wait.ts",
+        "plugins/builtin/fastbrain/pendingRequests.ts",
+        "plugins/builtin/fastbrain/outcome.ts",
+        "plugins/builtin/fastbrain/mine.ts"
       ]
     },
     {
@@ -2435,7 +2483,7 @@
       "pluginId": "mineclaw.storage-system",
       "kind": "system",
       "entryKey": "plugins/builtin/mineclaw.storage-system",
-      "manifestHash": "dd896ba352bbdf1beb4b86cd7783b4a20a02b034c5dee7bf7169a09473737282",
+      "manifestHash": "33bed62361b163b6291ea546884c0fbf2415700db984f391608ad19fa22ac67b",
       "manifest": {
         "schema": "mineclaw.plugin/v1",
         "id": "mineclaw.storage-system",
@@ -2458,7 +2506,7 @@
           {
             "kind": "execution",
             "id": "mineclaw.storage-system.execution.container",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "atomicIds": [
               "deposit",
               "withdraw"
@@ -2472,6 +2520,7 @@
         ]
       },
       "imports": [
+        "task/execution/failureEnvelope.ts",
         "plugin-kernel/discovery.ts",
         "plugin-sdk/index.ts",
         "plugin-sdk/contracts/execution.ts",

@@ -21,6 +21,13 @@ import type { NavigationAdapter } from '../../../../adapter/NavigationAdapter.js
 import type { EventBusV2 } from '../../../infra/eventBus.js';
 import { DoorMonitor } from '../../../strategy/doorMonitor.js';
 import { StuckMonitor } from '../../../strategy/stuckMonitor.js';
+import { FastBrainAdapter, FASTBRAIN_DECISION_SERVICE, type DecisionHandler, type SelfObservation } from '../fastbrain/adapter.js';
+import { createFastBrainBodyAtomics, createFastBrainBodyHandlers, FASTBRAIN_BODY_CONTRIBUTION, FASTBRAIN_BODY_VERSION, type FastBrainBodyPort } from '../fastbrain/body.js';
+import { createFastBrainVisibleTargets, createFastBrainVisibleTargetHandlers } from '../fastbrain/visibleTargets.js';
+import { createFastBrainWaitHandler } from '../fastbrain/wait.js';
+import { FastBrainPendingRequests } from '../fastbrain/pendingRequests.js';
+import { createFastBrainOutcomeVerifier, type FastBrainOutcomeSource } from '../fastbrain/outcome.js';
+import { createFastBrainMineHandler, createFastBrainMineAtomic } from '../fastbrain/mine.js';
 
 export const MINECRAFT_SYSTEM_PLUGIN_ID = 'mineclaw.minecraft-system';
 export const ADVANCED_MOVE_TO_BEHAVIOR_ID = 'advanced_move_to';
@@ -49,6 +56,8 @@ export interface MineclawSystemPorts {
   readonly blockObservation?: BoundedBlockObservationPort;
   readonly inventoryObservation?: BoundedInventoryObservationPort;
   readonly ownerContextObservation?: OwnerContextObservationPort;
+  readonly fastBrainBody?: FastBrainBodyPort;
+  readonly fastBrainOutcome?: FastBrainOutcomeSource;
 }
 
 function systemRef(): ContributionRef {
@@ -56,7 +65,7 @@ function systemRef(): ContributionRef {
     pluginId: MINECRAFT_SYSTEM_PLUGIN_ID,
     pluginVersion: '1.0.0',
     contributionId: `${MINECRAFT_SYSTEM_PLUGIN_ID}.execution.atomics`,
-    contributionVersion: '1.0.0',
+    contributionVersion: '2.0.0',
   };
 }
 
@@ -161,7 +170,7 @@ function isNoPath(receipt: Readonly<Record<string, unknown>>): boolean {
 export function createSystemAtomicExecutor(atomicId: string, ports: MineclawSystemPorts) {
   return {
     id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.atomic.${atomicId}`,
-    version: '1.0.0',
+    version: '2.0.0',
     execute: async (command: { request: Readonly<Record<string, unknown>>; source: string }, context: AtomicExecutionContext) => {
       if (!ports.game || !ports.nav || !ports.bus || !ports.getWorld) {
         throw new Error('atomic_device_unavailable');
@@ -187,14 +196,11 @@ export function createSystemAtomicExecutor(atomicId: string, ports: MineclawSyst
         nav: nav.actions,
         bus: ports.bus,
         getWorld: ports.getWorld,
-        execution: {
-          assertCurrent: (reason: string) => context.assertCurrent(reason),
-          wait: (ms: number) => context.wait(ms),
-          signal: context.signal,
-          effect: <T>(run: () => T | PromiseLike<T>) => context.effect(run),
-        } as never,
+        execution: context,
       });
-      return { ok: result.ok ?? true, ...(result.error ? { error: result.error } : {}) };
+      return result.status === 'succeeded'
+        ? { status: 'succeeded' as const, ...(result.details ? { details: result.details } : {}) }
+        : { status: result.status, failure: result.failure, ...(result.details ? { details: result.details } : {}) };
     },
   };
 }
@@ -207,21 +213,43 @@ export function createMineclawMinecraftSystemPlugin(): PluginFactory {
       const contracts = buildSystemAtomicContracts(ATOMIC_IDS);
       const atomicCatalog: AtomicContractEntry[] = ATOMIC_IDS.map((atomicId, index) => ({
         atomicId,
-        version: '1.0.0',
+        version: '2.0.0',
         executor: createSystemAtomicExecutor(atomicId, ports),
         contract: contracts[index],
       }));
       const bounded = createBoundedObservationPorts(ports);
+      const visibleTargets = ports.game ? createFastBrainVisibleTargets(ports.game) : undefined;
+      const pending = new FastBrainPendingRequests();
+      const handlers = new Map<string, DecisionHandler>(visibleTargets ? createFastBrainVisibleTargetHandlers(visibleTargets) : []);
+      const bodyHandlers = new Map(createFastBrainBodyHandlers(ports.fastBrainBody));
+      if (ports.fastBrainBody && visibleTargets) bodyHandlers.set('mine', createFastBrainMineHandler(ports.fastBrainBody, visibleTargets));
+      for (const [name, handler] of bodyHandlers) handlers.set(name, handler.available ? pending.wrap(handler) : handler);
+      if ([...bodyHandlers.values()].some(handler => handler.available)) handlers.set('cancel', pending.cancelHandler());
+      const wait = createFastBrainWaitHandler(ports.game, pending);
+      if (wait) handlers.set('wait', wait);
+      // This passive read service launches no callbacks/resources. PluginHost
+      // publishes integration.services only after the contribution commits.
+      // Do not assume the current kernel invokes integration.start().
+      let decisionsClosed = false;
+      const decisions = new FastBrainAdapter({
+        isActive: () => !decisionsClosed && context.signal?.aborted !== true,
+        handlers,
+        ...(ports.fastBrainOutcome ? { verifier: createFastBrainOutcomeVerifier(ports.fastBrainOutcome) } : {}),
+        ...(ports.game && ports.getWorld ? { observeSelf: () => selfObservation(ports.game!, ports.getWorld!) } : {}),
+      });
       const integration = {
         id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.integration.game`,
         version: '1.0.0',
         integration: {
           id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.integration.game`,
           version: '1.0.0',
-          start: async (): Promise<void> => undefined,
-          stop: async (): Promise<void> => undefined,
-          status: (): 'running' | 'stopped' => 'running',
+          start: async (): Promise<void> => {
+            if (decisionsClosed) throw new Error('game_integration_closed');
+          },
+          stop: async (): Promise<void> => { decisionsClosed = true; decisions.close(); visibleTargets?.close(); },
+          status: (): 'running' | 'stopped' => decisionsClosed ? 'stopped' : 'running',
           services: Object.freeze({
+            [FASTBRAIN_DECISION_SERVICE]: decisions.port(),
             'bounded.block.observation': bounded.block,
             'bounded.inventory.observation': bounded.inventory,
             ...(ports.ownerContextObservation ? { 'context.owner': ports.ownerContextObservation } : {}),
@@ -233,13 +261,38 @@ export function createMineclawMinecraftSystemPlugin(): PluginFactory {
         {
           kind: 'execution',
           id: `${MINECRAFT_SYSTEM_PLUGIN_ID}.execution.atomics`,
-          version: '1.0.0',
+          version: '2.0.0',
           atomicCatalog,
           behaviorFactory: createAdvancedMoveToBehavior(),
         },
+        { kind: 'execution', id: FASTBRAIN_BODY_CONTRIBUTION, version: FASTBRAIN_BODY_VERSION,
+          atomicCatalog: [...createFastBrainBodyAtomics(ports.game),
+            ...(visibleTargets ? [createFastBrainMineAtomic(ports.game, visibleTargets)] : [])] },
         { kind: 'integration', ...integration },
       ];
     },
+  };
+}
+
+/** Self-only allowlist: never forward owner, entities, task state or hidden facts. */
+function selfObservation(game: GameAdapter, getWorld: () => WorldStateView): SelfObservation {
+  const world = getWorld();
+  const actor = game.username;
+  if (!actor || !world) throw new Error('fastbrain_observation_unavailable');
+  const { self } = world;
+  return {
+    version: `world-tick-${world.tick}`,
+    observedAt: world.timestamp,
+    actor,
+    dimension: world.environment.dimension,
+    scope: 'self_only',
+    self: {
+      position: { x: self.position.x, y: self.position.y, z: self.position.z },
+      yaw: self.yaw, pitch: self.pitch, health: self.health, food: self.food, isOnGround: self.isOnGround,
+    },
+    inventory: world.inventory.items.map(item => ({ name: item.name, count: item.count, slot: item.slot })),
+    targets: { status: 'unavailable', reason: 'visible_targets_contract_unavailable' },
+    evidenceRefs: [`world:tick:${world.tick}`],
   };
 }
 
